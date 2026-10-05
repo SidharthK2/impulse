@@ -1,0 +1,155 @@
+{
+ "name": "B: gap 0.60 → 0.05, then levered short at 0.06, resolve YES (1)",
+ "description": "Same prefix. gina shorts 300 @ 0.06 at 3x (posts $6.50). Resolution to 1 bankrupts gina; longs frank/hank absorb.",
+ "events": [
+  {
+   "type": "deposit",
+   "account": "alice",
+   "amount": "100"
+  },
+  {
+   "type": "deposit",
+   "account": "bob",
+   "amount": "150"
+  },
+  {
+   "type": "deposit",
+   "account": "carol",
+   "amount": "200"
+  },
+  {
+   "type": "deposit",
+   "account": "dave",
+   "amount": "120"
+  },
+  {
+   "type": "deposit",
+   "account": "erin",
+   "amount": "50"
+  },
+  {
+   "type": "deposit",
+   "account": "frank",
+   "amount": "120"
+  },
+  {
+   "type": "tick",
+   "price": "0.50"
+  },
+  {
+   "type": "trade",
+   "buyer": "alice",
+   "seller": "carol",
+   "size": 500,
+   "price": "0.50"
+  },
+  {
+   "type": "trade",
+   "buyer": "bob",
+   "seller": "dave",
+   "size": 400,
+   "price": "0.50"
+  },
+  {
+   "type": "tick",
+   "price": "0.52"
+  },
+  {
+   "type": "trade",
+   "buyer": "bob",
+   "seller": "erin",
+   "size": 100,
+   "price": "0.52"
+  },
+  {
+   "type": "tick",
+   "price": "0.55"
+  },
+  {
+   "type": "trade",
+   "buyer": "frank",
+   "seller": "carol",
+   "size": 200,
+   "price": "0.55"
+  },
+  {
+   "type": "withdraw",
+   "account": "bob",
+   "amount": "100"
+  },
+  {
+   "type": "withdraw",
+   "account": "bob",
+   "amount": "30"
+  },
+  {
+   "type": "tick",
+   "price": "0.58"
+  },
+  {
+   "type": "trade",
+   "buyer": "alice",
+   "seller": "erin",
+   "size": 100,
+   "price": "0.58"
+  },
+  {
+   "type": "tick",
+   "price": "0.60"
+  },
+  {
+   "type": "tick",
+   "price": "0.05"
+  },
+  {
+   "type": "deposit",
+   "account": "gina",
+   "amount": "6.50"
+  },
+  {
+   "type": "deposit",
+   "account": "hank",
+   "amount": "20"
+  },
+  {
+   "type": "tick",
+   "price": "0.06"
+  },
+  {
+   "type": "trade",
+   "buyer": "hank",
+   "seller": "gina",
+   "size": 300,
+   "price": "0.06"
+  },
+  {
+   "type": "resolve",
+   "outcome": 1
+  },
+  {
+   "type": "withdraw",
+   "account": "carol",
+   "amount": "all"
+  },
+  {
+   "type": "withdraw",
+   "account": "dave",
+   "amount": "all"
+  },
+  {
+   "type": "withdraw",
+   "account": "erin",
+   "amount": "all"
+  },
+  {
+   "type": "withdraw",
+   "account": "frank",
+   "amount": "all"
+  },
+  {
+   "type": "withdraw",
+   "account": "hank",
+   "amount": "all"
+  }
+ ]
+}

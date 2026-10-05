@@ -1,0 +1,20 @@
+{
+  "name": "impulse",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "replay": "tsx src/cli.ts",
+    "demo": "tsx src/cli.ts scenarios/gap-down-resolve-0.json scenarios/gap-down-resolve-1.json scenarios/gap-up-resolve-0.json"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.3"
+  }
+}

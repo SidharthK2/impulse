@@ -1,0 +1,149 @@
+{
+ "name": "A: gap 0.60 → 0.05, resolve NO (0)",
+ "description": "Levered longs alice/bob go bankrupt on the gap; shorts carol/dave/erin absorb pro-rata by size and are force-reduced. frank (≈1x long) survives.",
+ "events": [
+  {
+   "type": "deposit",
+   "account": "alice",
+   "amount": "100"
+  },
+  {
+   "type": "deposit",
+   "account": "bob",
+   "amount": "150"
+  },
+  {
+   "type": "deposit",
+   "account": "carol",
+   "amount": "200"
+  },
+  {
+   "type": "deposit",
+   "account": "dave",
+   "amount": "120"
+  },
+  {
+   "type": "deposit",
+   "account": "erin",
+   "amount": "50"
+  },
+  {
+   "type": "deposit",
+   "account": "frank",
+   "amount": "120"
+  },
+  {
+   "type": "tick",
+   "price": "0.50"
+  },
+  {
+   "type": "trade",
+   "buyer": "alice",
+   "seller": "carol",
+   "size": 500,
+   "price": "0.50"
+  },
+  {
+   "type": "trade",
+   "buyer": "bob",
+   "seller": "dave",
+   "size": 400,
+   "price": "0.50"
+  },
+  {
+   "type": "tick",
+   "price": "0.52"
+  },
+  {
+   "type": "trade",
+   "buyer": "bob",
+   "seller": "erin",
+   "size": 100,
+   "price": "0.52"
+  },
+  {
+   "type": "tick",
+   "price": "0.55"
+  },
+  {
+   "type": "trade",
+   "buyer": "frank",
+   "seller": "carol",
+   "size": 200,
+   "price": "0.55"
+  },
+  {
+   "type": "withdraw",
+   "account": "bob",
+   "amount": "100"
+  },
+  {
+   "type": "withdraw",
+   "account": "bob",
+   "amount": "30"
+  },
+  {
+   "type": "tick",
+   "price": "0.58"
+  },
+  {
+   "type": "trade",
+   "buyer": "alice",
+   "seller": "erin",
+   "size": 100,
+   "price": "0.58"
+  },
+  {
+   "type": "tick",
+   "price": "0.60"
+  },
+  {
+   "type": "tick",
+   "price": "0.05"
+  },
+  {
+   "type": "withdraw",
+   "account": "alice",
+   "amount": "1"
+  },
+  {
+   "type": "withdraw",
+   "account": "carol",
+   "amount": "1000"
+  },
+  {
+   "type": "withdraw",
+   "account": "carol",
+   "amount": "100"
+  },
+  {
+   "type": "resolve",
+   "outcome": 0
+  },
+  {
+   "type": "withdraw",
+   "account": "alice",
+   "amount": "all"
+  },
+  {
+   "type": "withdraw",
+   "account": "carol",
+   "amount": "all"
+  },
+  {
+   "type": "withdraw",
+   "account": "dave",
+   "amount": "all"
+  },
+  {
+   "type": "withdraw",
+   "account": "erin",
+   "amount": "all"
+  },
+  {
+   "type": "withdraw",
+   "account": "frank",
+   "amount": "all"
+  }
+ ]
+}

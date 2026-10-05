@@ -1,0 +1,104 @@
+{
+ "name": "C: gap up 0.40 → 0.95 mid-life, resolve NO (0)",
+ "description": "Shorts nia/omar go bankrupt on the gap, pia is liquidated with equity left (E ≥ 0 but < MM), quinn (~fully collateralized) survives. Longs absorb, then the market resolves 0 and they lose anyway.",
+ "events": [
+  {
+   "type": "deposit",
+   "account": "lena",
+   "amount": "60"
+  },
+  {
+   "type": "deposit",
+   "account": "mo",
+   "amount": "200"
+  },
+  {
+   "type": "deposit",
+   "account": "nia",
+   "amount": "40"
+  },
+  {
+   "type": "deposit",
+   "account": "omar",
+   "amount": "35"
+  },
+  {
+   "type": "deposit",
+   "account": "pia",
+   "amount": "85"
+  },
+  {
+   "type": "deposit",
+   "account": "quinn",
+   "amount": "100"
+  },
+  {
+   "type": "tick",
+   "price": "0.40"
+  },
+  {
+   "type": "trade",
+   "buyer": "lena",
+   "seller": "nia",
+   "size": 250,
+   "price": "0.40"
+  },
+  {
+   "type": "trade",
+   "buyer": "mo",
+   "seller": "omar",
+   "size": 200,
+   "price": "0.40"
+  },
+  {
+   "type": "trade",
+   "buyer": "mo",
+   "seller": "pia",
+   "size": 150,
+   "price": "0.40"
+  },
+  {
+   "type": "trade",
+   "buyer": "mo",
+   "seller": "quinn",
+   "size": 100,
+   "price": "0.40"
+  },
+  {
+   "type": "tick",
+   "price": "0.45"
+  },
+  {
+   "type": "tick",
+   "price": "0.95"
+  },
+  {
+   "type": "tick",
+   "price": "0.70"
+  },
+  {
+   "type": "resolve",
+   "outcome": 0
+  },
+  {
+   "type": "withdraw",
+   "account": "lena",
+   "amount": "all"
+  },
+  {
+   "type": "withdraw",
+   "account": "mo",
+   "amount": "all"
+  },
+  {
+   "type": "withdraw",
+   "account": "pia",
+   "amount": "all"
+  },
+  {
+   "type": "withdraw",
+   "account": "quinn",
+   "amount": "all"
+  }
+ ]
+}
