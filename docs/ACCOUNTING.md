@@ -95,6 +95,10 @@ A trade can't happen before the first tick, because there's no mark yet.
 
 ## Margin
 
+Leverage below is the market's **current** leverage: the configured launch leverage at graduation tier 0, then
+5×, 10×, 20×, 50× and 100× as tiers unlock (cumulative volume AND depth thresholds, defined in `GRADUATION`).
+Maintenance leverage keeps the configured IM:MM ratio. Tiers only go up.
+
 `maxLoss` is the most a position can lose before the price hits a bound: `q·(m − lo)` for a long
 and `|q|·(hi − m)` for a short. On an unbounded market a short has **no** max loss, so no cap applies.
 
@@ -179,6 +183,23 @@ contract as one who entered at 0.60 (huge profit). The common alternative is
 profit×leverage ranking (Binance/Hyperliquid-style). It targets the biggest winners but
 needs a waterfall and is harder to reason about.
 
+## Pre-resolution taper
+
+A resolvable market may set `resolvesAt` and `taperSeconds`. `resolve` is rejected before `resolvesAt`. Inside the
+taper window, with progress `t` from 0 to 1, both IM and MM become `normal + (maxLoss − normal)·t`. At `resolvesAt`
+every position must hold its full max loss, so the resolution jump can't bankrupt anyone. Positions that can't keep
+up are liquidated at mark on `advance`. A taper raises requirements on both sides at once, so the risk loop handles
+one side per round: the side with a bankrupt position first, otherwise the first distressed side.
+
+## Funding
+
+Per hour, in ppb: `rate = FUNDING_BASE_PPB[tier] + clamp((lastTrade − mark)/mark / 8, ±4%)`. A positive rate means
+longs pay shorts. The rate is recomputed on every trade, tick and oracle update, and held in between. On `advance`
+by `dt`, the total `OI · mark · |rate| · dt / 3600` (floored) is taken from payers and given to receivers, each
+pro-rata by size via largest-remainder, so the transfer is exact. Risk then runs in the same transition. The
+per-tick ADL bound still holds: a bankrupt payer's shortfall is at most what it paid, and each receiver got its
+size share of the total.
+
 ## Resolution
 
 Only markets configured `resolvable` can resolve. `resolve` is a tick to the final price (with full
@@ -211,10 +232,12 @@ Per market k (these never reference another market, which is what makes sharding
 3. **Non-negative equity:** E ≥ 0 for every position.
 4. **Maintained margin:** E ≥ MM for every open position.
 5. **No unfunded claims:** releasable ≤ E, and Σ releasable ≤ V_k.
-6. **Per-position ledger:** C = allocated + realized + adlTransfer.
+6. **Per-position ledger:** C = allocated + realized + adlTransfer + funding.
 7. **Resolved market:** every q = 0 and B = 0.
 
 Global:
+
+0. **Clock:** every market's clock equals the global clock.
 
 8. **Conservation:** Σ wallets + Σ V_k + Σ curve USDC (x − x0) + fees = Σ deposits − Σ withdrawals, and no
    wallet is negative.
@@ -229,5 +252,5 @@ this numerically. Solvency means **re-allocating** D to specific accounts, not h
 
 ## Deliberately omitted (v1)
 
-Not yet built (planned): leverage graduation, funding. Not planned for v1: fees, partial liquidation, liquidation
-penalties, order book/matching, cross margin, and oracle sanity checks.
+Not planned for v1: perp trading fees, partial liquidation, liquidation penalties, order book/matching, cross
+margin, and oracle sanity checks.

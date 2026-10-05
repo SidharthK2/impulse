@@ -9,6 +9,7 @@ import {
   checkInvariants,
   equity,
   initialState,
+  maintenanceMargin,
   marketIds,
   positionIds,
   releasable,
@@ -196,6 +197,83 @@ describe("ADL policies", () => {
   });
 });
 
+describe("leverage graduation", () => {
+  const { steps, final } = replay(scenario("graduation-blowup"));
+
+  it("graduates on volume and depth, and never goes back down", () => {
+    const tiers = steps.flatMap((s) => effectsOf(s.result)).flatMap((f) => (f.kind === "graduation" ? [f.tier] : []));
+    expect(tiers).toEqual([1, 2]);
+    expect(final.markets.HYPE!.tier).toBe(2); // whales left, depth collapsed, leverage stays 10x
+  });
+
+  it("a 20% gap bankrupts a 9x long that tier 0 would never have allowed", () => {
+    const gap = steps.find((s) => s.event.type === "tick" && s.event.price === "0.80")!;
+    expect(effectsOf(gap.result)).toContainEqual({ kind: "bankrupt", market: "HYPE", account: "carl", size: 9000n, shortfall: usd("800") });
+    const atLaunch = run([perp(), ...fund("carl", "1000"), ...fund("dina", "2000"), K("1"), T("carl", "dina", 9000, "1")]);
+    expect(atLaunch.results.at(-1)!.ok).toBe(false); // 9x is over the 3x launch limit
+  });
+});
+
+describe("pre-resolution taper", () => {
+  const taper = (extra: Partial<Extract<Event, { type: "market" }>> = {}): Event => ({ type: "market", id: M, preset: "binary", resolvesAt: 1000, taperSeconds: 500, funding: false, ...extra });
+  const adv = (seconds: number): Event => ({ type: "advance", seconds });
+
+  it("rejects resolution before the scheduled time and taper on non-resolvable markets", () => {
+    expect(run([taper(), K("0.5"), R("1")]).results.at(-1)!.ok).toBe(false);
+    expect(run([taper(), K("0.5"), adv(1000), R("1")]).results.at(-1)!.ok).toBe(true);
+    expect(run([{ type: "market", id: M, preset: "perp", resolvesAt: 10, taperSeconds: 5 }]).results[0]!.ok).toBe(false);
+  });
+
+  it("ramps maintenance margin up to the full max loss at resolution", () => {
+    const base = [taper(), ...fund("l", "1000"), ...fund("s", "1000"), K("0.06"), T("l", "s", 300, "0.06")];
+    const shortMM = (events: Event[]) => {
+      const m = run(events).state.markets[M]!;
+      return maintenanceMargin(m, m.positions.s!);
+    };
+    expect(shortMM(base)).toBe(usd("3")); // normal: 300 × 0.06 / 6
+    expect(shortMM([...base, adv(750)])).toBe(usd("142.5")); // halfway through the taper: 3 + (282 − 3) / 2
+    expect(shortMM([...base, adv(1000)])).toBe(usd("282")); // at resolvesAt: the full max loss, 300 × (1 − 0.06)
+    const thin = run([taper(), ...fund("l", "1000"), ...fund("s", "10"), K("0.06"), T("l", "s", 300, "0.06"), adv(1000)]);
+    expect(thin.state.markets[M]!.positions.s!.size).toBe(0n); // couldn't keep up: liquidated during the taper
+  });
+
+  it("scenario I: no ADL anywhere; the topped-up short pays the long in full", () => {
+    const { steps, final } = replay(scenario("resolution-taper"));
+    const fx = steps.flatMap((s) => effectsOf(s.result));
+    expect(fx.some((f) => f.kind === "haircut" || f.kind === "bankrupt")).toBe(false);
+    expect(fx.find((f) => f.kind === "liquidation")).toMatchObject({ market: "NOTOPUP", account: "gina" });
+    const hal = final.markets.TOPUP!.positions.hal!;
+    expect(hal.realized).toBe(usd("282")); // 300 × (1 − 0.06), no haircut
+  });
+});
+
+describe("funding", () => {
+  it("is an exact transfer, base rate plus premium, held while the market is inactive", () => {
+    const { state, results } = run([perp(), ...fund("a", "400"), ...fund("b", "400"), K("1"), T("a", "b", 1000, "1.02"), { type: "advance", seconds: 3600 }]);
+    const f = effectsOf(results.at(-1)!).find((e) => e.kind === "funding")!;
+    expect(f).toMatchObject({ rate: 500_000n + 2_500_000n, payers: "long", total: usd("3") }); // 0.05% + (2% / 8) per hour on $1,000
+    const m = state.markets[M]!;
+    expect(m.positions.a!.funding).toBe(-usd("3"));
+    expect(m.positions.b!.funding).toBe(usd("3"));
+  });
+
+  it("negative premium flips the payer once it outweighs the base rate", () => {
+    const { results } = run([perp(), ...fund("a", "400"), ...fund("b", "400"), K("1"), T("a", "b", 100, "0.95"), { type: "advance", seconds: 3600 }]);
+    expect(effectsOf(results.at(-1)!).find((e) => e.kind === "funding")).toMatchObject({ payers: "short" });
+  });
+
+  it("can be switched off per market", () => {
+    const { results } = run([{ type: "market", id: M, preset: "perp", funding: false }, ...fund("a", "400"), ...fund("b", "400"), K("1"), T("a", "b", 1000, "1"), { type: "advance", seconds: 3600 }]);
+    expect(effectsOf(results.at(-1)!).some((e) => e.kind === "funding")).toBe(false);
+  });
+
+  it("scenario J: launch funding liquidates a long on day 3 with no trading", () => {
+    const { steps } = replay(scenario("funding-drain"));
+    const advances = steps.filter((s) => s.event.type === "advance");
+    expect(advances.findIndex((s) => effectsOf(s.result).some((f) => f.kind === "liquidation"))).toBe(2);
+  });
+});
+
 describe("markets", () => {
   it("rejects duplicate markets, bad bounds and bad leverage", () => {
     expect(run([binary(), binary()]).results[1]!.ok).toBe(false);
@@ -337,8 +415,9 @@ describe("fuzz", () => {
         s = res.state;
       };
       const adl = seed % 2 === 0 ? "pnl" : "size";
+      const taperOn = seed % 3 === 0 ? { resolvesAt: 20_000, taperSeconds: 10_000 } : {};
       for (const m of markets) {
-        step(m.event.type === "market" ? { ...m.event, adl } : m.event);
+        step(m.event.type === "market" ? { ...m.event, adl, ...(m.id === "BIN" ? taperOn : {}) } : m.event);
         step(K(start[m.id]!, m.id));
       }
       step({ type: "market", id: "ATTN", preset: "attention", oracleWindow: pick(attnWindow), adl });
@@ -378,6 +457,7 @@ describe("fuzz", () => {
         else if (roll < 0.9) step(REL(pick(names), r() < 0.5 ? "all" : String(1 + Math.floor(r() * 50)), m.id));
         else step({ type: "allocate", account: pick(names), market: m.id, amount: r() < 0.5 ? "all" : String(1 + Math.floor(r() * 50)) });
       }
+      step({ type: "advance", seconds: 25_000 }); // past any scheduled resolution; accrues funding everywhere
       for (const m of markets) {
         const mark = Number(s.markets[m.id]!.mark) / 1e9;
         step(R(m.id === "BIN" ? (r() < 0.5 ? "0" : "1") : m.price(r, mark), m.id));

@@ -1,0 +1,84 @@
+{
+ "name": "J: funding at launch drains a long, even with no trading",
+ "description": "A fresh perp starts at the maximum base rate (0.05%/h, longs pay shorts). alice buys 1,000 at 1.02 against an oracle of 1.00, which adds a premium term (0.25%/h). Nobody trades again, so the rate is held (Mirror: inactive markets keep paying the last rate). Funding drains alice's collateral until she is liquidated on day 3. bob collects it all.",
+ "events": [
+  {
+   "type": "market",
+   "id": "FUND",
+   "preset": "perp"
+  },
+  {
+   "type": "deposit",
+   "account": "alice",
+   "amount": "400"
+  },
+  {
+   "type": "allocate",
+   "account": "alice",
+   "market": "FUND",
+   "amount": "400"
+  },
+  {
+   "type": "deposit",
+   "account": "bob",
+   "amount": "400"
+  },
+  {
+   "type": "allocate",
+   "account": "bob",
+   "market": "FUND",
+   "amount": "400"
+  },
+  {
+   "type": "tick",
+   "market": "FUND",
+   "price": "1"
+  },
+  {
+   "type": "trade",
+   "market": "FUND",
+   "buyer": "alice",
+   "seller": "bob",
+   "size": 1000,
+   "price": "1.02"
+  },
+  {
+   "type": "advance",
+   "seconds": 86400
+  },
+  {
+   "type": "advance",
+   "seconds": 86400
+  },
+  {
+   "type": "advance",
+   "seconds": 86400
+  },
+  {
+   "type": "advance",
+   "seconds": 86400
+  },
+  {
+   "type": "release",
+   "account": "alice",
+   "market": "FUND",
+   "amount": "all"
+  },
+  {
+   "type": "withdraw",
+   "account": "alice",
+   "amount": "all"
+  },
+  {
+   "type": "release",
+   "account": "bob",
+   "market": "FUND",
+   "amount": "all"
+  },
+  {
+   "type": "withdraw",
+   "account": "bob",
+   "amount": "all"
+  }
+ ]
+}

@@ -9,7 +9,7 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "replay": "tsx src/cli.ts",
-    "demo": "tsx src/cli.ts scenarios/gap-down-resolve-0.json scenarios/gap-down-resolve-1.json scenarios/gap-up-resolve-0.json scenarios/memecoin-squeeze.json scenarios/isolation-two-markets.json scenarios/attention-pump.json scenarios/principal-fallback.json",
+    "demo": "tsx src/cli.ts scenarios/gap-down-resolve-0.json scenarios/gap-down-resolve-1.json scenarios/gap-up-resolve-0.json scenarios/memecoin-squeeze.json scenarios/isolation-two-markets.json scenarios/attention-pump.json scenarios/principal-fallback.json scenarios/graduation-blowup.json scenarios/resolution-taper.json scenarios/funding-drain.json",
     "attack": "tsx src/attack.ts",
     "compare": "tsx src/compare.ts"
   },

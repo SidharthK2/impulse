@@ -1,0 +1,177 @@
+{
+ "name": "I: pre-resolution taper (resolves YES at t=24h, 6h taper)",
+ "description": "Scenario B's trap, with a taper. In NOTOPUP, gina's 3x short at 0.06 is liquidated at mark as requirements climb toward her $282 max loss, hours before resolution: no ADL, but hank is force-closed at 0.06 and never collects. In TOPUP, gus tops up to full collateral, so hal is paid in full at resolution. The taper turns haircuts into lost exposure unless the losing side fully collateralizes.",
+ "events": [
+  {
+   "type": "market",
+   "id": "NOTOPUP",
+   "preset": "binary",
+   "resolvesAt": 86400,
+   "taperSeconds": 21600
+  },
+  {
+   "type": "market",
+   "id": "TOPUP",
+   "preset": "binary",
+   "resolvesAt": 86400,
+   "taperSeconds": 21600
+  },
+  {
+   "type": "deposit",
+   "account": "gina",
+   "amount": "6.50"
+  },
+  {
+   "type": "allocate",
+   "account": "gina",
+   "market": "NOTOPUP",
+   "amount": "6.50"
+  },
+  {
+   "type": "deposit",
+   "account": "hank",
+   "amount": "20"
+  },
+  {
+   "type": "allocate",
+   "account": "hank",
+   "market": "NOTOPUP",
+   "amount": "20"
+  },
+  {
+   "type": "deposit",
+   "account": "gus",
+   "amount": "6.50"
+  },
+  {
+   "type": "allocate",
+   "account": "gus",
+   "market": "TOPUP",
+   "amount": "6.50"
+  },
+  {
+   "type": "deposit",
+   "account": "hal",
+   "amount": "20"
+  },
+  {
+   "type": "allocate",
+   "account": "hal",
+   "market": "TOPUP",
+   "amount": "20"
+  },
+  {
+   "type": "deposit",
+   "account": "gus",
+   "amount": "300"
+  },
+  {
+   "type": "tick",
+   "market": "NOTOPUP",
+   "price": "0.06"
+  },
+  {
+   "type": "tick",
+   "market": "TOPUP",
+   "price": "0.06"
+  },
+  {
+   "type": "trade",
+   "market": "NOTOPUP",
+   "buyer": "hank",
+   "seller": "gina",
+   "size": 300,
+   "price": "0.06"
+  },
+  {
+   "type": "trade",
+   "market": "TOPUP",
+   "buyer": "hal",
+   "seller": "gus",
+   "size": 300,
+   "price": "0.06"
+  },
+  {
+   "type": "advance",
+   "seconds": 64800
+  },
+  {
+   "type": "allocate",
+   "account": "gus",
+   "market": "TOPUP",
+   "amount": "150"
+  },
+  {
+   "type": "advance",
+   "seconds": 7200
+  },
+  {
+   "type": "allocate",
+   "account": "gus",
+   "market": "TOPUP",
+   "amount": "150"
+  },
+  {
+   "type": "advance",
+   "seconds": 7200
+  },
+  {
+   "type": "advance",
+   "seconds": 7200
+  },
+  {
+   "type": "resolve",
+   "market": "NOTOPUP",
+   "price": "1"
+  },
+  {
+   "type": "resolve",
+   "market": "TOPUP",
+   "price": "1"
+  },
+  {
+   "type": "release",
+   "account": "gina",
+   "market": "NOTOPUP",
+   "amount": "all"
+  },
+  {
+   "type": "withdraw",
+   "account": "gina",
+   "amount": "all"
+  },
+  {
+   "type": "release",
+   "account": "hank",
+   "market": "NOTOPUP",
+   "amount": "all"
+  },
+  {
+   "type": "withdraw",
+   "account": "hank",
+   "amount": "all"
+  },
+  {
+   "type": "release",
+   "account": "gus",
+   "market": "TOPUP",
+   "amount": "all"
+  },
+  {
+   "type": "withdraw",
+   "account": "gus",
+   "amount": "all"
+  },
+  {
+   "type": "release",
+   "account": "hal",
+   "market": "TOPUP",
+   "amount": "all"
+  },
+  {
+   "type": "withdraw",
+   "account": "hal",
+   "amount": "all"
+  }
+ ]
+}

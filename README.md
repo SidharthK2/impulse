@@ -9,11 +9,11 @@ The question it answers: **when a price gaps, what happens to leveraged position
 
 ```bash
 pnpm install
-pnpm demo                          # seven scenarios, full ledger after every event
+pnpm demo                          # ten scenarios, full ledger after every event
 pnpm attack                        # pump-attack sweep on a curve-priced perp (<1s)
 pnpm compare                       # every scenario under both ADL rules, side by side
 pnpm replay scenarios/x.json       # any scenario; add --json for machine-readable output
-pnpm test                          # 44 tests incl. a 300-history multi-market seeded fuzz
+pnpm test                          # 53 tests incl. a 300-history multi-market seeded fuzz
 ```
 
 ## Mechanism (one paragraph)
@@ -132,6 +132,44 @@ rule decides who pays the shortfall:
 Scenario G is the trilemma in practice: a $500 shortfall against only $270 of total profit. **Some principal
 pays under any rule.** The PnL rule only decides whose, and how much less ($230 vs $333).
 
+### H. Leverage graduation is permanent, depth isn't (`graduation-blowup.json`)
+
+Mirror raises leverage from 3× toward 100× as "volume and depth" grow, and doesn't publish the criteria. Ours
+use five tiers (5×, 10×, 20×, 50×, 100×), each unlocked by cumulative volume plus a depth proxy (open interest,
+plus curve liquidity), and tiers only go up. Two whales trade $1.5M with $500k of open interest, so HYPE
+graduates to 10×, and then they leave. carl opens 9× long against dina, and a **20% gap bankrupts him** ($800
+shortfall). dina was owed $1,800 and gets $1,000. At the 3× launch limit he couldn't have opened that position.
+**Volume says nothing about the next gap**, and leverage that only ratchets up outlives the liquidity that
+justified it.
+
+### I. Pre-resolution taper (`resolution-taper.json`)
+
+Resolvable markets can schedule a resolution time and a taper window. Over the window, margin requirements ramp
+up to **full collateral against max loss**. That's measured against max loss rather than notional, which is
+what catches scenario B's short-side trap: a 3× short at 0.06 posts $6 but can lose $282.
+
+| Market | What happens | Result |
+|---|---|---|
+| NOTOPUP | gina can't keep up and is liquidated at mark about 2 hours into the taper | No ADL. hank is force-closed at 0.06 and **never collects** his YES payout |
+| TOPUP | gus tops up to $306.50 of collateral | hal is **paid in full** at resolution: $282, no haircut |
+
+A taper removes resolution ADL, but it **turns haircuts into lost exposure** unless the losing side fully
+collateralizes. Leverage on a binary can't survive until resolution, and a taper just makes that explicit and orderly.
+
+### J. Funding at launch (`funding-drain.json`)
+
+Hourly funding is `base rate + clamp(premium / 8, ±4%/h)`, with premium = (last trade − oracle) / oracle. The base
+rate is paid by longs to shorts: 0.05%/h at launch (Mirror's "maximum base rate", our number), falling with each
+graduation tier to 0.00125%/h. The rate is fixed at the last event, so inactive markets keep paying it, per
+Mirror. alice buys at 1.02 against an oracle of 1.00: 0.30%/h, $72 a day. With nobody trading, funding alone
+liquidates her on day 3. Funding transfers are exact and run inside the same risk round, so a payer can be
+liquidated or ADL'd by funding.
+
+**A side effect worth knowing:** with no order book, "last trade" stands in for the perp price. If the oracle moves
+and nobody trades, the stale last trade creates a premium in the *opposite* direction. In the pump attack, that
+makes the shorts pay funding to the attacker while the pump lasts. A real illiquid book is just as stale, so
+it's a plausible second extraction channel.
+
 ## What this shows
 
 1. **"Solvent after every transition" holds, and it's cheap.** It's just bookkeeping: every account has
@@ -151,13 +189,18 @@ pays under any rule.** The PnL rule only decides whose, and how much less ($230 
    sells into the pump, and young markets have nobody.
 7. **No ADL rule protects everyone.** The PnL rule is fairer and protects principal whenever profits cover the
    shortfall. When they don't (scenario G), principal pays regardless.
-8. **"3× leverage" is ambiguous on a [0,1] asset.** It's measured against notional `|q|·p`, but a short's
+8. **Graduated leverage outlives the liquidity behind it** (H). Volume-based tiers don't shrink the next gap.
+9. **A taper fixes resolution ADL by forcing the losing side to fully collateralize or leave early** (I). The
+   winners then either get paid in full or lose their exposure. There's no free leverage into resolution.
+10. **Launch funding is steep and keeps charging inactive markets** (J). A stale price feeds a reverse premium.
+11. **"3× leverage" is ambiguous on a [0,1] asset.** It's measured against notional `|q|·p`, but a short's
    worst case is `|q|·(1−p)`. gina's "3×" was 43× her max loss. Any real design needs per-side margin.
 
 ## Limitations (deliberate, v1)
 
-- **No funding.** Mirror describes one; here positions cost nothing to hold. Because winners know ADL caps their
-  upside, the perp *should* trade away from the oracle, and only funding could tie it back.
+- **Funding, graduation and taper parameters are ours.** Mirror publishes none. They're constants at the top of
+  `src/engine.ts` (`GRADUATION`, `FUNDING_BASE_PPB`, `FUNDING_PREMIUM_CAP_PPB`). With no order book, depth is
+  proxied by open interest plus curve liquidity, and the perp price for funding is the last trade.
 - **No order book.** Trades are bilateral fills fed from the scenario. Liquidation closes against the opposing
   side at mark, where a real venue would sell into a book.
 - **Full liquidation, no penalty, no partial closes.**
@@ -168,7 +211,7 @@ pays under any rule.** The PnL rule only decides whose, and how much less ($230 
   which would act like our "retrace" arbitrageurs, isn't simulated. The spot fee (default 1%) is our assumption,
   since Mirror's isn't published.
 - **Withdrawals: realized cash only, above initial margin.** This is conservative by choice; see ACCOUNTING.md.
-- Not yet: leverage graduation (3×→100×). Not covered: fees, cross margin, tokens, contracts, frontend.
+- Not covered: perp trading fees, partial liquidation, cross margin, tokens, contracts, frontend.
 
 ## Open questions (solvency doesn't answer these)
 
@@ -187,6 +230,6 @@ src/attack.ts     pump-attack harness and parameter sweep
 src/compare.ts    replays scenarios under each ADL rule
 src/report.ts     ledger rendering, state hash
 src/cli.ts        scenario runner
-scenarios/        A–G above (JSON event lists)
+scenarios/        A–J above (JSON event lists)
 docs/             ACCOUNTING.md (model + invariants), MIRROR-NOTES.md, RESEARCH-NOTES.md, FACT-CHECK.md
 ```

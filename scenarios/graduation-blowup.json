@@ -1,0 +1,149 @@
+{
+ "name": "H: graduation is permanent, depth isn't",
+ "description": "Two whales trade $1.5M of volume with $500k of open interest, so HYPE graduates to 10x. Then they leave, but leverage stays 10x because tiers only go up. A 9x long opens against a 4.5x short, and a 20% gap bankrupts the long: at the launch 3x, the same trader couldn't have been bankrupted by it.",
+ "events": [
+  {
+   "type": "market",
+   "id": "HYPE",
+   "preset": "perp"
+  },
+  {
+   "type": "deposit",
+   "account": "whale1",
+   "amount": "300000"
+  },
+  {
+   "type": "allocate",
+   "account": "whale1",
+   "market": "HYPE",
+   "amount": "300000"
+  },
+  {
+   "type": "deposit",
+   "account": "whale2",
+   "amount": "300000"
+  },
+  {
+   "type": "allocate",
+   "account": "whale2",
+   "market": "HYPE",
+   "amount": "300000"
+  },
+  {
+   "type": "deposit",
+   "account": "carl",
+   "amount": "1000"
+  },
+  {
+   "type": "allocate",
+   "account": "carl",
+   "market": "HYPE",
+   "amount": "1000"
+  },
+  {
+   "type": "deposit",
+   "account": "dina",
+   "amount": "2000"
+  },
+  {
+   "type": "allocate",
+   "account": "dina",
+   "market": "HYPE",
+   "amount": "2000"
+  },
+  {
+   "type": "tick",
+   "market": "HYPE",
+   "price": "1"
+  },
+  {
+   "type": "trade",
+   "market": "HYPE",
+   "buyer": "whale1",
+   "seller": "whale2",
+   "size": 500000,
+   "price": "1"
+  },
+  {
+   "type": "trade",
+   "market": "HYPE",
+   "buyer": "whale2",
+   "seller": "whale1",
+   "size": 500000,
+   "price": "1"
+  },
+  {
+   "type": "trade",
+   "market": "HYPE",
+   "buyer": "whale1",
+   "seller": "whale2",
+   "size": 500000,
+   "price": "1"
+  },
+  {
+   "type": "trade",
+   "market": "HYPE",
+   "buyer": "whale2",
+   "seller": "whale1",
+   "size": 500000,
+   "price": "1"
+  },
+  {
+   "type": "trade",
+   "market": "HYPE",
+   "buyer": "carl",
+   "seller": "dina",
+   "size": 9000,
+   "price": "1"
+  },
+  {
+   "type": "tick",
+   "market": "HYPE",
+   "price": "0.80"
+  },
+  {
+   "type": "release",
+   "account": "whale1",
+   "market": "HYPE",
+   "amount": "all"
+  },
+  {
+   "type": "withdraw",
+   "account": "whale1",
+   "amount": "all"
+  },
+  {
+   "type": "release",
+   "account": "whale2",
+   "market": "HYPE",
+   "amount": "all"
+  },
+  {
+   "type": "withdraw",
+   "account": "whale2",
+   "amount": "all"
+  },
+  {
+   "type": "release",
+   "account": "carl",
+   "market": "HYPE",
+   "amount": "all"
+  },
+  {
+   "type": "withdraw",
+   "account": "carl",
+   "amount": "all"
+  },
+  {
+   "type": "release",
+   "account": "dina",
+   "market": "HYPE",
+   "amount": "all"
+  },
+  {
+   "type": "withdraw",
+   "account": "dina",
+   "amount": "all"
+  }
+ ]
+}

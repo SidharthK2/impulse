@@ -17,7 +17,38 @@ export interface MarketConfig {
   initialLeverage: bigint; // IM = notional / initialLeverage
   maintenanceLeverage: bigint; // MM = notional / maintenanceLeverage
   adl: AdlPolicy;
+  graduation: boolean; // leverage rises through GRADUATION tiers as volume and depth grow
+  funding: boolean; // hourly funding between longs and shorts
+  resolvesAt: bigint | null; // scheduled resolution time (seconds); resolve is rejected before it
+  taperSeconds: bigint; // before resolvesAt, margin requirements ramp up to full collateral against max loss
 }
+
+/**
+ * Leverage graduation (Mirror: "leverage increases according to a combination of volume and depth", criteria
+ * undisclosed). OUR criteria: a tier unlocks once cumulative traded notional AND depth both reach its thresholds.
+ * Depth has no order book to measure here, so we proxy it with open-interest notional at mark, plus the real USDC
+ * in the spot curve for attention markets. Tiers only ever go up, matching Mirror's wording. Tier 0 is the
+ * market's configured leverage (3x default). Maintenance leverage keeps the configured IM:MM ratio (2x default).
+ * Each tier also lowers the funding base rate (Mirror: funding starts at its "maximum base rate").
+ */
+export const GRADUATION: { leverage: bigint; volume: bigint; depth: bigint }[] = [
+  { leverage: 5n, volume: 100_000n, depth: 10_000n },
+  { leverage: 10n, volume: 1_000_000n, depth: 50_000n },
+  { leverage: 20n, volume: 10_000_000n, depth: 250_000n },
+  { leverage: 50n, volume: 100_000_000n, depth: 1_000_000n },
+  { leverage: 100n, volume: 1_000_000_000n, depth: 5_000_000n },
+].map((t) => ({ leverage: t.leverage, volume: t.volume * 10n ** 9n, depth: t.depth * 10n ** 9n }));
+
+/**
+ * Funding (OUR parameters; Mirror publishes none). Rates are per hour in parts per billion (1e9 = 100%).
+ * rate = baseRate[tier] + clamp(premium / 8, ±PREMIUM_CAP), premium = (last trade − mark) / mark.
+ * The base rate is paid by longs to shorts, highest at launch (0.05%/h ≈ 438%/yr) and falling to 0.00125%/h
+ * (≈ 11%/yr, Hyperliquid's default) at the top tier. The rate is fixed at every trade/tick/oracle update and held
+ * until the next one, so an inactive market keeps paying the last rate (Mirror's wording).
+ */
+export const FUNDING_BASE_PPB: bigint[] = [500_000n, 250_000n, 100_000n, 50_000n, 25_000n, 12_500n];
+export const FUNDING_PREMIUM_CAP_PPB = 40_000_000n; // 4% per hour
+const PPB = 1_000_000_000n;
 
 /**
  * How a bankrupt position's shortfall is charged to the opposing side (forced closes are always size pro-rata,
@@ -35,10 +66,11 @@ export interface Position {
   collateral: bigint; // cash in this market's bucket
   size: bigint; // units, + long / − short
   basis: bigint; // Σ signed fill size × fill price
-  // Ledger columns: collateral = allocated + realized + adlTransfer (invariant).
+  // Ledger columns: collateral = allocated + realized + adlTransfer + funding (invariant).
   allocated: bigint; // Σ allocate − Σ release
   realized: bigint;
   adlTransfer: bigint; // − haircut paid as absorber, + shortfall covered as bankrupt
+  funding: bigint; // + received, − paid
 }
 
 /** Mirror-style spot market: xy=k bonding curve on virtual reserves (USDC x, tokens y). */
@@ -62,6 +94,11 @@ export interface Market {
   curve: Curve | null;
   oracle: CurveOracle | null;
   mark: bigint | null;
+  time: bigint; // market's view of the clock (kept in sync with State.time)
+  tier: number; // graduation tier, 0 = launch
+  volume: bigint; // cumulative traded notional
+  lastTrade: bigint | null; // last trade price, for the funding premium
+  fundingRate: bigint; // ppb per hour, positive = longs pay shorts
   status: "open" | "resolved";
   vault: bigint; // collateral held for this market = Σ allocated
   positions: Record<string, Position>;
@@ -97,6 +134,10 @@ export type Event =
       feeBps?: number; // spot fee (attention default 100 = 1%, our assumption; Mirror's is unpublished)
       oracleWindow?: number; // seconds of TWAP smoothing on the curve price (default 0 = instant)
       adl?: AdlPolicy; // default "size"
+      graduation?: boolean; // default true
+      funding?: boolean; // default true
+      resolvesAt?: number; // seconds on the simulation clock
+      taperSeconds?: number; // default 0 (no taper)
       resolvable?: boolean;
       initialLeverage?: number;
       maintenanceLeverage?: number;
@@ -125,7 +166,9 @@ export type Effect =
   | { kind: "haircut"; market: string; account: string; amount: bigint; fromPrincipal: bigint }
   | { kind: "settlement"; market: string; price: bigint; closes: ForcedClose[] }
   | { kind: "spot"; market: string; account: string; usdc: bigint; tokens: bigint; fee: bigint; priceBefore: bigint; priceAfter: bigint }
-  | { kind: "mark"; market: string; from: bigint; to: bigint; spot: bigint };
+  | { kind: "mark"; market: string; from: bigint; to: bigint; spot: bigint }
+  | { kind: "funding"; market: string; rate: bigint; seconds: bigint; total: bigint; payers: "long" | "short" }
+  | { kind: "graduation"; market: string; tier: number; leverage: bigint };
 
 export type Result =
   | { ok: true; state: State; effects: Effect[] }
@@ -161,15 +204,38 @@ function maxLoss(m: Market, p: Position): bigint | null {
   return m.config.upper === null ? null : abs(p.size) * (m.config.upper - mark);
 }
 
+/** Current max leverage: the graduation tier's, or the configured launch leverage at tier 0. */
+export function leverageNow(m: Market): { initial: bigint; maintenance: bigint } {
+  if (m.tier === 0) return { initial: m.config.initialLeverage, maintenance: m.config.maintenanceLeverage };
+  const initial = GRADUATION[m.tier - 1]!.leverage;
+  return { initial, maintenance: (initial * m.config.maintenanceLeverage) / m.config.initialLeverage };
+}
+
+/**
+ * Pre-resolution taper progress in ppb: 0 outside the taper window, rising linearly to 1e9 at resolvesAt.
+ * Margin requirements blend from their normal value to the position's full max loss.
+ */
+export function taperProgress(m: Market): bigint {
+  const { resolvesAt, taperSeconds } = m.config;
+  if (resolvesAt === null || taperSeconds === 0n) return 0n;
+  const start = resolvesAt - taperSeconds;
+  if (m.time <= start) return 0n;
+  if (m.time >= resolvesAt) return PPB;
+  return ((m.time - start) * PPB) / taperSeconds;
+}
+
 function requirement(m: Market, p: Position, leverage: bigint): bigint {
   if (p.size === 0n) return 0n;
   const byNotional = ceilDiv(abs(p.size) * m.mark!, leverage);
   const cap = maxLoss(m, p);
-  return cap === null ? byNotional : min(cap, byNotional);
+  const normal = cap === null ? byNotional : min(cap, byNotional);
+  const t = taperProgress(m);
+  if (t === 0n || cap === null) return normal;
+  return normal + ceilDiv((cap - normal) * t, PPB); // at resolvesAt: full collateral against max loss
 }
 
-export const initialMargin = (m: Market, p: Position) => requirement(m, p, m.config.initialLeverage);
-export const maintenanceMargin = (m: Market, p: Position) => requirement(m, p, m.config.maintenanceLeverage);
+export const initialMargin = (m: Market, p: Position) => requirement(m, p, leverageNow(m).initial);
+export const maintenanceMargin = (m: Market, p: Position) => requirement(m, p, leverageNow(m).maintenance);
 
 /** Realized collateral that can leave the market while still covering initial margin. */
 export function releasable(m: Market, p: Position): bigint {
@@ -285,9 +351,15 @@ function onMarket(s: State, e: Extract<Event, { type: "market" }>) {
     initialLeverage: BigInt(e.initialLeverage ?? DEFAULT_LEVERAGE.initial),
     maintenanceLeverage: BigInt(e.maintenanceLeverage ?? DEFAULT_LEVERAGE.maintenance),
     adl: e.adl ?? "size",
+    graduation: e.graduation ?? true,
+    funding: e.funding ?? true,
+    resolvesAt: e.resolvesAt === undefined ? null : BigInt(e.resolvesAt),
+    taperSeconds: BigInt(e.taperSeconds ?? 0),
   };
   if (config.lower < 0n || (config.upper !== null && config.upper <= config.lower)) throw new Rejected("bad bounds");
   if (config.adl !== "size" && config.adl !== "pnl") throw new Rejected(`unknown ADL policy ${config.adl}`);
+  if ((config.resolvesAt !== null || config.taperSeconds > 0n) && !config.resolvable) throw new Rejected("only resolvable markets can schedule resolution");
+  if (config.taperSeconds < 0n || (config.taperSeconds > 0n && config.resolvesAt === null)) throw new Rejected("taper needs resolvesAt");
   if (config.initialLeverage < 1n || config.maintenanceLeverage < config.initialLeverage) {
     throw new Rejected("need 1 ≤ initialLeverage ≤ maintenanceLeverage");
   }
@@ -302,7 +374,22 @@ function onMarket(s: State, e: Extract<Event, { type: "market" }>) {
     curve = { x0, y0, x: x0, y: y0, feeBps };
     oracle = { window: BigInt(e.oracleWindow ?? 0), history: [{ t: s.time, price: spotPrice(curve) }] };
   }
-  s.markets[e.id] = { id: e.id, config, curve, oracle, mark: curve ? spotPrice(curve) : null, status: "open", vault: 0n, positions: {} };
+  s.markets[e.id] = {
+    id: e.id,
+    config,
+    curve,
+    oracle,
+    mark: curve ? spotPrice(curve) : null,
+    time: s.time,
+    tier: 0,
+    volume: 0n,
+    lastTrade: null,
+    fundingRate: 0n,
+    status: "open",
+    vault: 0n,
+    positions: {},
+  };
+  updateFundingRate(s.markets[e.id]!);
 }
 
 function onDeposit(s: State, e: Extract<Event, { type: "deposit" }>) {
@@ -334,6 +421,7 @@ function onAllocate(s: State, e: Extract<Event, { type: "allocate" }>) {
     allocated: 0n,
     realized: 0n,
     adlTransfer: 0n,
+    funding: 0n,
   });
   a.wallet -= amt;
   p.collateral += amt;
@@ -352,7 +440,7 @@ function onRelease(s: State, e: Extract<Event, { type: "release" }>) {
   a.wallet += amt;
 }
 
-function onTrade(s: State, e: Extract<Event, { type: "trade" }>) {
+function onTrade(s: State, e: Extract<Event, { type: "trade" }>): Effect[] {
   const m = getMarket(s, e.market);
   if (m.status !== "open") throw new Rejected(`${m.id} is resolved`);
   if (m.mark === null) throw new Rejected(`${m.id} has no oracle price yet`);
@@ -374,6 +462,67 @@ function onTrade(s: State, e: Extract<Event, { type: "trade" }>) {
       throw new Rejected(`${p.account}: equity $${fmtUsd(eq)} below ${reduceOnly ? "maintenance" : "initial"} margin $${fmtUsd(need)}`);
     }
   }
+  m.volume += size * price;
+  m.lastTrade = price;
+  const effects = graduate(m);
+  updateFundingRate(m);
+  return effects;
+}
+
+// ---------- graduation and funding ----------
+
+/** Depth proxy: open-interest notional at mark, plus real USDC in the spot curve. */
+export function depth(m: Market): bigint {
+  const oi = positionsOf(m).reduce((sum, p) => (p.size > 0n ? sum + p.size : sum), 0n);
+  return oi * (m.mark ?? 0n) + (m.curve ? m.curve.x - m.curve.x0 : 0n);
+}
+
+function graduate(m: Market): Effect[] {
+  if (!m.config.graduation || m.mark === null) return [];
+  const effects: Effect[] = [];
+  while (m.tier < GRADUATION.length) {
+    const next = GRADUATION[m.tier]!;
+    if (m.volume < next.volume || depth(m) < next.depth) break;
+    m.tier += 1;
+    effects.push({ kind: "graduation", market: m.id, tier: m.tier, leverage: next.leverage });
+  }
+  return effects;
+}
+
+function updateFundingRate(m: Market) {
+  if (!m.config.funding || m.mark === null || m.mark === 0n) {
+    m.fundingRate = 0n;
+    return;
+  }
+  const base = FUNDING_BASE_PPB[m.tier]!;
+  let premium = m.lastTrade === null ? 0n : ((m.lastTrade - m.mark) * PPB) / m.mark / 8n;
+  if (premium > FUNDING_PREMIUM_CAP_PPB) premium = FUNDING_PREMIUM_CAP_PPB;
+  if (premium < -FUNDING_PREMIUM_CAP_PPB) premium = -FUNDING_PREMIUM_CAP_PPB;
+  m.fundingRate = base + premium;
+}
+
+/** Accrue `dt` seconds of funding at the current rate: exact transfer, payers and receivers each pro-rata by size. */
+function accrueFunding(m: Market, dt: bigint): Effect[] {
+  if (!m.config.funding || m.fundingRate === 0n || m.mark === null) return [];
+  const longs = positionsOf(m).filter((p) => p.size > 0n);
+  const shorts = positionsOf(m).filter((p) => p.size < 0n);
+  const oi = longs.reduce((sum, p) => sum + p.size, 0n);
+  if (oi === 0n) return [];
+  const rate = m.fundingRate;
+  const total = (oi * m.mark * abs(rate) * dt) / (3600n * PPB);
+  if (total === 0n) return [];
+  const [payers, receivers] = rate > 0n ? [longs, shorts] : [shorts, longs];
+  const paid = allocate(total, payers.map((p) => ({ key: p.account, weight: abs(p.size) })));
+  const got = allocate(total, receivers.map((p) => ({ key: p.account, weight: abs(p.size) })));
+  for (const p of payers) {
+    p.collateral -= paid.get(p.account)!;
+    p.funding -= paid.get(p.account)!;
+  }
+  for (const p of receivers) {
+    p.collateral += got.get(p.account)!;
+    p.funding += got.get(p.account)!;
+  }
+  return [{ kind: "funding", market: m.id, rate, seconds: dt, total, payers: rate > 0n ? "long" : "short" }];
 }
 
 /**
@@ -402,13 +551,15 @@ function resolveDistress(m: Market): Effect[] {
   const effects: Effect[] = [];
   const mark = m.mark!;
   for (;;) {
-    const distressed = positionsOf(m).filter((p) => p.size !== 0n && equity(p, mark) < maintenanceMargin(m, p));
-    if (distressed.length === 0) return effects;
+    const allDistressed = positionsOf(m).filter((p) => p.size !== 0n && equity(p, mark) < maintenanceMargin(m, p));
+    if (allDistressed.length === 0) return effects;
 
-    const side = sign(distressed[0]!.size);
-    if (distressed.some((p) => sign(p.size) !== side)) {
-      throw new Error(`invariant: distressed positions on both sides in ${m.id}`);
-    }
+    // A price move only distresses one side, but a taper (requirements rising for everyone) can distress both.
+    // Handle one side per round: the side with a bankrupt position first, otherwise the first distressed side.
+    // Closing at mark doesn't change anyone's equity, so the other side is re-examined next round.
+    const bankrupt = allDistressed.find((p) => equity(p, mark) < 0n);
+    const side = sign((bankrupt ?? allDistressed[0]!).size);
+    const distressed = allDistressed.filter((p) => sign(p.size) === side);
     const opposing = positionsOf(m).filter((p) => sign(p.size) === -side);
 
     let qTotal = 0n;
@@ -468,7 +619,9 @@ function onTick(s: State, e: { market: string; price: string }): Effect[] {
   if (m.status !== "open") throw new Rejected(`${m.id} is resolved`);
   if (m.curve) throw new Rejected(`${m.id} is priced by its own curve, not an external tick`);
   m.mark = parsePrice(m, e.price);
-  return resolveDistress(m);
+  const effects = resolveDistress(m);
+  updateFundingRate(m);
+  return effects;
 }
 
 const fee = (gross: bigint, bps: bigint) => ceilDiv(gross * bps, 10_000n);
@@ -497,7 +650,9 @@ function onSpotBuy(s: State, e: Extract<Event, { type: "spotBuy" }>): Effect[] {
   c.x = x;
   c.y = y;
   const spot: Effect = { kind: "spot", market: m.id, account: a.id, usdc, tokens, fee: f, priceBefore, priceAfter: spotPrice(c) };
-  return [spot, ...refreshOracle(s, m), ...resolveDistress(m)];
+  const effects = [spot, ...refreshOracle(s, m), ...resolveDistress(m), ...graduate(m)];
+  updateFundingRate(m);
+  return effects;
 }
 
 function onSpotSell(s: State, e: Extract<Event, { type: "spotSell" }>): Effect[] {
@@ -521,7 +676,9 @@ function onSpotSell(s: State, e: Extract<Event, { type: "spotSell" }>): Effect[]
   c.x = x;
   c.y = y;
   const spot: Effect = { kind: "spot", market: m.id, account: a.id, usdc: -(gross - f), tokens: -tokens, fee: f, priceBefore, priceAfter: spotPrice(c) };
-  return [spot, ...refreshOracle(s, m), ...resolveDistress(m)];
+  const effects = [spot, ...refreshOracle(s, m), ...resolveDistress(m)];
+  updateFundingRate(m);
+  return effects;
 }
 
 function onAdvance(s: State, e: Extract<Event, { type: "advance" }>): Effect[] {
@@ -530,14 +687,21 @@ function onAdvance(s: State, e: Extract<Event, { type: "advance" }>): Effect[] {
   s.time += dt;
   return marketIds(s).flatMap((id) => {
     const m = s.markets[id]!;
-    if (!m.curve || m.status !== "open") return [];
-    return [...refreshOracle(s, m), ...resolveDistress(m)];
+    m.time = s.time;
+    if (m.status !== "open") return [];
+    // Each step is its own risk round, so every round starts from a solvent state.
+    // Funding at the rate held since the last event; the taper may also have raised requirements.
+    const effects = [...accrueFunding(m, dt), ...resolveDistress(m)];
+    effects.push(...refreshOracle(s, m), ...resolveDistress(m), ...graduate(m));
+    updateFundingRate(m);
+    return effects;
   });
 }
 
 function onResolve(s: State, e: Extract<Event, { type: "resolve" }>): Effect[] {
   const m = getMarket(s, e.market);
   if (!m.config.resolvable) throw new Rejected(`${m.id} is not resolvable`);
+  if (m.config.resolvesAt !== null && s.time < m.config.resolvesAt) throw new Rejected(`${m.id} resolves at t=${m.config.resolvesAt}s (now t=${s.time}s)`);
   const effects = onTick(s, e);
   const price = m.mark!;
   const closes: ForcedClose[] = [];
@@ -576,7 +740,7 @@ export function checkMarket(m: Market): string[] {
     const r = releasable(m, p);
     if (r > eq) errs.push(`${id}: releasable ${r} > equity ${eq}`);
     sumReleasable += r;
-    if (p.collateral !== p.allocated + p.realized + p.adlTransfer) errs.push(`${id}: ledger mismatch`);
+    if (p.collateral !== p.allocated + p.realized + p.adlTransfer + p.funding) errs.push(`${id}: ledger mismatch`);
     if (m.status === "resolved" && (p.size !== 0n || p.basis !== 0n)) errs.push(`${id}: open position after resolution`);
   }
   if (netSize !== 0n) errs.push(`${m.id}: unbalanced exposure Σsize = ${netSize}`);
@@ -595,6 +759,7 @@ export function checkMarket(m: Market): string[] {
 
 export function checkInvariants(s: State): string[] {
   const errs = marketIds(s).flatMap((id) => checkMarket(s.markets[id]!));
+  for (const id of marketIds(s)) if (s.markets[id]!.time !== s.time) errs.push(`${id}: clock out of sync`);
   let wallets = 0n;
   for (const id of accountIds(s)) {
     const a = s.accounts[id]!;
@@ -639,7 +804,7 @@ export function apply(state: State, event: Event): Result {
         onRelease(s, event);
         break;
       case "trade":
-        onTrade(s, event);
+        effects = onTrade(s, event);
         break;
       case "tick":
         effects = onTick(s, event);

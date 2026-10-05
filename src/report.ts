@@ -106,6 +106,14 @@ function effectLines(effects: Effect[]): string[] {
             `spot ${fmtPrice(f.priceBefore)} → ${fmtPrice(f.priceAfter)}`,
         );
         break;
+      case "funding": {
+        const pct = (Number(f.rate < 0n ? -f.rate : f.rate) / 1e7).toFixed(4);
+        out.push(`    [${f.market}] funding ${pct}%/h for ${f.seconds}s: ${f.payers}s pay $${fmtUsd(f.total)}`);
+        break;
+      }
+      case "graduation":
+        out.push(`    [${f.market}] GRADUATED to tier ${f.tier}: max leverage ${f.leverage}x`);
+        break;
       case "mark":
         out.push(`    [${f.market}] mark ${fmtPrice(f.from)} → ${fmtPrice(f.to)} (spot ${fmtPrice(f.spot)})`);
         break;
