@@ -7,6 +7,8 @@ nano-USD integer arithmetic, deterministic replay, and a CLI.
 
 The question it answers: **when a price gaps, what happens to leveraged positions, and who pays?**
 
+**Start with the brief: [docs/BRIEF.md](docs/BRIEF.md)** (findings, design recommendations, open questions).
+
 ```bash
 pnpm install
 pnpm demo                          # ten scenarios, full ledger after every event
@@ -231,5 +233,5 @@ src/compare.ts    replays scenarios under each ADL rule
 src/report.ts     ledger rendering, state hash
 src/cli.ts        scenario runner
 scenarios/        A–J above (JSON event lists)
-docs/             ACCOUNTING.md (model + invariants), MIRROR-NOTES.md, RESEARCH-NOTES.md, FACT-CHECK.md
+docs/             BRIEF.md (start here), ACCOUNTING.md (model + invariants), MIRROR-NOTES.md, RESEARCH-NOTES.md, FACT-CHECK.md
 ```
