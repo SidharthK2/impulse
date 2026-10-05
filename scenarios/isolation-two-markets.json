@@ -1,0 +1,103 @@
+{
+ "name": "E: isolation, a blow-up in ELECTION leaves BTCX untouched",
+ "description": "alice holds positions in both markets with separate collateral. ELECTION gaps 0.50 → 0.02 and bankrupts her there; her BTCX position, collateral and counterparties are unchanged.",
+ "events": [
+  {
+   "type": "market",
+   "id": "BTCX",
+   "preset": "perp"
+  },
+  {
+   "type": "market",
+   "id": "ELECTION",
+   "preset": "binary"
+  },
+  {
+   "type": "deposit",
+   "account": "alice",
+   "amount": "200"
+  },
+  {
+   "type": "allocate",
+   "account": "alice",
+   "market": "BTCX",
+   "amount": "100"
+  },
+  {
+   "type": "allocate",
+   "account": "alice",
+   "market": "ELECTION",
+   "amount": "100"
+  },
+  {
+   "type": "deposit",
+   "account": "bob",
+   "amount": "300"
+  },
+  {
+   "type": "allocate",
+   "account": "bob",
+   "market": "BTCX",
+   "amount": "150"
+  },
+  {
+   "type": "allocate",
+   "account": "bob",
+   "market": "ELECTION",
+   "amount": "150"
+  },
+  {
+   "type": "tick",
+   "market": "BTCX",
+   "price": "100"
+  },
+  {
+   "type": "tick",
+   "market": "ELECTION",
+   "price": "0.50"
+  },
+  {
+   "type": "trade",
+   "market": "BTCX",
+   "buyer": "alice",
+   "seller": "bob",
+   "size": 2,
+   "price": "100"
+  },
+  {
+   "type": "trade",
+   "market": "ELECTION",
+   "buyer": "alice",
+   "seller": "bob",
+   "size": 500,
+   "price": "0.50"
+  },
+  {
+   "type": "tick",
+   "market": "BTCX",
+   "price": "104"
+  },
+  {
+   "type": "tick",
+   "market": "ELECTION",
+   "price": "0.02"
+  },
+  {
+   "type": "tick",
+   "market": "BTCX",
+   "price": "106"
+  },
+  {
+   "type": "release",
+   "account": "alice",
+   "market": "ELECTION",
+   "amount": "all"
+  },
+  {
+   "type": "release",
+   "account": "alice",
+   "market": "BTCX",
+   "amount": "all"
+  }
+ ]
+}

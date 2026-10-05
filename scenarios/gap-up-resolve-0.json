@@ -3,8 +3,19 @@
  "description": "Shorts nia/omar go bankrupt on the gap, pia is liquidated with equity left (E ≥ 0 but < MM), quinn (~fully collateralized) survives. Longs absorb, then the market resolves 0 and they lose anyway.",
  "events": [
   {
+   "type": "market",
+   "id": "OUTCOME",
+   "preset": "binary"
+  },
+  {
    "type": "deposit",
    "account": "lena",
+   "amount": "60"
+  },
+  {
+   "type": "allocate",
+   "account": "lena",
+   "market": "OUTCOME",
    "amount": "60"
   },
   {
@@ -13,8 +24,20 @@
    "amount": "200"
   },
   {
+   "type": "allocate",
+   "account": "mo",
+   "market": "OUTCOME",
+   "amount": "200"
+  },
+  {
    "type": "deposit",
    "account": "nia",
+   "amount": "40"
+  },
+  {
+   "type": "allocate",
+   "account": "nia",
+   "market": "OUTCOME",
    "amount": "40"
   },
   {
@@ -23,8 +46,20 @@
    "amount": "35"
   },
   {
+   "type": "allocate",
+   "account": "omar",
+   "market": "OUTCOME",
+   "amount": "35"
+  },
+  {
    "type": "deposit",
    "account": "pia",
+   "amount": "85"
+  },
+  {
+   "type": "allocate",
+   "account": "pia",
+   "market": "OUTCOME",
    "amount": "85"
   },
   {
@@ -33,56 +68,83 @@
    "amount": "100"
   },
   {
+   "type": "allocate",
+   "account": "quinn",
+   "market": "OUTCOME",
+   "amount": "100"
+  },
+  {
    "type": "tick",
-   "price": "0.40"
+   "price": "0.40",
+   "market": "OUTCOME"
   },
   {
    "type": "trade",
    "buyer": "lena",
    "seller": "nia",
    "size": 250,
-   "price": "0.40"
+   "price": "0.40",
+   "market": "OUTCOME"
   },
   {
    "type": "trade",
    "buyer": "mo",
    "seller": "omar",
    "size": 200,
-   "price": "0.40"
+   "price": "0.40",
+   "market": "OUTCOME"
   },
   {
    "type": "trade",
    "buyer": "mo",
    "seller": "pia",
    "size": 150,
-   "price": "0.40"
+   "price": "0.40",
+   "market": "OUTCOME"
   },
   {
    "type": "trade",
    "buyer": "mo",
    "seller": "quinn",
    "size": 100,
-   "price": "0.40"
+   "price": "0.40",
+   "market": "OUTCOME"
   },
   {
    "type": "tick",
-   "price": "0.45"
+   "price": "0.45",
+   "market": "OUTCOME"
   },
   {
    "type": "tick",
-   "price": "0.95"
+   "price": "0.95",
+   "market": "OUTCOME"
   },
   {
    "type": "tick",
-   "price": "0.70"
+   "price": "0.70",
+   "market": "OUTCOME"
   },
   {
    "type": "resolve",
-   "outcome": 0
+   "market": "OUTCOME",
+   "price": "0"
+  },
+  {
+   "type": "release",
+   "account": "lena",
+   "market": "OUTCOME",
+   "amount": "all"
   },
   {
    "type": "withdraw",
    "account": "lena",
+   "amount": "all"
+  },
+  {
+   "type": "release",
+   "account": "mo",
+   "market": "OUTCOME",
    "amount": "all"
   },
   {
@@ -91,8 +153,20 @@
    "amount": "all"
   },
   {
+   "type": "release",
+   "account": "pia",
+   "market": "OUTCOME",
+   "amount": "all"
+  },
+  {
    "type": "withdraw",
    "account": "pia",
+   "amount": "all"
+  },
+  {
+   "type": "release",
+   "account": "quinn",
+   "market": "OUTCOME",
    "amount": "all"
   },
   {

@@ -1,36 +1,48 @@
 # Impulse accounting model
 
-This is **our** design. It's a guess at how a Mirror-style MicroPerp could work on one
-prediction-market outcome. It is not a reproduction of Mirror's engine: Mirror publishes
+This is **our** design. It's a guess at how a Mirror-style MicroPerp could work for any asset: tokens,
+attention markets, equities, prediction markets. It is not a reproduction of Mirror's engine: Mirror publishes
 no algorithm, only claims (see [MIRROR-NOTES.md](./MIRROR-NOTES.md)).
 
 ## Units (all integer, `bigint`)
 
 | Quantity | Unit | Example |
 |---|---|---|
-| money (cash, equity, PnL, margin) | micro-USD (1e-6 USD, same as USDC) | `$12.50` = `12_500_000n` |
-| price `m`, trade price `X` | micro-USD per contract, in `[0, 1_000_000]` | `0.60` = `600_000n` |
-| size `q` | whole contracts, signed (+long / −short) | `-200n` |
+| money (collateral, equity, PnL, margin) | nano-USD (1e-9 USD, the unit Mirror's engine uses) | `$12.50` = `12_500_000_000n` |
+| price `m`, trade price `X` | nano-USD per unit | `0.60` = `600_000_000n`, PEPE `0.000005` = `5_000n` |
+| size `q` | whole units, signed (+long / −short) | `-200n` |
 
-One contract pays `$1 × price`. So a size multiplied by a price is already exact
-micro-USD: there's no floating point and no hidden rounding in PnL.
+A size multiplied by a price is already exact nano-USD: there's no floating point and no hidden rounding in PnL.
 
 ## State
 
-One market (isolated margin), one vault, many accounts.
+Markets are **isolated shards**. Each market owns its config, positions and collateral vault. Risk processing
+only ever touches the market it runs in. Accounts hold a wallet and move money into per-market buckets explicitly.
 
 ```
-Account i:  cash C_i   size q_i   costBasis B_i      (B_i = Σ signed fill size × fill price)
-Market:     mark m     status open | resolved
-Vault:      V = Σ deposits − Σ withdrawals            (the tokens the venue actually holds)
+Market k:      config (bounds, resolvable, leverage)   mark m_k   status open | resolved   vault V_k
+Position i,k:  collateral C   size q   costBasis B      (B = Σ signed fill size × fill price)
+Account i:     wallet W_i
+Global:        Σ W_i + Σ V_k = Σ deposits − Σ withdrawals   (what the venue actually holds)
 ```
 
-Derived quantities:
+Market types are config, not code:
+
+| Preset | Price range | Resolvable | Example |
+|---|---|---|---|
+| `binary` | [0, 1] | yes | Polymarket/Kalshi outcome |
+| `perp` | (0, ∞) | no (optionally yes, e.g. pre-IPO flatten) | memecoin, attention token, equity |
+| custom `bounds` | [lo, hi] | either | anything bounded |
+
+Money moves: `deposit` → wallet, `allocate` wallet → market bucket, `release` bucket → wallet (limited, see
+below), `withdraw` wallet → out. Creating a market is an event too (permissionless listing, like Mirror).
+
+Derived quantities, per position:
 
 ```
-uPnL_i   = q_i·m − B_i
-equity_i = E_i = C_i + q_i·m − B_i
-entry_i  = B_i / q_i                                   (display only)
+uPnL   = q·m − B
+equity = E = C + q·m − B
+entry  = B / q                                         (display only)
 ```
 
 We track cost basis instead of average entry price. Averaging entry prices introduces
@@ -38,7 +50,7 @@ rounding that leaks value between accounts, and cost basis doesn't.
 
 ## How matched positions are created and closed
 
-Every fill is bilateral. A buyer and a seller trade `s` contracts at price `X`:
+Every fill is bilateral. A buyer and a seller trade `s` units at price `X`:
 
 ```
 buyer:  q += s, B += s·X         seller: q −= s, B −= s·X
@@ -57,26 +69,27 @@ bilateral fills, so they preserve this too.
 
 | Purpose | Price |
 |---|---|
-| PnL, equity, margin checks | **oracle mark `m`** (the prediction venue's price, delivered as `tick` events) |
-| Voluntary trade | trade price `X` (any value in [0,1]); the post-trade margin check still uses `m` |
+| PnL, equity, margin checks | **oracle mark `m`** of that market (delivered as `tick` events) |
+| Voluntary trade | trade price `X` (any value inside the market's bounds); the post-trade margin check still uses `m` |
 | Liquidation (E ≥ 0) | closed at `m`, so counterparties keep their full PnL |
 | ADL (E < 0) | closed at `m`, then the shortfall is transferred from counterparties (economically the same as closing at the bankruptcy price) |
-| Resolution | everything settles at exactly 0 or 1 |
+| Resolution | everything settles at the final price (0 or 1 for binaries) |
 
 A trade can't happen before the first tick, because there's no mark yet.
 
 ## Margin
 
-`maxLoss` is the most a position can lose before the price hits a bound: `q·m` for a long
-(price → 0) and `|q|·(1−m)` for a short (price → 1).
+`maxLoss` is the most a position can lose before the price hits a bound: `q·(m − lo)` for a long
+and `|q|·(hi − m)` for a short. On an unbounded market a short has **no** max loss, so no cap applies.
 
 ```
 IM_i = min(maxLoss_i, ceil(|q_i|·m / initialLeverage))        default initialLeverage = 3
 MM_i = min(maxLoss_i, ceil(|q_i|·m / maintenanceLeverage))    default maintenanceLeverage = 6
 ```
 
-Leverage is quoted against notional `|q|·m`, as on ordinary perps. The `maxLoss` cap means
-a fully collateralized position can never be liquidated or ADL'd. Requirements round
+Leverage is quoted against notional `|q|·m`, as on ordinary perps, and is set per market. On bounded
+markets the `maxLoss` cap means a fully collateralized position can never be liquidated or ADL'd. On
+unbounded markets no collateral level is safe for a short (scenario D: a 0.5× short is bankrupted by a 4× pump). Requirements round
 **up**, which is against the trader.
 
 Trade acceptance: after the fill, each party must have `E ≥ IM`. A party whose fill only
@@ -88,10 +101,10 @@ oracle ticks can.
 ```
 1. m ← new price
 2. loop:
-     distressed = accounts with q≠0 and E < MM
+     distressed = positions with q≠0 and E < MM
      if none: break
      all distressed must be on one side (proved below; asserted)
-     Qtot  = Σ |q_i| over distressed                    (contracts to close)
+     Qtot  = Σ |q_i| over distressed                    (units to close)    
      Dtot  = Σ max(0, −E_i) over distressed             (total shortfall)
      opp   = accounts on the other side, weights |q_j|
      r_j   = allocate(Qtot, |q_j|)                      (largest-remainder, ties by id)
@@ -121,13 +134,13 @@ source is the accounts that were owed it, which is the haircut.
 ### Who absorbs, and by what rule: pro-rata by size
 
 Each opposing account absorbs `Dtot·|q_j|/S_opp` (S_opp = total opposing size) and is force-closed
-`Qtot·|q_j|/S_opp` contracts.
+`Qtot·|q_j|/S_opp` units.
 
 **Claim: within one tick, size pro-rata never pushes an absorber below zero.**
 Take a downward tick of Δ = m_old − m_new. Before the tick every account had `E ≥ MM ≥ 0`.
 Every short gains exactly `|q_j|·Δ`, so `E_j,after ≥ |q_j|·Δ`. A long's shortfall is at most its loss `q_i·Δ`, so
 `Dtot ≤ Δ·Σ_distressed q_i ≤ Δ·S_opp`. So `h_j ≤ Dtot·|q_j|/S_opp ≤ |q_j|·Δ ≤ E_j`.
-Integer rounding can add at most 1 micro-unit, and `E_j` is an integer that's ≥ the exact
+Integer rounding can add at most 1 nano-unit, and `E_j` is an integer that's ≥ the exact
 fraction, so `E_j ≥ ceil(fraction)`. The upward case is symmetric. Later rounds of the
 loop have `Dtot = 0`: haircuts leave absorbers at ≥ 0, and closes at mark don't change
 equity. We still assert this in code, and a seeded fuzz test checks it.
@@ -142,22 +155,23 @@ contract as one who entered at 0.60 (huge profit). The common alternative is
 profit×leverage ranking (Binance/Hyperliquid-style). It targets the biggest winners but
 needs a waterfall and is harder to reason about.
 
-## Resolution at 0 or 1
+## Resolution
 
-`resolve` is a tick to exactly 0 or 1 (with full liquidation/ADL), followed by settling
-every position at that price against the others (value-neutral because Σq=0). After that,
-q = B = 0 for every account, `E_i = C_i ≥ 0`, Σ C_i = V, and the market only accepts
-deposits and withdrawals. At m = 0 the long `maxLoss` is 0, and at m = 1 the short `maxLoss`
-is 0. Margin requirements disappear at the bounds, and so does any further risk.
+Only markets configured `resolvable` can resolve. `resolve` is a tick to the final price (with full
+liquidation/ADL), followed by settling every position at that price against the others (value-neutral because
+Σq=0). After that, q = B = 0 for every position, `E = C ≥ 0`, Σ C = V_k, and the market only accepts releases.
+For a binary, resolution is always a jump to a bound, where one side's `maxLoss` is 0 and every
+under-collateralized position on the losing side is bankrupt.
 
-## Withdrawals
+## Releasing collateral and withdrawing
 
 ```
-withdrawable_i = max(0, min(C_i, E_i − IM_i))
+releasable(i,k) = max(0, min(C, E − IM))        bucket → wallet
+withdraw ≤ W_i                                  wallet → out
 ```
 
-You can withdraw **realized cash only**, and only if what stays covers initial margin.
-Unrealized profit becomes withdrawable once you close the position. Withdrawing
+Collateral can leave a market only as **realized cash**, and only if what stays covers initial margin.
+Unrealized profit becomes releasable once you close the position. Withdrawing
 unrealized profit at mark would arguably still be funded, since V = ΣE. We chose to be
 conservative so that every withdrawn dollar is backed by a closed, bilateral settlement.
 
@@ -166,14 +180,19 @@ conservative so that every withdrawn dollar is backed by a closed, bilateral set
 A violation means an engine bug, not bad input. `apply` throws, and the caller's state is untouched because every
 transition runs on a clone. Bad input (e.g. an over-withdrawal) is a normal *rejection* with a reason.
 
-1. **Balanced exposure:** Σ q_i = 0.
-2. **Collateral conservation:** V = Σdeposits − Σwithdrawals = Σ (C_i − B_i). With
-   Σq=0 this equals Σ E_i at **any** mark.
-3. **Non-negative equity:** E_i ≥ 0 for all i.
-4. **Maintained margin:** E_i ≥ MM_i for every account with a position.
-5. **No unfunded claims:** withdrawable_i ≤ E_i, and Σ withdrawable ≤ V.
-6. **Per-account ledger:** C_i = deposited − withdrawn + realized + adlTransfer.
-7. **Resolved market:** every q_i = 0 and B_i = 0.
+Per market k (these never reference another market, which is what makes sharding safe):
+
+1. **Balanced exposure:** Σ q = 0.
+2. **Collateral conservation:** V_k = Σ allocated = Σ (C − B). With Σq=0 this equals Σ E at **any** mark.
+3. **Non-negative equity:** E ≥ 0 for every position.
+4. **Maintained margin:** E ≥ MM for every open position.
+5. **No unfunded claims:** releasable ≤ E, and Σ releasable ≤ V_k.
+6. **Per-position ledger:** C = allocated + realized + adlTransfer.
+7. **Resolved market:** every q = 0 and B = 0.
+
+Global:
+
+8. **Conservation:** Σ wallets + Σ V_k = Σ deposits − Σ withdrawals, and no wallet is negative.
 
 ### Why clamping negative balances to zero is not solvency
 
@@ -184,6 +203,6 @@ this numerically. Solvency means **re-allocating** D to specific accounts, not h
 
 ## Deliberately omitted (v1)
 
-Funding (Mirror describes a funding rate; we have none, so positions cost nothing to hold),
-fees, partial liquidation, liquidation penalties, order book/matching, cross margin,
-leverage graduation (3×→100× is just a config number here), and oracle sanity checks.
+Not yet built (planned): Mirror-style curve oracle (attention markets), alternative ADL rules (capped pro-rata
+on positive PnL), leverage graduation, funding. Not planned for v1: fees, partial liquidation, liquidation
+penalties, order book/matching, cross margin, and oracle sanity checks.

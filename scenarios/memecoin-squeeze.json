@@ -1,0 +1,165 @@
+{
+ "name": "D: memecoin squeeze, PEPE 0.00001 → 0.00004 (unbounded perp)",
+ "description": "A 30% pump liquidates the 3x shorts ben and cal (they keep $20 and $10). The 4x gap then bankrupts dan, who was at 0.5x ($200 of collateral against $100 notional): on an unbounded asset no collateral ratio is safe. The longs absorb his $100 shortfall and are force-closed.",
+ "events": [
+  {
+   "type": "market",
+   "id": "PEPE",
+   "preset": "perp"
+  },
+  {
+   "type": "deposit",
+   "account": "ana",
+   "amount": "100"
+  },
+  {
+   "type": "allocate",
+   "account": "ana",
+   "market": "PEPE",
+   "amount": "100"
+  },
+  {
+   "type": "deposit",
+   "account": "eve",
+   "amount": "100"
+  },
+  {
+   "type": "allocate",
+   "account": "eve",
+   "market": "PEPE",
+   "amount": "100"
+  },
+  {
+   "type": "deposit",
+   "account": "ben",
+   "amount": "80"
+  },
+  {
+   "type": "allocate",
+   "account": "ben",
+   "market": "PEPE",
+   "amount": "80"
+  },
+  {
+   "type": "deposit",
+   "account": "cal",
+   "amount": "40"
+  },
+  {
+   "type": "allocate",
+   "account": "cal",
+   "market": "PEPE",
+   "amount": "40"
+  },
+  {
+   "type": "deposit",
+   "account": "dan",
+   "amount": "200"
+  },
+  {
+   "type": "allocate",
+   "account": "dan",
+   "market": "PEPE",
+   "amount": "200"
+  },
+  {
+   "type": "tick",
+   "market": "PEPE",
+   "price": "0.00001"
+  },
+  {
+   "type": "trade",
+   "market": "PEPE",
+   "buyer": "ana",
+   "seller": "ben",
+   "size": 20000000,
+   "price": "0.00001"
+  },
+  {
+   "type": "trade",
+   "market": "PEPE",
+   "buyer": "ana",
+   "seller": "cal",
+   "size": 10000000,
+   "price": "0.00001"
+  },
+  {
+   "type": "trade",
+   "market": "PEPE",
+   "buyer": "eve",
+   "seller": "dan",
+   "size": 10000000,
+   "price": "0.00001"
+  },
+  {
+   "type": "tick",
+   "market": "PEPE",
+   "price": "0.000013"
+  },
+  {
+   "type": "tick",
+   "market": "PEPE",
+   "price": "0.00004"
+  },
+  {
+   "type": "tick",
+   "market": "PEPE",
+   "price": "0.00001"
+  },
+  {
+   "type": "release",
+   "account": "ana",
+   "market": "PEPE",
+   "amount": "all"
+  },
+  {
+   "type": "withdraw",
+   "account": "ana",
+   "amount": "all"
+  },
+  {
+   "type": "release",
+   "account": "ben",
+   "market": "PEPE",
+   "amount": "all"
+  },
+  {
+   "type": "withdraw",
+   "account": "ben",
+   "amount": "all"
+  },
+  {
+   "type": "release",
+   "account": "cal",
+   "market": "PEPE",
+   "amount": "all"
+  },
+  {
+   "type": "withdraw",
+   "account": "cal",
+   "amount": "all"
+  },
+  {
+   "type": "release",
+   "account": "dan",
+   "market": "PEPE",
+   "amount": "all"
+  },
+  {
+   "type": "withdraw",
+   "account": "dan",
+   "amount": "all"
+  },
+  {
+   "type": "release",
+   "account": "eve",
+   "market": "PEPE",
+   "amount": "all"
+  },
+  {
+   "type": "withdraw",
+   "account": "eve",
+   "amount": "all"
+  }
+ ]
+}

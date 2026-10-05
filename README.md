@@ -1,33 +1,37 @@
 # Impulse
 
-A small reference engine for **leveraged prediction-market perps with ADL as the only backstop**. It's modeled
-on the design Mirror describes for MicroPerps (see [docs/MIRROR-NOTES.md](docs/MIRROR-NOTES.md)). It covers
-one isolated outcome, integer arithmetic, deterministic replay, and a CLI.
+A small reference engine for **MicroPerps: leveraged perps on any asset with ADL as the only backstop**. It's
+modeled on the design Mirror describes (see [docs/MIRROR-NOTES.md](docs/MIRROR-NOTES.md)). It supports any
+number of isolated markets (unbounded perps like memecoins and equities, binary outcomes, custom bounds),
+nano-USD integer arithmetic, deterministic replay, and a CLI.
 
-The question it answers: **when a prediction price gaps, what happens to leveraged positions, and who pays?**
+The question it answers: **when a price gaps, what happens to leveraged positions, and who pays?**
 
 ```bash
 pnpm install
-pnpm demo                          # three scenarios, full ledger after every event
+pnpm demo                          # five scenarios, full ledger after every event
 pnpm replay scenarios/x.json       # any scenario; add --json for machine-readable output
-pnpm test                          # 23 tests incl. a 300-history seeded fuzz
+pnpm test                          # 33 tests incl. a 300-history multi-market seeded fuzz
 ```
 
 ## Mechanism (one paragraph)
 
-Each account holds cash, a signed size, and a cost basis. Equity is marked to the oracle price (the prediction
-venue's price). Every event (deposit, withdraw, trade, tick, resolve) runs as an atomic transition on a
-copy of the state, and seven invariants are checked before it commits. Trades can't create insolvency, because
+Markets are isolated shards: each has its own config, positions and collateral vault, and accounts move
+money from a wallet into per-market buckets. Each position holds collateral, a signed size, and a cost basis,
+and is marked to its market's oracle price. Every event (market, deposit, allocate, trade, tick, resolve,
+release, withdraw) runs as an atomic transition on a copy of the state, and per-market plus global invariants
+are checked before it commits. Trades can't create insolvency, because
 both parties must clear initial margin *at mark*. Ticks can. After each tick, every account below maintenance
 margin is closed at mark against the opposing side, pro-rata by size. An account with equity ≥ 0 keeps what
 it has left (**liquidation**). An account with equity < 0 has its shortfall charged to the opposing accounts,
 again pro-rata by size (**ADL**). There's no insurance fund. Within a single tick this rule provably never
-pushes an absorber below zero. Resolution is a final tick to 0 or 1, followed by settling everything.
+pushes an absorber below zero. Resolvable markets settle with a final tick (0 or 1 for binaries).
 The full model, the proofs, and the choices behind them are in [docs/ACCOUNTING.md](docs/ACCOUNTING.md).
 
 ## The demo: who bore the loss
 
-All three scenarios end with every account withdrawing in full and the vault reaching **exactly $0.00**:
+A–C are binary outcome markets, D is an unbounded memecoin perp, and E runs two markets side by side.
+A–D end with every account withdrawing in full and the vault reaching **exactly $0.00**:
 no stranded dollars and no unpaid claims. "Theoretical" means holding every voluntary trade to resolution with
 no ADL.
 
@@ -60,6 +64,18 @@ Then the market resolves **0**. The shorts were right about the outcome, and thr
 they posted. The longs were wrong, and both ended **in profit** (+41.69 and +75.81), because the 0.95 print
 force-closed them at a high price. **One transient oracle print fixed everyone's PnL for good.**
 
+### D. Memecoin squeeze, PEPE 0.00001 → 0.00004 (`memecoin-squeeze.json`)
+
+A 30% pump liquidates the two 3× shorts, who keep $20 and $10. The 4× gap then bankrupts dan, who was at
+**0.5× leverage** ($200 of collateral against $100 notional). On an unbounded asset a short has no maximum
+loss, so no collateral ratio is safe. The longs absorb his $100 shortfall ($75 and $25) and are force-closed.
+
+### E. Isolation (`isolation-two-markets.json`)
+
+alice holds BTCX and ELECTION positions with separate collateral. ELECTION gaps 0.50 → 0.02 and bankrupts her
+there. Her BTCX position, its collateral and her counterparty are **byte-for-byte unchanged** (asserted in the
+tests). This is the property Mirror's sharding claim rests on.
+
 ## What this shows
 
 1. **"Solvent after every transition" holds, and it's cheap.** It's just bookkeeping: every account has
@@ -73,7 +89,9 @@ force-closed them at a high price. **One transient oracle print fixed everyone's
    (Mirror's 3×→100×) doesn't change this.
 4. **The mark is the attack surface.** In C, a wick that later reverted destroyed the side that was right
    and enriched the side that was wrong. With a thin venue as the oracle, that's an attack you can pay for.
-5. **"3× leverage" is ambiguous on a [0,1] asset.** It's measured against notional `|q|·p`, but a short's
+5. **On unbounded assets, shorts have no safe collateral level** (scenario D). Any ADL-only venue listing
+   memecoins with leverage will socialize squeezes onto the longs.
+6. **"3× leverage" is ambiguous on a [0,1] asset.** It's measured against notional `|q|·p`, but a short's
    worst case is `|q|·(1−p)`. gina's "3×" was 43× her max loss. Any real design needs per-side margin.
 
 ## Limitations (deliberate, v1)
@@ -87,10 +105,11 @@ force-closed them at a high price. **One transient oracle print fixed everyone's
   accounts that are barely in profit, and it eats into their principal. The literature's fair rule (Chitra,
   arXiv:2512.01112) is capped pro-rata on positive PnL with principal protected. That's next, plus a fallback for
   when PnL alone can't cover the shortfall.
-- **Oracle-only mark, no sanity bands or staleness rules.** No trading before the first tick (Mirror claims it
-  can run with no price feed; we don't attempt that).
+- **External-feed oracle only, with no sanity bands or staleness rules.** Mirror's attention markets price the
+  perp off Mirror's own bonding-curve spot. That curve oracle, and a pump attack against it, is the next
+  milestone. There's no trading before the first tick (Mirror claims it can run with no price feed).
 - **Withdrawals: realized cash only, above initial margin.** This is conservative by choice; see ACCOUNTING.md.
-- Not covered: fees, cross margin, leverage graduation, tokens, contracts, frontend.
+- Not yet: leverage graduation (3×→100×). Not covered: fees, cross margin, tokens, contracts, frontend.
 
 ## Open questions (solvency doesn't answer these)
 
@@ -102,11 +121,11 @@ force-closed them at a high price. **One transient oracle print fixed everyone's
 ## Layout
 
 ```
-src/engine.ts     state, events, margin, liquidation/ADL loop, invariants, replay
+src/engine.ts     markets, wallets, events, margin, liquidation/ADL loop, invariants, replay
 src/alloc.ts      largest-remainder apportionment (exact integer pro-rata)
-src/fixed.ts      micro-USD fixed-point helpers
+src/fixed.ts      nano-USD fixed-point helpers
 src/report.ts     ledger rendering, state hash
 src/cli.ts        scenario runner
-scenarios/        A, B, C above (JSON event lists)
+scenarios/        A–E above (JSON event lists)
 docs/             ACCOUNTING.md (model + invariants), MIRROR-NOTES.md, RESEARCH-NOTES.md, FACT-CHECK.md
 ```

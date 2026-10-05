@@ -3,8 +3,19 @@
  "description": "Levered longs alice/bob go bankrupt on the gap; shorts carol/dave/erin absorb pro-rata by size and are force-reduced. frank (≈1x long) survives.",
  "events": [
   {
+   "type": "market",
+   "id": "OUTCOME",
+   "preset": "binary"
+  },
+  {
    "type": "deposit",
    "account": "alice",
+   "amount": "100"
+  },
+  {
+   "type": "allocate",
+   "account": "alice",
+   "market": "OUTCOME",
    "amount": "100"
   },
   {
@@ -13,8 +24,20 @@
    "amount": "150"
   },
   {
+   "type": "allocate",
+   "account": "bob",
+   "market": "OUTCOME",
+   "amount": "150"
+  },
+  {
    "type": "deposit",
    "account": "carol",
+   "amount": "200"
+  },
+  {
+   "type": "allocate",
+   "account": "carol",
+   "market": "OUTCOME",
    "amount": "200"
   },
   {
@@ -23,8 +46,20 @@
    "amount": "120"
   },
   {
+   "type": "allocate",
+   "account": "dave",
+   "market": "OUTCOME",
+   "amount": "120"
+  },
+  {
    "type": "deposit",
    "account": "erin",
+   "amount": "50"
+  },
+  {
+   "type": "allocate",
+   "account": "erin",
+   "market": "OUTCOME",
    "amount": "50"
   },
   {
@@ -33,49 +68,74 @@
    "amount": "120"
   },
   {
+   "type": "allocate",
+   "account": "frank",
+   "market": "OUTCOME",
+   "amount": "120"
+  },
+  {
    "type": "tick",
-   "price": "0.50"
+   "price": "0.50",
+   "market": "OUTCOME"
   },
   {
    "type": "trade",
    "buyer": "alice",
    "seller": "carol",
    "size": 500,
-   "price": "0.50"
+   "price": "0.50",
+   "market": "OUTCOME"
   },
   {
    "type": "trade",
    "buyer": "bob",
    "seller": "dave",
    "size": 400,
-   "price": "0.50"
+   "price": "0.50",
+   "market": "OUTCOME"
   },
   {
    "type": "tick",
-   "price": "0.52"
+   "price": "0.52",
+   "market": "OUTCOME"
   },
   {
    "type": "trade",
    "buyer": "bob",
    "seller": "erin",
    "size": 100,
-   "price": "0.52"
+   "price": "0.52",
+   "market": "OUTCOME"
   },
   {
    "type": "tick",
-   "price": "0.55"
+   "price": "0.55",
+   "market": "OUTCOME"
   },
   {
    "type": "trade",
    "buyer": "frank",
    "seller": "carol",
    "size": 200,
-   "price": "0.55"
+   "price": "0.55",
+   "market": "OUTCOME"
+  },
+  {
+   "type": "release",
+   "account": "bob",
+   "market": "OUTCOME",
+   "amount": "100"
   },
   {
    "type": "withdraw",
    "account": "bob",
    "amount": "100"
+  },
+  {
+   "type": "release",
+   "account": "bob",
+   "market": "OUTCOME",
+   "amount": "30"
   },
   {
    "type": "withdraw",
@@ -84,22 +144,32 @@
   },
   {
    "type": "tick",
-   "price": "0.58"
+   "price": "0.58",
+   "market": "OUTCOME"
   },
   {
    "type": "trade",
    "buyer": "alice",
    "seller": "erin",
    "size": 100,
-   "price": "0.58"
+   "price": "0.58",
+   "market": "OUTCOME"
   },
   {
    "type": "tick",
-   "price": "0.60"
+   "price": "0.60",
+   "market": "OUTCOME"
   },
   {
    "type": "tick",
-   "price": "0.05"
+   "price": "0.05",
+   "market": "OUTCOME"
+  },
+  {
+   "type": "release",
+   "account": "alice",
+   "market": "OUTCOME",
+   "amount": "1"
   },
   {
    "type": "withdraw",
@@ -107,9 +177,21 @@
    "amount": "1"
   },
   {
+   "type": "release",
+   "account": "carol",
+   "market": "OUTCOME",
+   "amount": "1000"
+  },
+  {
    "type": "withdraw",
    "account": "carol",
    "amount": "1000"
+  },
+  {
+   "type": "release",
+   "account": "carol",
+   "market": "OUTCOME",
+   "amount": "100"
   },
   {
    "type": "withdraw",
@@ -118,11 +200,24 @@
   },
   {
    "type": "resolve",
-   "outcome": 0
+   "market": "OUTCOME",
+   "price": "0"
+  },
+  {
+   "type": "release",
+   "account": "alice",
+   "market": "OUTCOME",
+   "amount": "all"
   },
   {
    "type": "withdraw",
    "account": "alice",
+   "amount": "all"
+  },
+  {
+   "type": "release",
+   "account": "carol",
+   "market": "OUTCOME",
    "amount": "all"
   },
   {
@@ -131,13 +226,31 @@
    "amount": "all"
   },
   {
+   "type": "release",
+   "account": "dave",
+   "market": "OUTCOME",
+   "amount": "all"
+  },
+  {
    "type": "withdraw",
    "account": "dave",
    "amount": "all"
   },
   {
+   "type": "release",
+   "account": "erin",
+   "market": "OUTCOME",
+   "amount": "all"
+  },
+  {
    "type": "withdraw",
    "account": "erin",
+   "amount": "all"
+  },
+  {
+   "type": "release",
+   "account": "frank",
+   "market": "OUTCOME",
    "amount": "all"
   },
   {
