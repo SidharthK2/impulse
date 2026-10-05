@@ -29,9 +29,26 @@ export interface Position {
   adlTransfer: bigint; // − haircut paid as absorber, + shortfall covered as bankrupt
 }
 
+/** Mirror-style spot market: xy=k bonding curve on virtual reserves (USDC x, tokens y). */
+export interface Curve {
+  x0: bigint; // initial virtual USDC reserve (nano-USD)
+  y0: bigint; // initial virtual token reserve (= max supply, units)
+  x: bigint;
+  y: bigint;
+  feeBps: bigint; // spot fee, charged on the USDC side
+}
+
+/** Perp oracle read from the market's own curve: instant (window 0) or a time-weighted average. */
+export interface CurveOracle {
+  window: bigint; // seconds
+  history: { t: bigint; price: bigint }[]; // spot price change points, pruned to the window
+}
+
 export interface Market {
   id: string;
   config: MarketConfig;
+  curve: Curve | null;
+  oracle: CurveOracle | null;
   mark: bigint | null;
   status: "open" | "resolved";
   vault: bigint; // collateral held for this market = Σ allocated
@@ -41,12 +58,15 @@ export interface Market {
 export interface Account {
   id: string;
   wallet: bigint;
+  spot: Record<string, bigint>; // curve-token holdings per market
   deposited: bigint;
   withdrawn: bigint;
 }
 
 export interface State {
   seq: number;
+  time: bigint; // seconds, advanced by `advance` events
+  fees: bigint; // spot fees collected by the venue
   totalDeposits: bigint;
   totalWithdrawals: bigint;
   accounts: Record<string, Account>;
@@ -59,8 +79,11 @@ export type Event =
   | {
       type: "market";
       id: string;
-      preset?: "binary" | "perp"; // binary = price in [0,1], resolvable; perp = unbounded, not resolvable
+      preset?: "binary" | "perp" | "attention"; // attention = unbounded perp priced off its own xy=k spot curve
       bounds?: [string, string | null];
+      curve?: { usdc: string; tokens: number | string }; // virtual reserves (attention default: $5,000 / 1B)
+      feeBps?: number; // spot fee (attention default 100 = 1%, our assumption; Mirror's is unpublished)
+      oracleWindow?: number; // seconds of TWAP smoothing on the curve price (default 0 = instant)
       resolvable?: boolean;
       initialLeverage?: number;
       maintenanceLeverage?: number;
@@ -70,7 +93,10 @@ export type Event =
   | { type: "allocate"; account: string; market: string; amount: Amount } // wallet → market; "all" allowed
   | { type: "release"; account: string; market: string; amount: Amount } // market → wallet; "all" allowed
   | { type: "trade"; market: string; buyer: string; seller: string; size: number | string; price: string }
-  | { type: "tick"; market: string; price: string }
+  | { type: "tick"; market: string; price: string } // external-feed markets only
+  | { type: "spotBuy"; account: string; market: string; amount: Amount } // USDC from wallet into the curve; "all" allowed
+  | { type: "spotSell"; account: string; market: string; tokens: number | string } // tokens back to the curve; "all" allowed
+  | { type: "advance"; seconds: number } // move the clock; curve oracles refresh and risk runs
   | { type: "resolve"; market: string; price: string };
 
 export interface ForcedClose {
@@ -84,7 +110,9 @@ export type Effect =
   | { kind: "bankrupt"; market: string; account: string; size: bigint; shortfall: bigint }
   | { kind: "forcedClose"; market: string; closes: ForcedClose[] }
   | { kind: "haircut"; market: string; account: string; amount: bigint }
-  | { kind: "settlement"; market: string; price: bigint; closes: ForcedClose[] };
+  | { kind: "settlement"; market: string; price: bigint; closes: ForcedClose[] }
+  | { kind: "spot"; market: string; account: string; usdc: bigint; tokens: bigint; fee: bigint; priceBefore: bigint; priceAfter: bigint }
+  | { kind: "mark"; market: string; from: bigint; to: bigint; spot: bigint };
 
 export type Result =
   | { ok: true; state: State; effects: Effect[] }
@@ -95,7 +123,7 @@ export class Rejected extends Error {}
 export const DEFAULT_LEVERAGE = { initial: 3n, maintenance: 6n };
 
 export function initialState(): State {
-  return { seq: 0, totalDeposits: 0n, totalWithdrawals: 0n, accounts: {}, markets: {} };
+  return { seq: 0, time: 0n, fees: 0n, totalDeposits: 0n, totalWithdrawals: 0n, accounts: {}, markets: {} };
 }
 
 // ---------- derived quantities ----------
@@ -133,6 +161,42 @@ export const maintenanceMargin = (m: Market, p: Position) => requirement(m, p, m
 /** Realized collateral that can leave the market while still covering initial margin. */
 export function releasable(m: Market, p: Position): bigint {
   return max(0n, min(p.collateral, equity(p, m.mark) - initialMargin(m, p)));
+}
+
+// ---------- curve and oracle ----------
+
+export const spotPrice = (c: Curve) => c.x / c.y; // nano-USD per token
+
+/** Time-weighted average of the curve price over the oracle window ending now; null if no time has elapsed. */
+function curveMark(o: CurveOracle, now: bigint, spot: bigint): bigint | null {
+  if (o.window === 0n) return spot;
+  const from = now - o.window;
+  let weighted = 0n;
+  let start: bigint | null = null;
+  o.history.forEach((h, i) => {
+    const segStart = h.t > from ? h.t : from;
+    const segEnd = o.history[i + 1]?.t ?? now;
+    if (segEnd <= segStart) return;
+    start ??= segStart;
+    weighted += h.price * (segEnd - segStart);
+  });
+  if (start === null || now === start) return null; // a zero-width window says nothing: keep the previous mark
+  return weighted / (now - start);
+}
+
+/** Record the current spot price and recompute the mark. Returns a mark effect if it moved. */
+function refreshOracle(s: State, m: Market): Effect[] {
+  if (!m.curve || !m.oracle) return [];
+  const spot = spotPrice(m.curve);
+  const h = m.oracle.history;
+  const last = h[h.length - 1];
+  if (last && last.t === s.time) last.price = spot;
+  else if (!last || last.price !== spot) h.push({ t: s.time, price: spot });
+  // Drop change points that ended before the window began (keep the one straddling its start).
+  while (h.length > 1 && h[1]!.t <= s.time - m.oracle.window) h.shift();
+  const before = m.mark!;
+  m.mark = curveMark(m.oracle, s.time, spot) ?? before;
+  return m.mark === before ? [] : [{ kind: "mark", market: m.id, from: before, to: m.mark, spot }];
 }
 
 // ---------- fills ----------
@@ -199,6 +263,7 @@ function parseAmount(amount: Amount, available: bigint, what: string): bigint {
 function onMarket(s: State, e: Extract<Event, { type: "market" }>) {
   if (s.markets[e.id]) throw new Rejected(`market ${e.id} exists`);
   const binary = e.preset === "binary";
+  const attention = e.preset === "attention";
   const [lo, hi] = e.bounds ?? (binary ? ["0", "1"] : ["0", null]);
   const config: MarketConfig = {
     lower: parseFixed(lo),
@@ -211,13 +276,24 @@ function onMarket(s: State, e: Extract<Event, { type: "market" }>) {
   if (config.initialLeverage < 1n || config.maintenanceLeverage < config.initialLeverage) {
     throw new Rejected("need 1 ≤ initialLeverage ≤ maintenanceLeverage");
   }
-  s.markets[e.id] = { id: e.id, config, mark: null, status: "open", vault: 0n, positions: {} };
+  let curve: Curve | null = null;
+  let oracle: CurveOracle | null = null;
+  if (attention || e.curve) {
+    const x0 = parseFixed(e.curve?.usdc ?? "5000");
+    const y0 = BigInt(e.curve?.tokens ?? 1_000_000_000);
+    if (x0 <= 0n || y0 <= 0n) throw new Rejected("curve reserves must be positive");
+    const feeBps = BigInt(e.feeBps ?? 100);
+    if (feeBps < 0n || feeBps >= 10_000n) throw new Rejected("feeBps must be in [0, 10000)");
+    curve = { x0, y0, x: x0, y: y0, feeBps };
+    oracle = { window: BigInt(e.oracleWindow ?? 0), history: [{ t: s.time, price: spotPrice(curve) }] };
+  }
+  s.markets[e.id] = { id: e.id, config, curve, oracle, mark: curve ? spotPrice(curve) : null, status: "open", vault: 0n, positions: {} };
 }
 
 function onDeposit(s: State, e: Extract<Event, { type: "deposit" }>) {
   const amt = parseFixed(e.amount);
   if (amt <= 0n) throw new Rejected("deposit must be positive");
-  const a = (s.accounts[e.account] ??= { id: e.account, wallet: 0n, deposited: 0n, withdrawn: 0n });
+  const a = (s.accounts[e.account] ??= { id: e.account, wallet: 0n, spot: {}, deposited: 0n, withdrawn: 0n });
   a.wallet += amt;
   a.deposited += amt;
   s.totalDeposits += amt;
@@ -353,8 +429,73 @@ function resolveDistress(m: Market): Effect[] {
 function onTick(s: State, e: { market: string; price: string }): Effect[] {
   const m = getMarket(s, e.market);
   if (m.status !== "open") throw new Rejected(`${m.id} is resolved`);
+  if (m.curve) throw new Rejected(`${m.id} is priced by its own curve, not an external tick`);
   m.mark = parsePrice(m, e.price);
   return resolveDistress(m);
+}
+
+const fee = (gross: bigint, bps: bigint) => ceilDiv(gross * bps, 10_000n);
+
+function getCurve(m: Market): Curve {
+  if (!m.curve) throw new Rejected(`${m.id} has no spot curve`);
+  if (m.status !== "open") throw new Rejected(`${m.id} is resolved`);
+  return m.curve;
+}
+
+function onSpotBuy(s: State, e: Extract<Event, { type: "spotBuy" }>): Effect[] {
+  const a = getAccount(s, e.account);
+  const m = getMarket(s, e.market);
+  const c = getCurve(m);
+  const usdc = parseAmount(e.amount, a.wallet, "spend");
+  const f = fee(usdc, c.feeBps);
+  const priceBefore = spotPrice(c);
+  const k = c.x * c.y;
+  const x = c.x + usdc - f;
+  const y = ceilDiv(k, x); // round in the curve's favour
+  const tokens = c.y - y;
+  if (tokens <= 0n) throw new Rejected("buy too small");
+  a.wallet -= usdc;
+  a.spot[m.id] = (a.spot[m.id] ?? 0n) + tokens;
+  s.fees += f;
+  c.x = x;
+  c.y = y;
+  const spot: Effect = { kind: "spot", market: m.id, account: a.id, usdc, tokens, fee: f, priceBefore, priceAfter: spotPrice(c) };
+  return [spot, ...refreshOracle(s, m), ...resolveDistress(m)];
+}
+
+function onSpotSell(s: State, e: Extract<Event, { type: "spotSell" }>): Effect[] {
+  const a = getAccount(s, e.account);
+  const m = getMarket(s, e.market);
+  const c = getCurve(m);
+  const held = a.spot[m.id] ?? 0n;
+  const tokens = e.tokens === "all" ? held : BigInt(e.tokens);
+  if (tokens <= 0n) throw new Rejected("nothing to sell");
+  if (tokens > held) throw new Rejected(`sell ${tokens} exceeds holdings ${held}`);
+  const priceBefore = spotPrice(c);
+  const k = c.x * c.y;
+  const y = c.y + tokens;
+  const x = ceilDiv(k, y); // round in the curve's favour
+  const gross = c.x - x;
+  const f = fee(gross, c.feeBps);
+  if (gross - f <= 0n) throw new Rejected("sell too small");
+  a.spot[m.id] = held - tokens;
+  a.wallet += gross - f;
+  s.fees += f;
+  c.x = x;
+  c.y = y;
+  const spot: Effect = { kind: "spot", market: m.id, account: a.id, usdc: -(gross - f), tokens: -tokens, fee: f, priceBefore, priceAfter: spotPrice(c) };
+  return [spot, ...refreshOracle(s, m), ...resolveDistress(m)];
+}
+
+function onAdvance(s: State, e: Extract<Event, { type: "advance" }>): Effect[] {
+  const dt = BigInt(e.seconds);
+  if (dt <= 0n) throw new Rejected("advance must be positive");
+  s.time += dt;
+  return marketIds(s).flatMap((id) => {
+    const m = s.markets[id]!;
+    if (!m.curve || m.status !== "open") return [];
+    return [...refreshOracle(s, m), ...resolveDistress(m)];
+  });
 }
 
 function onResolve(s: State, e: Extract<Event, { type: "resolve" }>): Effect[] {
@@ -406,6 +547,12 @@ export function checkMarket(m: Market): string[] {
   if (collateralMinusBasis !== m.vault) errs.push(`${m.id}: Σ(collateral − basis) ${collateralMinusBasis} != vault ${m.vault}`);
   if (sumEquity !== m.vault) errs.push(`${m.id}: Σequity ${sumEquity} != vault ${m.vault}`);
   if (sumReleasable > m.vault) errs.push(`${m.id}: Σreleasable > vault`);
+  if (m.curve) {
+    const c = m.curve;
+    if (c.x < c.x0) errs.push(`${m.id}: curve holds negative USDC`);
+    if (c.x * c.y < c.x0 * c.y0) errs.push(`${m.id}: curve invariant k decreased`);
+    if (c.y <= 0n) errs.push(`${m.id}: curve token reserve exhausted`);
+  }
   return errs;
 }
 
@@ -417,9 +564,17 @@ export function checkInvariants(s: State): string[] {
     wallets += a.wallet;
     if (a.wallet < 0n) errs.push(`${id}: negative wallet`);
   }
-  const vaults = marketIds(s).reduce((sum, id) => sum + s.markets[id]!.vault, 0n);
-  if (wallets + vaults !== s.totalDeposits - s.totalWithdrawals) {
-    errs.push(`Σwallets + Σvaults ${wallets + vaults} != deposits − withdrawals ${s.totalDeposits - s.totalWithdrawals}`);
+  let held = 0n;
+  for (const id of marketIds(s)) {
+    const m = s.markets[id]!;
+    held += m.vault;
+    if (!m.curve) continue;
+    held += m.curve.x - m.curve.x0; // real USDC sitting in the curve
+    const tokens = accountIds(s).reduce((sum, a) => sum + (s.accounts[a]!.spot[id] ?? 0n), 0n);
+    if (tokens !== m.curve.y0 - m.curve.y) errs.push(`${id}: Σ holdings ${tokens} != tokens sold ${m.curve.y0 - m.curve.y}`);
+  }
+  if (wallets + held + s.fees !== s.totalDeposits - s.totalWithdrawals) {
+    errs.push(`wallets + vaults + curves + fees ${wallets + held + s.fees} != deposits − withdrawals ${s.totalDeposits - s.totalWithdrawals}`);
   }
   return errs;
 }
@@ -454,6 +609,15 @@ export function apply(state: State, event: Event): Result {
         break;
       case "resolve":
         effects = onResolve(s, event);
+        break;
+      case "spotBuy":
+        effects = onSpotBuy(s, event);
+        break;
+      case "spotSell":
+        effects = onSpotSell(s, event);
+        break;
+      case "advance":
+        effects = onAdvance(s, event);
         break;
       default:
         throw new Rejected(`unknown event ${JSON.stringify(event)}`);

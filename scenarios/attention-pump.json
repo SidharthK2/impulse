@@ -1,0 +1,96 @@
+{
+ "name": "F: pump attack on a curve-priced attention perp (instant oracle)",
+ "description": "Mirror's attention-market design: the perp's oracle is the token's own xy=k spot price. mallory is long against two 2.85x shorts, spends $5,000 on spot, and the shorts are bankrupted inside that same transaction. mallory sells the spot straight back, losing only fees, and walks away with the shorts' collateral.",
+ "events": [
+  {
+   "type": "market",
+   "id": "ATTN",
+   "preset": "attention",
+   "feeBps": 100,
+   "oracleWindow": 0
+  },
+  {
+   "type": "deposit",
+   "account": "holder",
+   "amount": "20000"
+  },
+  {
+   "type": "spotBuy",
+   "account": "holder",
+   "market": "ATTN",
+   "amount": "all"
+  },
+  {
+   "type": "deposit",
+   "account": "v1",
+   "amount": "1000"
+  },
+  {
+   "type": "allocate",
+   "account": "v1",
+   "market": "ATTN",
+   "amount": "all"
+  },
+  {
+   "type": "deposit",
+   "account": "v2",
+   "amount": "1000"
+  },
+  {
+   "type": "allocate",
+   "account": "v2",
+   "market": "ATTN",
+   "amount": "all"
+  },
+  {
+   "type": "deposit",
+   "account": "mallory",
+   "amount": "7000"
+  },
+  {
+   "type": "allocate",
+   "account": "mallory",
+   "market": "ATTN",
+   "amount": "2000"
+  },
+  {
+   "type": "trade",
+   "market": "ATTN",
+   "buyer": "mallory",
+   "seller": "v1",
+   "size": 22800000,
+   "price": "0.000123007"
+  },
+  {
+   "type": "trade",
+   "market": "ATTN",
+   "buyer": "mallory",
+   "seller": "v2",
+   "size": 22800000,
+   "price": "0.000123007"
+  },
+  {
+   "type": "spotBuy",
+   "account": "mallory",
+   "market": "ATTN",
+   "amount": "5000"
+  },
+  {
+   "type": "spotSell",
+   "account": "mallory",
+   "market": "ATTN",
+   "tokens": "all"
+  },
+  {
+   "type": "release",
+   "account": "mallory",
+   "market": "ATTN",
+   "amount": "all"
+  },
+  {
+   "type": "withdraw",
+   "account": "mallory",
+   "amount": "all"
+  }
+ ]
+}

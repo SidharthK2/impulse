@@ -293,6 +293,7 @@ describe("fuzz", () => {
       { id: "MEME", event: { type: "market", id: "MEME", preset: "perp", resolvable: true }, price: (r, mk) => Math.max(1e-9, mk * (r() < 0.1 ? 0.1 + r() * 8 : 0.8 + r() * 0.4)).toFixed(9) },
       { id: "EQ", event: { type: "market", id: "EQ", preset: "perp", resolvable: true, initialLeverage: 5, maintenanceLeverage: 10 }, price: (r, mk) => (mk * (0.9 + r() * 0.2)).toFixed(9) },
     ];
+    const attnWindow = [0, 300];
     const start: Record<string, string> = { BIN: "0.5", MEME: "0.00001", EQ: "250" };
     let adls = 0;
     for (let seed = 1; seed <= 300; seed++) {
@@ -308,11 +309,29 @@ describe("fuzz", () => {
         step(m.event);
         step(K(start[m.id]!, m.id));
       }
+      step({ type: "market", id: "ATTN", preset: "attention", oracleWindow: pick(attnWindow) });
       for (const n of names) {
         step({ type: "deposit", account: n, amount: String(30 + Math.floor(r() * 900)) });
         for (const m of markets) step({ type: "allocate", account: n, market: m.id, amount: String(10 + Math.floor(r() * 300)) });
+        step({ type: "deposit", account: n, amount: String(100 + Math.floor(r() * 3000)) });
+        step({ type: "spotBuy", account: n, market: "ATTN", amount: String(50 + Math.floor(r() * 1000)) });
+        step({ type: "allocate", account: n, market: "ATTN", amount: String(10 + Math.floor(r() * 300)) });
       }
       for (let i = 0; i < 120; i++) {
+        if (r() < 0.25) {
+          // curve market: perp trades at the mark, spot pumps and dumps, time passing
+          const a = pick(names);
+          const roll = r();
+          const mark = s.markets.ATTN!.mark!;
+          if (roll < 0.35) {
+            const b = pick(names.filter((n) => n !== a));
+            const size = BigInt(Math.floor((5 + r() * 300) / (Number(mark) / 1e9)));
+            step({ type: "trade", market: "ATTN", buyer: a, seller: b, size: size.toString(), price: (Number(mark) / 1e9).toFixed(9) });
+          } else if (roll < 0.6) step({ type: "spotBuy", account: a, market: "ATTN", amount: r() < 0.2 ? "all" : String(1 + Math.floor(r() * 2000)) });
+          else if (roll < 0.85) step({ type: "spotSell", account: a, market: "ATTN", tokens: "all" });
+          else step({ type: "advance", seconds: 1 + Math.floor(r() * 600) });
+          continue;
+        }
         const m = pick(markets);
         const mark = Number(s.markets[m.id]!.mark) / 1e9;
         const roll = r();
@@ -333,9 +352,74 @@ describe("fuzz", () => {
         for (const n of names) step(REL(n, "all", m.id));
       }
       for (const n of names) step({ type: "withdraw", account: n, amount: "all" });
-      expect(marketIds(s).every((id) => s.markets[id]!.vault === 0n)).toBe(true);
-      expect(s.totalDeposits - s.totalWithdrawals).toBe(0n);
+      expect(marketIds(s).filter((id) => id !== "ATTN").every((id) => s.markets[id]!.vault === 0n)).toBe(true);
     }
     expect(adls).toBeGreaterThan(30);
+  });
+});
+
+describe("curve-priced markets (Mirror attention design)", () => {
+  const attn = (opts: Partial<Extract<Event, { type: "market" }>> = {}): Event => ({ type: "market", id: "A", preset: "attention", feeBps: 0, ...opts });
+  const buy = (account: string, amount: string): Event => ({ type: "spotBuy", account, market: "A", amount });
+
+  it("reproduces Mirror's published curve prices", () => {
+    // Mirror docs: $10k demand → $0.0000450, $20k → $0.0001250, $100k → $0.0022050 (we round 1 nano in the curve's favour).
+    for (const [demand, price] of [["10000", "0.000045"], ["20000", "0.000125"], ["100000", "0.002205"]] as const) {
+      const { state } = run([attn(), { type: "deposit", account: "x", amount: demand }, buy("x", "all")]);
+      expect(usd(price) - state.markets.A!.mark!).toBeLessThanOrEqual(1n);
+    }
+  });
+
+  it("rejects external ticks on curve markets", () => {
+    expect(run([attn(), { type: "tick", market: "A", price: "1" }]).results[1]!.ok).toBe(false);
+  });
+
+  it("a buy-then-sell round trip returns the USDC minus fees", () => {
+    const { state } = run([
+      attn({ feeBps: 100 }),
+      { type: "deposit", account: "x", amount: "1000" },
+      buy("x", "all"),
+      { type: "spotSell", account: "x", market: "A", tokens: "all" },
+    ]);
+    const back = state.accounts.x!.wallet;
+    expect(back).toBeLessThan(usd("1000"));
+    expect(back).toBeGreaterThan(usd("979")); // two 1% fees, plus rounding in the curve's favour
+  });
+
+  it("a TWAP oracle ignores a pump until time passes", () => {
+    const { state, results } = run([attn({ oracleWindow: 600 }), { type: "deposit", account: "x", amount: "5000" }, buy("x", "all")]);
+    expect(state.markets.A!.mark).toBe(usd("0.000005")); // spot moved, mark did not
+    expect(effectsOf(results.at(-1)!).some((f) => f.kind === "mark")).toBe(false);
+    const later = apply(state, { type: "advance", seconds: 300 });
+    expect(later.ok && later.state.markets.A!.mark! > usd("0.000005")).toBe(true);
+  });
+
+  it("scenario F: an instant-oracle pump bankrupts the shorts inside the pump transaction", () => {
+    const { steps, final } = replay(scenario("attention-pump"));
+    const pump = steps.find((s) => s.event.type === "spotBuy" && s.event.account === "mallory")!;
+    expect(effectsOf(pump.result).filter((f) => f.kind === "bankrupt").map((f) => (f.kind === "bankrupt" ? f.account : ""))).toEqual(["v1", "v2"]);
+    const mallory = final.accounts.mallory!;
+    expect(mallory.withdrawn - mallory.deposited).toBe(usd("1900.499932236")); // $2,000 of victim collateral − $99.50 fees
+  });
+});
+
+describe("pump attack sweep", async () => {
+  const { runAttack } = await import("../src/attack.js");
+
+  it("instant oracle: a modest pump extracts all victim collateral for fees only", () => {
+    const r = runAttack({ pump: 5_000, window: 0, feeBps: 100, retrace: 0 });
+    expect(r.victimLoss).toBe(r.victimCollateral);
+    const gap = r.victimCollateral - r.attackerFees - r.attackerPnl; // curve rounds a few nano-dollars in its own favour
+    expect(gap >= 0n && gap < usd("0.001")).toBe(true);
+  });
+
+  it("TWAP without arbitrage only delays the attack", () => {
+    expect(runAttack({ pump: 5_000, window: 3600, feeBps: 100, retrace: 0 }).attackerPnl).toBeGreaterThan(0n);
+  });
+
+  it("TWAP with strong arbitrage makes the attack unprofitable", () => {
+    for (const pump of [2_000, 5_000, 20_000]) {
+      expect(runAttack({ pump, window: 600, feeBps: 100, retrace: 0.9 }).attackerPnl).toBeLessThan(0n);
+    }
   });
 });

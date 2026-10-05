@@ -44,6 +44,12 @@ export function describeEvent(e: Event, before: State): string {
     }
     case "resolve":
       return `RESOLVE   ${e.market} @ ${e.price}`;
+    case "spotBuy":
+      return `spot buy  ${e.market}: ${e.account} spends ${amt(e.amount)}`;
+    case "spotSell":
+      return `spot sell ${e.market}: ${e.account} sells ${e.tokens === "all" ? "all" : e.tokens} tokens`;
+    case "advance":
+      return `advance   +${e.seconds}s → t=${before.time + BigInt(e.seconds)}s`;
   }
 }
 
@@ -94,6 +100,15 @@ function effectLines(effects: Effect[]): string[] {
       case "settlement":
         out.push(`    settled at ${fmtPrice(f.price)}: ${f.closes.map((c) => `${c.account} ${signed(c.closed)}`).join(", ") || "(no positions)"}`);
         break;
+      case "spot":
+        out.push(
+          `    ${f.tokens > 0n ? "bought" : "sold"} ${abs(f.tokens)} tokens for $${fmtUsd(abs(f.usdc))} (fee $${fmtUsd(f.fee)}); ` +
+            `spot ${fmtPrice(f.priceBefore)} → ${fmtPrice(f.priceAfter)}`,
+        );
+        break;
+      case "mark":
+        out.push(`    [${f.market}] mark ${fmtPrice(f.from)} → ${fmtPrice(f.to)} (spot ${fmtPrice(f.spot)})`);
+        break;
     }
   }
   return out;
@@ -115,7 +130,16 @@ export function marketTotals(m: Market): string {
 export function totals(s: State): string {
   const wallets = accountIds(s).reduce((sum, id) => sum + s.accounts[id]!.wallet, 0n);
   const vaults = marketIds(s).reduce((sum, id) => sum + s.markets[id]!.vault, 0n);
-  return `wallets $${fmtUsd(wallets)} + market vaults $${fmtUsd(vaults)} = $${fmtUsd(wallets + vaults)} held | deposits − withdrawals $${fmtUsd(s.totalDeposits - s.totalWithdrawals)}`;
+  const curves = marketIds(s).reduce((sum, id) => {
+    const c = s.markets[id]!.curve;
+    return c ? sum + c.x - c.x0 : sum;
+  }, 0n);
+  const held = wallets + vaults + curves + s.fees;
+  return (
+    `wallets $${fmtUsd(wallets)} + market vaults $${fmtUsd(vaults)}` +
+    (curves || s.fees ? ` + curves $${fmtUsd(curves)} + fees $${fmtUsd(s.fees)}` : "") +
+    ` = $${fmtUsd(held)} held | deposits − withdrawals $${fmtUsd(s.totalDeposits - s.totalWithdrawals)}`
+  );
 }
 
 export function renderStep(step: Step): string {
@@ -126,15 +150,19 @@ export function renderStep(step: Step): string {
     return lines.join("\n");
   }
   const after = result.state;
-  if ("account" in event && (event.type === "deposit" || event.type === "withdraw" || event.type === "allocate" || event.type === "release")) {
+  if ("account" in event) {
     const b = before.accounts[event.account]?.wallet ?? 0n;
     lines.push(`    ${event.account} wallet ${arrow(fmtUsd(b), fmtUsd(after.accounts[event.account]!.wallet))}`);
   }
-  if ("market" in event) {
-    const big = event.type === "tick" || event.type === "resolve";
-    lines.push(...effectLines(result.effects));
-    lines.push(...positionRows(before.markets[event.market], after.markets[event.market]!, big && result.effects.length > 0));
-    if (big) lines.push(`    ${marketTotals(after.markets[event.market]!)}`);
+  lines.push(...effectLines(result.effects));
+  const touched = "market" in event ? [event.market] : [...new Set(result.effects.map((f) => f.market))];
+  const distress = (id: string) => result.effects.some((f) => f.market === id && (f.kind === "liquidation" || f.kind === "bankrupt"));
+  for (const id of touched) {
+    const big = event.type === "tick" || event.type === "resolve" || event.type === "advance" || distress(id);
+    const quiet = event.type === "spotBuy" || event.type === "spotSell";
+    if (quiet && !distress(id)) continue;
+    lines.push(...positionRows(before.markets[id], after.markets[id]!, big && result.effects.length > 0));
+    if (big) lines.push(`    ${marketTotals(after.markets[id]!)}`);
   }
   return lines.join("\n");
 }

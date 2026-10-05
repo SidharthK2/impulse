@@ -33,6 +33,7 @@ Market types are config, not code:
 | `binary` | [0, 1] | yes | Polymarket/Kalshi outcome |
 | `perp` | (0, ∞) | no (optionally yes, e.g. pre-IPO flatten) | memecoin, attention token, equity |
 | custom `bounds` | [lo, hi] | either | anything bounded |
+| `attention` | (0, ∞) | no | Mirror attention token: perp priced off its own xy=k spot curve |
 
 Money moves: `deposit` → wallet, `allocate` wallet → market bucket, `release` bucket → wallet (limited, see
 below), `withdraw` wallet → out. Creating a market is an event too (permissionless listing, like Mirror).
@@ -47,6 +48,21 @@ entry  = B / q                                         (display only)
 
 We track cost basis instead of average entry price. Averaging entry prices introduces
 rounding that leaks value between accounts, and cost basis doesn't.
+
+## Curve-priced markets (Mirror's attention design)
+
+An `attention` market has a spot curve with virtual reserves `x` (USDC) and `y` (tokens). The defaults are
+Mirror's: x0 = $5,000 and y0 = 1B, giving a floor price of $0.000005. Spot price is `x / y`.
+
+* `spotBuy U`: fee `ceil(U·bps)`, then `x += U − fee`, `y = ceil(k / x)`, and the buyer gets `Δy` tokens.
+* `spotSell T`: `y += T`, `x = ceil(k / y)`, and the seller gets `Δx − fee`.
+
+Both round in the curve's favour, so `k` never decreases and the curve always holds `x − x0` real USDC.
+
+The perp's mark is the curve price, read either instantly or as a TWAP over `oracleWindow` seconds of
+piecewise-constant spot history. A clock advances only on `advance` events. Every spot trade and clock advance
+refreshes the mark and runs liquidation/ADL in the same atomic transition. A pump in the same second as the last
+oracle update has zero weight in a TWAP, and the mark doesn't move. External `tick`s are rejected on curve markets.
 
 ## How matched positions are created and closed
 
@@ -192,7 +208,9 @@ Per market k (these never reference another market, which is what makes sharding
 
 Global:
 
-8. **Conservation:** Σ wallets + Σ V_k = Σ deposits − Σ withdrawals, and no wallet is negative.
+8. **Conservation:** Σ wallets + Σ V_k + Σ curve USDC (x − x0) + fees = Σ deposits − Σ withdrawals, and no
+   wallet is negative.
+9. **Curves:** Σ token holdings = y0 − y, `x ≥ x0`, and `x·y ≥ x0·y0`.
 
 ### Why clamping negative balances to zero is not solvency
 
@@ -203,6 +221,5 @@ this numerically. Solvency means **re-allocating** D to specific accounts, not h
 
 ## Deliberately omitted (v1)
 
-Not yet built (planned): Mirror-style curve oracle (attention markets), alternative ADL rules (capped pro-rata
-on positive PnL), leverage graduation, funding. Not planned for v1: fees, partial liquidation, liquidation
+Not yet built (planned): alternative ADL rules (capped pro-rata on positive PnL), leverage graduation, funding. Not planned for v1: fees, partial liquidation, liquidation
 penalties, order book/matching, cross margin, and oracle sanity checks.

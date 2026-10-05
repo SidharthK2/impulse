@@ -9,9 +9,10 @@ The question it answers: **when a price gaps, what happens to leveraged position
 
 ```bash
 pnpm install
-pnpm demo                          # five scenarios, full ledger after every event
+pnpm demo                          # six scenarios, full ledger after every event
+pnpm attack                        # pump-attack sweep on a curve-priced perp (<1s)
 pnpm replay scenarios/x.json       # any scenario; add --json for machine-readable output
-pnpm test                          # 33 tests incl. a 300-history multi-market seeded fuzz
+pnpm test                          # 41 tests incl. a 300-history multi-market seeded fuzz
 ```
 
 ## Mechanism (one paragraph)
@@ -30,7 +31,8 @@ The full model, the proofs, and the choices behind them are in [docs/ACCOUNTING.
 
 ## The demo: who bore the loss
 
-A–C are binary outcome markets, D is an unbounded memecoin perp, and E runs two markets side by side.
+A–C are binary outcome markets, D is an unbounded memecoin perp, E runs two markets side by side, and F is a
+Mirror-style attention market whose perp is priced off its own bonding curve.
 A–D end with every account withdrawing in full and the vault reaching **exactly $0.00**:
 no stranded dollars and no unpaid claims. "Theoretical" means holding every voluntary trade to resolution with
 no ADL.
@@ -76,6 +78,38 @@ alice holds BTCX and ELECTION positions with separate collateral. ELECTION gaps 
 there. Her BTCX position, its collateral and her counterparty are **byte-for-byte unchanged** (asserted in the
 tests). This is the property Mirror's sharding claim rests on.
 
+### F. Pump attack on a curve-priced perp (`attention-pump.json`, `pnpm attack`)
+
+Mirror's attention markets give every token an xy=k spot curve, and the perp "uses that spot price for its oracle
+price calculation". Our curve reproduces Mirror's published price table exactly. On a pure xy=k curve, buying and
+then selling straight back returns your USDC minus fees, so pushing the oracle costs almost nothing.
+
+In the scenario, mallory is long against two ~2.85× shorts, spends $5,000 on spot, and both shorts go bankrupt
+**inside that same transaction**. mallory sells straight back, deposits $7,000 and withdraws $8,900.50: the
+shorts' entire $2,000, minus $99.50 in fees.
+
+The sweep (3 shorts × $1,000, start price about $0.000125) varies the oracle, the fee, and how much of the pump
+arbitrageurs sell back ("retrace") while the attacker waits:
+
+| Oracle | Retrace | Pump | Shorts lost | Attacker PnL |
+|---|---:|---:|---:|---:|
+| instant spot | — | $5,000 | **$3,000 (all)** | **+$2,900** |
+| TWAP 10m or 60m | 0% | $5,000 | $1,502 | +$1,402 |
+| TWAP 10m | 50% | $5,000 | $1,502 | +$710 |
+| TWAP 10m | 50% | $20,000 | $1,910 | −$4,070 |
+| TWAP 10m | 90% | any | $0–$1,528 | −$283 to −$9,528 |
+
+(1% fee shown; 0.3% is similar.)
+
+* **An instant oracle is free money:** a pump of under 2× the victims' collateral takes all of it, for fees.
+* **TWAP alone only delays the attack.** The attacker holds through the window, and 10m vs 60m makes no
+  difference. Smoothing does turn the gap into a ramp, so shorts are liquidated rather than bankrupted and keep
+  about half.
+* **What stops it is arbitrage liquidity, not oracle math.** At a 90% retrace every attack loses money. But a new
+  attention token, the case MicroPerps exist for, is exactly where nobody is there to sell into the pump.
+* Big pumps still liquidate the shorts even when they lose money. That's griefing, and the attacker's loss goes
+  to the arbitrageurs.
+
 ## What this shows
 
 1. **"Solvent after every transition" holds, and it's cheap.** It's just bookkeeping: every account has
@@ -91,7 +125,9 @@ tests). This is the property Mirror's sharding claim rests on.
    and enriched the side that was wrong. With a thin venue as the oracle, that's an attack you can pay for.
 5. **On unbounded assets, shorts have no safe collateral level** (scenario D). Any ADL-only venue listing
    memecoins with leverage will socialize squeezes onto the longs.
-6. **"3× leverage" is ambiguous on a [0,1] asset.** It's measured against notional `|q|·p`, but a short's
+6. **A perp priced off its own curve can be pumped for fees** (scenario F). Smoothing helps only when someone
+   sells into the pump, and young markets have nobody.
+7. **"3× leverage" is ambiguous on a [0,1] asset.** It's measured against notional `|q|·p`, but a short's
    worst case is `|q|·(1−p)`. gina's "3×" was 43× her max loss. Any real design needs per-side margin.
 
 ## Limitations (deliberate, v1)
@@ -105,9 +141,10 @@ tests). This is the property Mirror's sharding claim rests on.
   accounts that are barely in profit, and it eats into their principal. The literature's fair rule (Chitra,
   arXiv:2512.01112) is capped pro-rata on positive PnL with principal protected. That's next, plus a fallback for
   when PnL alone can't cover the shortfall.
-- **External-feed oracle only, with no sanity bands or staleness rules.** Mirror's attention markets price the
-  perp off Mirror's own bonding-curve spot. That curve oracle, and a pump attack against it, is the next
-  milestone. There's no trading before the first tick (Mirror claims it can run with no price feed).
+- **Oracles:** an external feed, or the market's own xy=k curve (instant or TWAP). There are no sanity bands or
+  staleness rules. Mirror layers its curve on an order book; we model only the curve, so resting book liquidity,
+  which would act like our "retrace" arbitrageurs, isn't simulated. The spot fee (default 1%) is our assumption,
+  since Mirror's isn't published.
 - **Withdrawals: realized cash only, above initial margin.** This is conservative by choice; see ACCOUNTING.md.
 - Not yet: leverage graduation (3×→100×). Not covered: fees, cross margin, tokens, contracts, frontend.
 
@@ -124,8 +161,9 @@ tests). This is the property Mirror's sharding claim rests on.
 src/engine.ts     markets, wallets, events, margin, liquidation/ADL loop, invariants, replay
 src/alloc.ts      largest-remainder apportionment (exact integer pro-rata)
 src/fixed.ts      nano-USD fixed-point helpers
+src/attack.ts     pump-attack harness and parameter sweep
 src/report.ts     ledger rendering, state hash
 src/cli.ts        scenario runner
-scenarios/        A–E above (JSON event lists)
+scenarios/        A–F above (JSON event lists)
 docs/             ACCOUNTING.md (model + invariants), MIRROR-NOTES.md, RESEARCH-NOTES.md, FACT-CHECK.md
 ```
