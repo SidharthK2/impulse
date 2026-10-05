@@ -2,7 +2,8 @@
 
 I retrieved these on 2026-10-03 with the invite cookie flow (visit the invite URL Cesar shared, then reuse the cookie jar):
 `/launch`, `/docs/what-is-mirror`, `/docs/how-microperps-work`. These notes come from reading those pages
-directly, not from the project brief. `/docs/faq` returned 404 at that path. I didn't go looking for its real slug.
+directly, not from the project brief. On 2026-10-05 I also read `/docs/attention-markets`, `/docs/private-trading`, `/docs/agentic-trading` (a stub),
+`/docs/tokenomics` and `/docs/help` (the FAQ).
 
 ## Stated in the docs (claims, not verified behaviour)
 
@@ -21,6 +22,22 @@ directly, not from the project brief. `/docs/faq` returned 404 at that path. I d
   but don't say so.
 - **Robustness claims:** "function on arbitrarily illiquid price feeds (and even on no price feed at all)", and handle
   equities over nights and weekends because "MicroPerps are robust to gaps in the price feed".
+
+## Architecture details (from the other pages)
+
+- **Hybrid book plus curve.** "Mirror is a fully-fledged order-book exchange, but it also supports the ability to layer a
+  continuous curve on top of the order-book." An order fills against whichever of the curve or the best resting order is better.
+- **Engine in Rust**, with integer fixed-point: the order request structs use `StandardAtoms` sizes and `RateNanos` (1e-9) fee rates.
+- **Attention tokens:** 1B fixed supply on an xy=k virtual-reserve curve (floor market cap $5k; price is quadratic in USDC demand).
+  There's a 60s batch "sniping" auction that clears at one uniform price, equal to the post-batch marginal price. At platform
+  launch it's sniping-only for 24h, then markets open one at a time in a "drip".
+- **Attention perps:** "All Attention Tokens start with a spot market and a MicroPerp market that uses that spot price for its oracle
+  price calculation." So the oracle is **Mirror's own curve and book**. How the price is smoothed, if at all, isn't stated.
+- **Stealth Mode:** order placements are hidden from the "public transaction log" and the public book, and executions are anonymized.
+- **Fees:** referrers get 14% / 4% / 2% of fees across three degrees, and referees get 10% off. Builder fees go up to 50% on taker
+  fills. The fee schedule itself isn't published; one example uses a hypothetical 2.5%.
+- **Org and token:** "not a company", bootstrapped by founder Nader Al-Naji (Basis, DeSo). $MIRROR pre-sale at $0.0015 base
+  ($300M circulating market cap) with a bonus decaying to an effective $0.001, cap of about $118.7M, refundable before launch.
 
 ## Not in the docs (we had to choose)
 
