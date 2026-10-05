@@ -9,10 +9,11 @@ The question it answers: **when a price gaps, what happens to leveraged position
 
 ```bash
 pnpm install
-pnpm demo                          # six scenarios, full ledger after every event
+pnpm demo                          # seven scenarios, full ledger after every event
 pnpm attack                        # pump-attack sweep on a curve-priced perp (<1s)
+pnpm compare                       # every scenario under both ADL rules, side by side
 pnpm replay scenarios/x.json       # any scenario; add --json for machine-readable output
-pnpm test                          # 41 tests incl. a 300-history multi-market seeded fuzz
+pnpm test                          # 44 tests incl. a 300-history multi-market seeded fuzz
 ```
 
 ## Mechanism (one paragraph)
@@ -110,6 +111,27 @@ arbitrageurs sell back ("retrace") while the attacker waits:
 * Big pumps still liquidate the shorts even when they lose money. That's griefing, and the attacker's loss goes
   to the arbitrageurs.
 
+### G. Which ADL rule is fair? (`principal-fallback.json`, `pnpm compare`)
+
+Each market picks its ADL rule. Forced closes are always size pro-rata, since that keeps exposure balanced; the
+rule decides who pays the shortfall:
+
+* **`size`**: pro-rata by position size. Simple, and provably never pushes anyone negative within a tick, but it
+  ignores whether the absorber actually made money.
+* **`pnl`**: capped pro-rata on **positive PnL**, so principal is protected (Chitra, arXiv:2512.01112, shows
+  this is the unique fair rule). If total profit can't cover the shortfall, the rest comes out of principal
+  pro-rata by remaining equity, and every such hit is reported.
+
+| Scenario | Account | `size` rule | `pnl` rule |
+|---|---|---:|---:|
+| B | frank (right, barely profitable) | **−$20.20** ($20.20 principal hit) | **+$23.35** (no principal hit) |
+| B | hank (big winner) | +$116.70 | +$73.15 |
+| G | s1 (short since 0.05, underwater until the gap) | −$343.33 ($333.33 principal) | −$188.31 ($178.31 principal) |
+| G | s2 (shorted the top) | +$103.33 | −$51.69 ($51.69 principal) |
+
+Scenario G is the trilemma in practice: a $500 shortfall against only $270 of total profit. **Some principal
+pays under any rule.** The PnL rule only decides whose, and how much less ($230 vs $333).
+
 ## What this shows
 
 1. **"Solvent after every transition" holds, and it's cheap.** It's just bookkeeping: every account has
@@ -127,7 +149,9 @@ arbitrageurs sell back ("retrace") while the attacker waits:
    memecoins with leverage will socialize squeezes onto the longs.
 6. **A perp priced off its own curve can be pumped for fees** (scenario F). Smoothing helps only when someone
    sells into the pump, and young markets have nobody.
-7. **"3× leverage" is ambiguous on a [0,1] asset.** It's measured against notional `|q|·p`, but a short's
+7. **No ADL rule protects everyone.** The PnL rule is fairer and protects principal whenever profits cover the
+   shortfall. When they don't (scenario G), principal pays regardless.
+8. **"3× leverage" is ambiguous on a [0,1] asset.** It's measured against notional `|q|·p`, but a short's
    worst case is `|q|·(1−p)`. gina's "3×" was 43× her max loss. Any real design needs per-side margin.
 
 ## Limitations (deliberate, v1)
@@ -137,10 +161,8 @@ arbitrageurs sell back ("retrace") while the attacker waits:
 - **No order book.** Trades are bilateral fills fed from the scenario. Liquidation closes against the opposing
   side at mark, where a real venue would sell into a book.
 - **Full liquidation, no penalty, no partial closes.**
-- **Size-pro-rata ADL only.** It's simple and provably non-negative per tick, but scenario B shows it charging
-  accounts that are barely in profit, and it eats into their principal. The literature's fair rule (Chitra,
-  arXiv:2512.01112) is capped pro-rata on positive PnL with principal protected. That's next, plus a fallback for
-  when PnL alone can't cover the shortfall.
+- **Two ADL rules** (size, capped PnL). Queue/ranking rules (Binance and Hyperliquid style) aren't modeled.
+  Chitra shows they overshoot, so they'd only lose this comparison.
 - **Oracles:** an external feed, or the market's own xy=k curve (instant or TWAP). There are no sanity bands or
   staleness rules. Mirror layers its curve on an order book; we model only the curve, so resting book liquidity,
   which would act like our "retrace" arbitrageurs, isn't simulated. The spot fee (default 1%) is our assumption,
@@ -162,8 +184,9 @@ src/engine.ts     markets, wallets, events, margin, liquidation/ADL loop, invari
 src/alloc.ts      largest-remainder apportionment (exact integer pro-rata)
 src/fixed.ts      nano-USD fixed-point helpers
 src/attack.ts     pump-attack harness and parameter sweep
+src/compare.ts    replays scenarios under each ADL rule
 src/report.ts     ledger rendering, state hash
 src/cli.ts        scenario runner
-scenarios/        A–F above (JSON event lists)
+scenarios/        A–G above (JSON event lists)
 docs/             ACCOUNTING.md (model + invariants), MIRROR-NOTES.md, RESEARCH-NOTES.md, FACT-CHECK.md
 ```

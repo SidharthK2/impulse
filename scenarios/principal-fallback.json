@@ -1,0 +1,148 @@
+{
+ "name": "G: profits can't cover the shortfall (principal fallback)",
+ "description": "s1 shorted at 0.05 and was underwater through 0.60; s2 shorted at the top. lev buys 1,500 at 0.60 with 3x and the price gaps to 0.06: a $500 shortfall, but the shorts' combined profit since entry is only $270. Some principal has to pay under any rule: the trilemma in practice. Run with `pnpm compare` to see how each rule splits it.",
+ "events": [
+  {
+   "type": "market",
+   "id": "OUTCOME",
+   "preset": "binary"
+  },
+  {
+   "type": "deposit",
+   "account": "s1",
+   "amount": "700"
+  },
+  {
+   "type": "allocate",
+   "account": "s1",
+   "market": "OUTCOME",
+   "amount": "700"
+  },
+  {
+   "type": "deposit",
+   "account": "s2",
+   "amount": "200"
+  },
+  {
+   "type": "allocate",
+   "account": "s2",
+   "market": "OUTCOME",
+   "amount": "200"
+  },
+  {
+   "type": "deposit",
+   "account": "lou",
+   "amount": "20"
+  },
+  {
+   "type": "allocate",
+   "account": "lou",
+   "market": "OUTCOME",
+   "amount": "20"
+  },
+  {
+   "type": "deposit",
+   "account": "lev",
+   "amount": "310"
+  },
+  {
+   "type": "allocate",
+   "account": "lev",
+   "market": "OUTCOME",
+   "amount": "310"
+  },
+  {
+   "type": "tick",
+   "market": "OUTCOME",
+   "price": "0.05"
+  },
+  {
+   "type": "trade",
+   "market": "OUTCOME",
+   "buyer": "lou",
+   "seller": "s1",
+   "size": 1000,
+   "price": "0.05"
+  },
+  {
+   "type": "tick",
+   "market": "OUTCOME",
+   "price": "0.30"
+  },
+  {
+   "type": "tick",
+   "market": "OUTCOME",
+   "price": "0.60"
+  },
+  {
+   "type": "trade",
+   "market": "OUTCOME",
+   "buyer": "lev",
+   "seller": "lou",
+   "size": 1000,
+   "price": "0.60"
+  },
+  {
+   "type": "trade",
+   "market": "OUTCOME",
+   "buyer": "lev",
+   "seller": "s2",
+   "size": 500,
+   "price": "0.60"
+  },
+  {
+   "type": "tick",
+   "market": "OUTCOME",
+   "price": "0.06"
+  },
+  {
+   "type": "resolve",
+   "market": "OUTCOME",
+   "price": "0"
+  },
+  {
+   "type": "release",
+   "account": "s1",
+   "market": "OUTCOME",
+   "amount": "all"
+  },
+  {
+   "type": "withdraw",
+   "account": "s1",
+   "amount": "all"
+  },
+  {
+   "type": "release",
+   "account": "s2",
+   "market": "OUTCOME",
+   "amount": "all"
+  },
+  {
+   "type": "withdraw",
+   "account": "s2",
+   "amount": "all"
+  },
+  {
+   "type": "release",
+   "account": "lou",
+   "market": "OUTCOME",
+   "amount": "all"
+  },
+  {
+   "type": "withdraw",
+   "account": "lou",
+   "amount": "all"
+  },
+  {
+   "type": "release",
+   "account": "lev",
+   "market": "OUTCOME",
+   "amount": "all"
+  },
+  {
+   "type": "withdraw",
+   "account": "lev",
+   "amount": "all"
+  }
+ ]
+}

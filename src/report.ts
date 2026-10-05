@@ -95,7 +95,7 @@ function effectLines(effects: Effect[]): string[] {
         out.push(`    forced closes at mark: ${f.closes.map((c) => `${c.account} ${signed(c.closed)}`).join(", ")}`);
         break;
       case "haircut":
-        out.push(`    ADL haircut ${f.account}: −$${fmtUsd(f.amount)}`);
+        out.push(`    ADL haircut ${f.account}: −$${fmtUsd(f.amount)}${f.fromPrincipal > 0n ? ` (of which $${fmtUsd(f.fromPrincipal)} from principal)` : ""}`);
         break;
       case "settlement":
         out.push(`    settled at ${fmtPrice(f.price)}: ${f.closes.map((c) => `${c.account} ${signed(c.closed)}`).join(", ") || "(no positions)"}`);

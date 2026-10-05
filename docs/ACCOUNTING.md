@@ -147,7 +147,7 @@ To keep Σq = 0 the opposing exposure must shrink by the same amount, which is t
 reduction. Its unpaid loss must come from somewhere, and with no insurance fund the only
 source is the accounts that were owed it, which is the haircut.
 
-### Who absorbs, and by what rule: pro-rata by size
+### Who absorbs, and by what rule (per market: `adl: "size"` default, or `"pnl"`)
 
 Each opposing account absorbs `Dtot·|q_j|/S_opp` (S_opp = total opposing size) and is force-closed
 `Qtot·|q_j|/S_opp` units.
@@ -163,6 +163,14 @@ equity. We still assert this in code, and a seeded fuzz test checks it.
 
 The claim depends on the pre-tick state being solvent. Atomic per-tick processing is what
 gives us that, and it's the core of Mirror's argument too.
+
+**The `pnl` rule (capped pro-rata on positive PnL).** Each absorber's haircutable amount is
+`w_j = min(E_j, max(0, E_j − allocated_j))`: profit above net allocation, capped at equity. If someone has already
+released more than they put in, all their remaining equity counts as profit. If `Σw ≥ Dtot`, the shortfall is
+split pro-rata by `w`, and every part is ≤ its `w` (exact share ≤ w, and ceil ≤ the integer w), so principal is
+untouched. Otherwise everyone gives up all their profit, and the remaining `Dtot − Σw` is split pro-rata by
+remaining equity. Since `Σ E_j ≥ Dtot` within a tick (the claim above), that fits too, and nobody goes negative.
+Each haircut effect reports `fromPrincipal`.
 
 **Tradeoffs of size pro-rata.** Its strengths: it's simple, easy to audit, provably
 non-negative, and it doesn't depend on hidden rankings. Its weakness is that it ignores
@@ -221,5 +229,5 @@ this numerically. Solvency means **re-allocating** D to specific accounts, not h
 
 ## Deliberately omitted (v1)
 
-Not yet built (planned): alternative ADL rules (capped pro-rata on positive PnL), leverage graduation, funding. Not planned for v1: fees, partial liquidation, liquidation
+Not yet built (planned): leverage graduation, funding. Not planned for v1: fees, partial liquidation, liquidation
 penalties, order book/matching, cross margin, and oracle sanity checks.

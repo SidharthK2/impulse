@@ -7,7 +7,10 @@ export function allocate<K>(total: bigint, weights: ReadonlyArray<{ key: K; weig
   if (total < 0n) throw new Error("allocate: negative total");
   const sum = weights.reduce((s, w) => s + w.weight, 0n);
   if (sum <= 0n) {
-    if (total === 0n) return out;
+    if (total === 0n) {
+      for (const w of weights) out.set(w.key, 0n);
+      return out;
+    }
     throw new Error("allocate: no weight to allocate against");
   }
   let assigned = 0n;

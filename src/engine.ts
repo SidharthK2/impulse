@@ -16,7 +16,19 @@ export interface MarketConfig {
   resolvable: boolean; // can be settled to a final price (prediction market, pre-IPO flatten)
   initialLeverage: bigint; // IM = notional / initialLeverage
   maintenanceLeverage: bigint; // MM = notional / maintenanceLeverage
+  adl: AdlPolicy;
 }
+
+/**
+ * How a bankrupt position's shortfall is charged to the opposing side (forced closes are always size pro-rata,
+ * which is what keeps exposure balanced):
+ *  - "size": pro-rata by position size. Simple, provably never pushes an absorber below zero within a tick,
+ *    but charges principal even for accounts that are barely in profit.
+ *  - "pnl":  capped pro-rata on positive PnL (Chitra, arXiv:2512.01112): principal is protected. If total positive
+ *    PnL can't cover the shortfall, the remainder comes out of principal pro-rata by remaining equity, and the
+ *    effect reports how much principal was hit.
+ */
+export type AdlPolicy = "size" | "pnl";
 
 export interface Position {
   account: string;
@@ -84,6 +96,7 @@ export type Event =
       curve?: { usdc: string; tokens: number | string }; // virtual reserves (attention default: $5,000 / 1B)
       feeBps?: number; // spot fee (attention default 100 = 1%, our assumption; Mirror's is unpublished)
       oracleWindow?: number; // seconds of TWAP smoothing on the curve price (default 0 = instant)
+      adl?: AdlPolicy; // default "size"
       resolvable?: boolean;
       initialLeverage?: number;
       maintenanceLeverage?: number;
@@ -109,7 +122,7 @@ export type Effect =
   | { kind: "liquidation"; market: string; account: string; size: bigint; equity: bigint; maintenance: bigint }
   | { kind: "bankrupt"; market: string; account: string; size: bigint; shortfall: bigint }
   | { kind: "forcedClose"; market: string; closes: ForcedClose[] }
-  | { kind: "haircut"; market: string; account: string; amount: bigint }
+  | { kind: "haircut"; market: string; account: string; amount: bigint; fromPrincipal: bigint }
   | { kind: "settlement"; market: string; price: bigint; closes: ForcedClose[] }
   | { kind: "spot"; market: string; account: string; usdc: bigint; tokens: bigint; fee: bigint; priceBefore: bigint; priceAfter: bigint }
   | { kind: "mark"; market: string; from: bigint; to: bigint; spot: bigint };
@@ -271,8 +284,10 @@ function onMarket(s: State, e: Extract<Event, { type: "market" }>) {
     resolvable: e.resolvable ?? binary,
     initialLeverage: BigInt(e.initialLeverage ?? DEFAULT_LEVERAGE.initial),
     maintenanceLeverage: BigInt(e.maintenanceLeverage ?? DEFAULT_LEVERAGE.maintenance),
+    adl: e.adl ?? "size",
   };
   if (config.lower < 0n || (config.upper !== null && config.upper <= config.lower)) throw new Rejected("bad bounds");
+  if (config.adl !== "size" && config.adl !== "pnl") throw new Rejected(`unknown ADL policy ${config.adl}`);
   if (config.initialLeverage < 1n || config.maintenanceLeverage < config.initialLeverage) {
     throw new Rejected("need 1 ≤ initialLeverage ≤ maintenanceLeverage");
   }
@@ -361,6 +376,27 @@ function onTrade(s: State, e: Extract<Event, { type: "trade" }>) {
   }
 }
 
+/**
+ * Profit an absorber has made in this market: equity above their net allocation, capped at equity. If they have
+ * already released more than they put in, their principal is out and all remaining equity counts as profit.
+ */
+const positivePnl = (p: Position, mark: bigint) => min(equity(p, mark), max(0n, equity(p, mark) - p.allocated));
+
+/** How much of a haircut `h` came out of principal rather than profit. */
+const principalPart = (p: Position, mark: bigint, h: bigint) => max(0n, h - positivePnl(p, mark));
+
+/** Capped pro-rata on positive PnL, falling back to principal pro-rata by remaining equity. */
+function pnlHaircuts(opposing: Position[], mark: bigint, dTotal: bigint) {
+  const profit = opposing.map((p) => ({ key: p.account, weight: positivePnl(p, mark) }));
+  const totalProfit = profit.reduce((sum, w) => sum + w.weight, 0n);
+  const fromProfit = allocate(min(dTotal, totalProfit), profit); // each part ≤ its weight, so principal is untouched
+  const rest = dTotal - min(dTotal, totalProfit);
+  const remaining = opposing.map((p) => ({ key: p.account, weight: equity(p, mark) - fromProfit.get(p.account)! }));
+  const fromPrincipal = allocate(rest, remaining); // each part ≤ remaining equity, so no absorber goes negative
+  const haircuts = new Map(opposing.map((p) => [p.account, fromProfit.get(p.account)! + fromPrincipal.get(p.account)!]));
+  return { haircuts, fromPrincipal };
+}
+
 /** Liquidation + ADL loop for one market. Reads and writes nothing outside `m`. */
 function resolveDistress(m: Market): Effect[] {
   const effects: Effect[] = [];
@@ -390,7 +426,7 @@ function resolveDistress(m: Market): Effect[] {
 
     const weights = opposing.map((p) => ({ key: p.account, weight: abs(p.size) }));
     const closes = allocate(qTotal, weights);
-    const haircuts = allocate(dTotal, weights);
+    const { haircuts, fromPrincipal } = m.config.adl === "pnl" ? pnlHaircuts(opposing, mark, dTotal) : { haircuts: allocate(dTotal, weights), fromPrincipal: new Map<string, bigint>() };
 
     // Close distressed positions fully at mark; take the other side pro-rata at mark.
     const forced: ForcedClose[] = [];
@@ -412,9 +448,10 @@ function resolveDistress(m: Market): Effect[] {
       const h = haircuts.get(p.account)!;
       if (h === 0n) continue;
       if (h > equity(p, mark)) throw new Error(`invariant: haircut ${h} exceeds equity of ${p.account}`);
+      const principal = fromPrincipal.get(p.account) ?? principalPart(p, mark, h);
       p.collateral -= h;
       p.adlTransfer -= h;
-      effects.push({ kind: "haircut", market: m.id, account: p.account, amount: h });
+      effects.push({ kind: "haircut", market: m.id, account: p.account, amount: h, fromPrincipal: principal });
     }
     for (const p of distressed) {
       const eq = equity(p, mark);

@@ -108,8 +108,9 @@ describe("scenario B: levered short resolves to 1", () => {
   it("bankrupts gina and charges both longs pro-rata", () => {
     const fx = effectsOf(res.result);
     expect(fx).toContainEqual({ kind: "bankrupt", market: "OUTCOME", account: "gina", size: -300n, shortfall: usd("275.5") });
-    expect(fx).toContainEqual({ kind: "haircut", market: "OUTCOME", account: "frank", amount: usd("110.2") });
-    expect(fx).toContainEqual({ kind: "haircut", market: "OUTCOME", account: "hank", amount: usd("165.3") });
+    // Size pro-rata charges frank $110.20 against a profit of only $90: $20.20 comes out of his principal.
+    expect(fx).toContainEqual({ kind: "haircut", market: "OUTCOME", account: "frank", amount: usd("110.2"), fromPrincipal: usd("20.2") });
+    expect(fx).toContainEqual({ kind: "haircut", market: "OUTCOME", account: "hank", amount: usd("165.3"), fromPrincipal: 0n });
   });
 
   it("caps hank's payout at what gina actually posted", () => {
@@ -144,8 +145,8 @@ describe("scenario D: unbounded memecoin squeeze", () => {
 
   it("charges the longs pro-rata and drains to zero", () => {
     const fx = effectsOf(gap.result);
-    expect(fx).toContainEqual({ kind: "haircut", market: "PEPE", account: "ana", amount: usd("75") });
-    expect(fx).toContainEqual({ kind: "haircut", market: "PEPE", account: "eve", amount: usd("25") });
+    expect(fx).toContainEqual({ kind: "haircut", market: "PEPE", account: "ana", amount: usd("75"), fromPrincipal: 0n });
+    expect(fx).toContainEqual({ kind: "haircut", market: "PEPE", account: "eve", amount: usd("25"), fromPrincipal: 0n });
     expect(final.totalDeposits - final.totalWithdrawals).toBe(0n);
   });
 });
@@ -162,6 +163,36 @@ describe("scenario E: isolation across markets", () => {
     expect(stateHash({ ...initialState(), markets: { BTCX: blowup.result.state.markets.BTCX! } })).toBe(
       stateHash({ ...initialState(), markets: { BTCX: blowup.before.markets.BTCX! } }),
     );
+  });
+});
+
+describe("ADL policies", () => {
+  const withPolicy = (events: Event[], adl: "size" | "pnl") => events.map((e) => (e.type === "market" ? { ...e, adl } : e));
+  const haircutsAt = (events: Event[], adl: "size" | "pnl") => {
+    const { steps } = replay(withPolicy(events, adl));
+    return steps.flatMap((s) => effectsOf(s.result)).flatMap((f) => (f.kind === "haircut" ? [[f.account, f.amount, f.fromPrincipal] as const] : []));
+  };
+
+  it("pnl rule protects frank's principal in scenario B and charges the bigger winner more", () => {
+    const res = haircutsAt(scenario("gap-down-resolve-1"), "pnl").filter(([a]) => a === "frank" || a === "hank");
+    // Shortfall $275.50 split over positive PnL (frank $90, hank $282): no principal touched.
+    expect(res.every(([, , principal]) => principal === 0n)).toBe(true);
+    expect(res.reduce((sum, [, h]) => sum + h, 0n)).toBe(usd("275.5"));
+    const frank = res.find(([a]) => a === "frank")![1];
+    expect(frank).toBeLessThan(usd("90"));
+  });
+
+  it("scenario G: when profits can't cover the shortfall, both rules must touch principal", () => {
+    const size = haircutsAt(scenario("principal-fallback"), "size");
+    const pnl = haircutsAt(scenario("principal-fallback"), "pnl");
+    const principal = (h: typeof size) => h.reduce((sum, [, , p]) => sum + p, 0n);
+    expect(principal(size)).toBe(usd("333.333333333"));
+    expect(principal(pnl)).toBe(usd("230")); // $500 shortfall − $270 total positive PnL
+    expect(pnl.find(([a]) => a === "s2")![1]).toBe(usd("270") + usd("51.685393258"));
+  });
+
+  it("rejects unknown policies", () => {
+    expect(run([{ type: "market", id: "Y", adl: "queue" as "size" }]).results[0]!.ok).toBe(false);
   });
 });
 
@@ -286,7 +317,7 @@ describe("fuzz", () => {
     };
   }
 
-  it("holds every invariant over 300 random multi-market histories", () => {
+  it("holds every invariant over 300 random multi-market histories, under both ADL policies", () => {
     const names = ["a", "b", "c", "d", "e", "f"];
     const markets: { id: string; event: Event; price: (r: () => number, mark: number) => string }[] = [
       { id: "BIN", event: binary("BIN"), price: (r) => (r() < 0.15 ? ["0", "1", "0.01", "0.99"][Math.floor(r() * 4)]! : (r() * 0.999 + 0.0005).toFixed(9)) },
@@ -305,11 +336,12 @@ describe("fuzz", () => {
         if (res.ok && res.effects.some((f) => f.kind === "haircut")) adls++;
         s = res.state;
       };
+      const adl = seed % 2 === 0 ? "pnl" : "size";
       for (const m of markets) {
-        step(m.event);
+        step(m.event.type === "market" ? { ...m.event, adl } : m.event);
         step(K(start[m.id]!, m.id));
       }
-      step({ type: "market", id: "ATTN", preset: "attention", oracleWindow: pick(attnWindow) });
+      step({ type: "market", id: "ATTN", preset: "attention", oracleWindow: pick(attnWindow), adl });
       for (const n of names) {
         step({ type: "deposit", account: n, amount: String(30 + Math.floor(r() * 900)) });
         for (const m of markets) step({ type: "allocate", account: n, market: m.id, amount: String(10 + Math.floor(r() * 300)) });
