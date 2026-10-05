@@ -14,12 +14,12 @@ My own read. I treat the memo as input, not fact.
 - **Mirror claims.** These match what I read in Mirror's docs on 2026-10-03: ADL every transaction, isolated
   margin, no insurance fund, 3×→100×, "works with no price feed".
 
-## Not checked
+## Fact-check
 
-The arXiv references (several are dated after mid-2026), the Hyperliquid 10 Oct 2025 numbers ($2.1B / 12 min,
-$45–52M vs $653M haircut estimates), the Ventuals oracle and funding parameters, trade[XYZ] specs, Lattica's
-calibration figures, Soar's valuation study, and the Kalshi margin filing. The memo's own typos ("siix",
-"didnt not") suggest it's a fast draft. Read the primary sources before citing any number to Cesar.
+Done 2026-10-05; see [FACT-CHECK.md](./FACT-CHECK.md). Most of the memo's facts check out. The material errors:
+Ventuals has been shut down since 15 Jun 2026 (the memo calls it "live" and "already shipping"), Ventuals leverage is 3×
+not 5×, the "$653M Gauntlet" figure is superseded wording from Chitra's own paper, and the Nechepurenko papers don't
+evaluate ADL venues at all.
 
 ## Where the PoC agrees with the memo
 
@@ -39,16 +39,17 @@ calibration figures, Soar's valuation study, and the Kalshi margin filing. The m
 - The fee identity assumes a lender charging a fair fee. A pure-ADL perp has no fee. The opposing traders
   carry the expected loss through truncated payouts. Rational shorts should demand a better price, so the perp
   trades away from the oracle and needs funding. The cost doesn't disappear, it moves.
-- The memo recommends pro-rata on positive PnL. That's fairer than our size rule, but it loses the simple per-tick
-  non-negativity proof. An account can be in profit since entry and still have little equity, so it needs a waterfall.
-  It's worth adding as a second policy and comparing on the same scenarios.
+- The memo recommends pro-rata on positive PnL, and Chitra (arXiv:2512.01112 v3) backs it: capped pro-rata on positive
+  PnL, principal protected, is the unique monotone, scale-invariant, Sybil-resistant rule. Our size rule fails that, since
+  scenario B charged frank's principal. The catch for an ADL-only venue is that positive PnL since entry can be less than
+  the shortfall. Then principal must be touched, or solvency fails, which is the trilemma in practice.
 - Something the memo doesn't cover, which scenario C shows: with ADL at mark, **a single wick permanently
   decides PnL**. The side that was right lost, and the side that was wrong profited. This matters more than the
   fee identity if the oracle is a thin Polymarket book.
 
 ## Candidate next steps for the PoC
 
-1. Second ADL policy: pro-rata on positive PnL, with an equity-capped waterfall. Compare A/B/C side by side.
+1. Second ADL policy: capped pro-rata on positive PnL (Chitra), with a principal fallback that reports when it fires. Compare A/B/C side by side.
 2. Pre-resolution leverage compression or a hard-flat time (the memo's Axient idea), to see how much ADL disappears.
 3. Per-side margin on max loss instead of notional, so "3×" means the same thing for longs and shorts.
 4. Oracle guards (bands, TWAP marks, staleness) and a wick-attack scenario, with attacker PnL against cost.

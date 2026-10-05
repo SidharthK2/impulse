@@ -84,8 +84,9 @@ force-closed them at a high price. **One transient oracle print fixed everyone's
   side at mark, where a real venue would sell into a book.
 - **Full liquidation, no penalty, no partial closes.**
 - **Size-pro-rata ADL only.** It's simple and provably non-negative per tick, but scenario B shows it charging
-  accounts that are barely in profit. The obvious next policy to compare is pro-rata on positive PnL with an
-  equity-capped waterfall, as Mac's memo recommends.
+  accounts that are barely in profit, and it eats into their principal. The literature's fair rule (Chitra,
+  arXiv:2512.01112) is capped pro-rata on positive PnL with principal protected. That's next, plus a fallback for
+  when PnL alone can't cover the shortfall.
 - **Oracle-only mark, no sanity bands or staleness rules.** No trading before the first tick (Mirror claims it
   can run with no price feed; we don't attempt that).
 - **Withdrawals: realized cash only, above initial margin.** This is conservative by choice; see ACCOUNTING.md.
@@ -107,5 +108,5 @@ src/fixed.ts      micro-USD fixed-point helpers
 src/report.ts     ledger rendering, state hash
 src/cli.ts        scenario runner
 scenarios/        A, B, C above (JSON event lists)
-docs/             ACCOUNTING.md (model + invariants), MIRROR-NOTES.md, RESEARCH-NOTES.md
+docs/             ACCOUNTING.md (model + invariants), MIRROR-NOTES.md, RESEARCH-NOTES.md, FACT-CHECK.md
 ```
