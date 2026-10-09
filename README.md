@@ -233,5 +233,5 @@ src/compare.ts    replays scenarios under each ADL rule
 src/report.ts     ledger rendering, state hash
 src/cli.ts        scenario runner
 scenarios/        A–J above (JSON event lists)
-docs/             BRIEF.md (start here), ACCOUNTING.md (model + invariants), MIRROR-NOTES.md, RESEARCH-NOTES.md, FACT-CHECK.md
+docs/             BRIEF.md (start here), INTERMEDIATES.md (next projects), ACCOUNTING.md (model + invariants), MIRROR-NOTES.md, RESEARCH-NOTES.md, FACT-CHECK.md
 ```
