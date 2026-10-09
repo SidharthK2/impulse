@@ -1,7 +1,19 @@
 # Intermediate projects: useful for research, and feeding the product
 
-*Researched 2026-10-09 (data availability, existing tools, literature). The criterion: free data that's confirmed to
+*Researched 2026-10-09 (data availability, existing tools, literature; full reports in [`research/`](./research/)). The criterion: free data that's confirmed to
 work, a tool that nobody has built yet, and output that sets a product parameter we currently guess.*
+
+## How each one ties back to MicroPerps
+
+Each project replaces a guessed parameter in the MicroPerp engine with a measured one, and runs its results back
+through the engine. That's what makes them MicroPerp work rather than generic market-data projects.
+
+| Project | MicroPerp component it sets | What the engine uses today | Link |
+|---|---|---|---|
+| Recorder | Leverage graduation (Mirror's "volume and depth", 3×→100×) | OI as a depth proxy | Indirect: infrastructure |
+| Gap atlas | Max leverage by asset type; the pre-resolution taper | 3× default; our taper shape | Direct, prediction markets only. Can widen to memecoins and HIP-3 using recorder data |
+| Manipulation meter | Oracle smoothing window, OI caps, minimum depth to list | Pump attack on synthetic numbers | Direct: tests Mirror's self-priced attention perps |
+| ADL rule lab | Who absorbs losses (Mirror's only backstop) | Two rules on synthetic scenarios | Direct: tests Mirror's core mechanism |
 
 ## Ranked
 

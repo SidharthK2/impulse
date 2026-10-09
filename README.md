@@ -9,6 +9,18 @@ The question it answers: **when a price gaps, what happens to leveraged position
 
 **Start with the brief: [docs/BRIEF.md](docs/BRIEF.md)** (findings, design recommendations, open questions).
 
+| Doc | What's in it |
+|---|---|
+| [BRIEF.md](docs/BRIEF.md) | Findings for Cesar |
+| [JOURNAL.md](docs/JOURNAL.md) | Progress log, newest last, and current state |
+| [DECISIONS.md](docs/DECISIONS.md) | Every scope and design decision, and why |
+| [INTERMEDIATES.md](docs/INTERMEDIATES.md) | Next projects: research that also sets product parameters |
+| [ACCOUNTING.md](docs/ACCOUNTING.md) | The engine's model, proofs and invariants |
+| [MIRROR-NOTES.md](docs/MIRROR-NOTES.md) | What Mirror's docs say and don't say |
+| [FACT-CHECK.md](docs/FACT-CHECK.md), [RESEARCH-NOTES.md](docs/RESEARCH-NOTES.md) | Source check and notes on the outside research memo |
+| [research/](docs/research/) | Data sources, tools landscape, literature survey (2026-10-09) |
+| [sources/mirror/](docs/sources/mirror/) | Archived text of Mirror's invite-gated docs |
+
 ```bash
 pnpm install
 pnpm demo                          # ten scenarios, full ledger after every event
@@ -233,5 +245,5 @@ src/compare.ts    replays scenarios under each ADL rule
 src/report.ts     ledger rendering, state hash
 src/cli.ts        scenario runner
 scenarios/        A–J above (JSON event lists)
-docs/             BRIEF.md (start here), INTERMEDIATES.md (next projects), ACCOUNTING.md (model + invariants), MIRROR-NOTES.md, RESEARCH-NOTES.md, FACT-CHECK.md
+docs/             see the docs index above
 ```
