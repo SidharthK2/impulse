@@ -62,6 +62,19 @@ What happened, what we learned, and where things stand. Newest last.
 - Archived the Mirror docs text into `sources/mirror/`. The two core pages were re-fetched and are unchanged in size
   since 2026-10-03.
 
+## 2026-10-23: how Mirror is built
+
+- Inspected Mirror's production web-app bundle (with the invite cookie, read as text). Write-up in
+  `research/mirror-infra.md`.
+- **Findings:**
+  - Mirror runs its own CLOB plus curve in a Rust core, and presents it as its own chain (chain id 1 "Mirror", block
+    explorer "coming soon").
+  - Trading uses a registered trading key that signs API requests.
+  - Custody uses Mirror-issued deposit addresses on about 20 chains, credited after confirmations. That's custodial,
+    by inference.
+  - No smart contracts in the trading path.
+- Still unknown: validators or a single operator, who holds the deposit keys, and whether the log is verifiable.
+
 ## Current state
 
 - **Engine:** v1 complete (simulation). 10 scenarios (A–J), `pnpm demo | attack | compare | test`, 53 tests.

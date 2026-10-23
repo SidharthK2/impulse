@@ -18,7 +18,7 @@ The question it answers: **when a price gaps, what happens to leveraged position
 | [ACCOUNTING.md](docs/ACCOUNTING.md) | The engine's model, proofs and invariants |
 | [MIRROR-NOTES.md](docs/MIRROR-NOTES.md) | What Mirror's docs say and don't say |
 | [FACT-CHECK.md](docs/FACT-CHECK.md), [RESEARCH-NOTES.md](docs/RESEARCH-NOTES.md) | Source check and notes on the outside research memo |
-| [research/](docs/research/) | Data sources, tools landscape, literature survey (2026-10-09) |
+| [research/](docs/research/) | Data sources, tools landscape, literature survey (2026-10-09); how Mirror is built (2026-10-23) |
 | [sources/mirror/](docs/sources/mirror/) | Archived text of Mirror's invite-gated docs |
 
 ```bash
