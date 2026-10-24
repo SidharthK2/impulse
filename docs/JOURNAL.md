@@ -75,6 +75,11 @@ What happened, what we learned, and where things stand. Newest last.
   - No smart contracts in the trading path.
 - Still unknown: validators or a single operator, who holds the deposit keys, and whether the log is verifiable.
 
+## 2026-10-24: what we know for sure
+
+- Added "What we know for sure" to `MIRROR-NOTES.md`. It sorts what we know into fact (checked ourselves: the curve
+  math, the web-app code, the team), claim (Mirror's docs: every core mechanic), and unknown.
+
 ## Current state
 
 - **Engine:** v1 complete (simulation). 10 scenarios (A–J), `pnpm demo | attack | compare | test`, 53 tests.

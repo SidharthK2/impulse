@@ -5,6 +5,49 @@ I retrieved these on 2026-10-03 with the invite cookie flow (visit the invite UR
 directly, not from the project brief. On 2026-10-05 I also read `/docs/attention-markets`, `/docs/private-trading`, `/docs/agentic-trading` (a stub),
 `/docs/tokenomics` and `/docs/help` (the FAQ).
 
+## What we know for sure (as of 2026-10-24)
+
+Very little is proven. No one outside Mirror has watched their engine run.
+
+**Fact: things we checked ourselves**
+- **The attention-token curve:** x·y=k starting at $5k USDC and 1B tokens. It reproduces their published price table
+  exactly (`src/engine.ts`, scenario F).
+- **What the live web app's code contains.** That the code is there is a fact; that the backend does it isn't. Details
+  in [research/mirror-infra.md](research/mirror-infra.md).
+  - Mirror lists itself as chain #1, with about 22 external chains for deposits.
+  - Deposits go to Mirror-issued addresses, credited after confirmations: 12 for Ethereum, 2 for Bitcoin, 20 for Tron.
+  - Withdrawals go to registered addresses, in USDC, USDT, SOL, ETH, TRX, BNB, BTC or DESO.
+  - Login is by wallet (Phantom or MetaMask) or by email or phone. A browser-generated "Trading Key" with permissions
+    signs every request (`X-Gigadex-*` headers).
+  - The API is at `api.mirror.exchange`, with a websocket at `/ws`.
+  - The block explorer is marked "coming soon".
+- **The team:** led by Nader Al-Naji, creator of DeSo and Basis. DeSo DEX launched in Jan 2023 as an on-chain order
+  book.
+
+**Claims: Mirror says so, unverified** (details in the next section)
+- No insurance fund. Solvency is checked on every trade and price tick, with ADL in the same atomic step.
+- Matching and risk run in one Rust core, at 300k+ transactions per second per thread. Markets are isolated and
+  sharded.
+- Each market is an order book with a curve on top, and orders fill at the better price.
+- Leverage starts at 3× and reaches 100× by "volume and depth". The criteria aren't disclosed.
+- New perps start empty, with maximum funding to attract shorts.
+- Attention tokens have a 60-second sniping auction that clears at one price.
+- Stealth Mode hides a user's orders.
+- Fees go to buy-and-burn: 90% $MIRROR, 10% $DESO.
+- Planned markets: VC-backed startups, every Uniswap and pump.fun token, CME commodities, and leveraged prediction
+  markets.
+
+**Unknown**
+- Whether the engine actually behaves as claimed.
+- The ADL ranking rule, liquidation mechanics, and the funding formula.
+- The leverage graduation thresholds.
+- Validators or a single operator, and who holds the deposit keys.
+- Whether the log is verifiable.
+- Whether perps trading is live.
+
+Every core mechanic (ADL, solvency, leverage, funding) is a claim. Impulse shows whether those claims hang together
+and what they cost winners. It can't show that Mirror actually does them.
+
 ## Stated in the docs (claims, not verified behaviour)
 
 - **No exchange backstop.** ADL is the *sole* means of settling bad debt: no insurance fund, no HLP-style vault.
