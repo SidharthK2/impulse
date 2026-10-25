@@ -3,20 +3,21 @@
 *Written 2026-10-26. Facts only. Every claim carries a tag and a source.*
 
 **Tags**
-- **[VERIFIED]** We checked it ourselves. Either we computed it (script in the appendix), read it in our code (read, not run), or read it in Mirror's shipped JavaScript (bundle read on 2026-10-26, recorded in `docs/research/mirror-infra.md`; not re-fetched today).
+- **[VERIFIED]** We checked it ourselves for this doc: we computed it (script in the appendix) or read it in our code (read, not run).
+- **[NOTE]** Our earlier research note `docs/research/mirror-infra.md` says it. That note records a text read of the JavaScript behind Mirror's invite-gated site (2026-10-23 and 2026-10-26). It was not re-checked for this doc. It is not a public app, and nothing here says trading is live.
 - **[DOCS]** Mirror's docs say it. **[DOCS·mockup]** marks text from an illustration widget, not a stated rule.
 - **[UNKNOWN]** Not stated anywhere in the sources. No guesses.
 
 **Sources**
 - `docs/sources/mirror/*.md`: Mirror's docs pages, fetched 2026-10-26. Paths shortened to `mirror/<page>.md:<line>`.
-- `docs/research/mirror-infra.md`: our read of Mirror's shipped app code. Only its bundle findings are used here. Its `[INFERENCE]` lines are not used as facts.
+- `docs/research/mirror-infra.md`: our earlier note on the JavaScript behind Mirror's invite-gated site. Only its direct findings are used here, tagged [NOTE]. Its `[INFERENCE]` lines are not used as facts.
 - `src/`, `server/src/`, `web/src/`: our code.
 
 ---
 
 ## TL;DR
 
-**Architecture.** Mirror describes one exchange core: an order book with a bonding curve on top, and matching plus risk in one atomic thread [DOCS]. Bad debt is settled only by auto-deleveraging (ADL) inside the same transaction. There is no insurance fund [DOCS]. Markets are isolated and sharded across threads [DOCS]. Attention tokens are the launch market: a 60-second snipe auction, then an x·y=k spot curve, and a perp priced from that curve [DOCS]. The shipped app has spot, sniping, signed trading keys and deposit addresses on many chains. It has no perp screens or routes [VERIFIED]. Pre-IPO, stocks, on-chain tokens and prediction markets are plans only. Their price sources are not stated [UNKNOWN].
+**Architecture.** Mirror describes one exchange core: an order book with a bonding curve on top, and matching plus risk in one atomic thread [DOCS]. Bad debt is settled only by auto-deleveraging (ADL) inside the same transaction. There is no insurance fund [DOCS]. Markets are isolated and sharded across threads [DOCS]. Attention tokens are the launch market: a 60-second snipe auction, then an x·y=k spot curve, and a perp priced from that curve [DOCS]. Our research note says the code behind Mirror's invite-gated site has spot, sniping, signed trading keys and deposit addresses on many chains, and nothing for perps [NOTE]. Pre-IPO, stocks, on-chain tokens and prediction markets are plans only. Their price sources are not stated [UNKNOWN].
 
 **Buildable.** Four mechanisms are fully specified, and we reproduced their numbers: the spot curve, the snipe clearing price, the builder fee, and the fee and referral splits [VERIFIED]. We already built the curve, the perp oracle from the curve, atomic liquidation plus ADL, isolated markets, an order book and external price feeds [VERIFIED]. Not built yet: sniping, curve-on-book routing, builder fees, referrals and fee routing [VERIFIED]. Mirror publishes none of these: fee rates, margin and liquidation rules, the ADL ranking, the funding formula or the graduation thresholds [UNKNOWN]. Our values for these are our own.
 
@@ -28,8 +29,8 @@
 
 ```
   Users, bots, third-party apps
-        │  HTTPS /api/v1/*  +  wss://api.mirror.exchange/ws        [VERIFIED bundle]
-        │  each request signed with a registered trading key       [VERIFIED bundle]
+        │  HTTPS /api/v1/*  +  wss://api.mirror.exchange/ws        [NOTE]
+        │  each request signed with a registered trading key       [NOTE]
         ▼
  ┌──────────────────────────── one core per shard ─────────────────────────────┐
  │  Matching engine  ══ same thread ══  Risk engine                    [DOCS]   │
@@ -49,7 +50,7 @@
                           [UNKNOWN]                          10% buy+burn $DESO [DOCS]
 
   Money in/out: Mirror-issued deposit addresses on ~20 chains,
-  credited after per-chain confirmations                         [VERIFIED bundle]
+  credited after per-chain confirmations                         [NOTE]
   Who holds the keys, consensus, validators, proofs              [UNKNOWN]
 ```
 
@@ -83,27 +84,27 @@
 | Fee routing | Attention: 50% to the profile owner. Net fees: 90% buy+burn $MIRROR, 10% buy+burn $DESO. | [DOCS] | `mirror/tokenomics.md:119-120,135` |
 | Referrals | Pre-sale 2.5% (1.75/0.5/0.25). Trading fees 14/4/2%. Referee gets 10% off. | [DOCS] | `mirror/referrers-and-builder-revenue.md:17-25` |
 | Builder fee | Optional per-order fee on the taker, paid to any account_id. Max 50%. | [DOCS] | `mirror/referrers-and-builder-revenue.md:28-51` |
-| Realtime feed | `wss://api.mirror.exchange/ws`, sequence-numbered snapshots and deltas. Staging at `api.staging.mirror.exchange`. | [VERIFIED] | `docs/research/mirror-infra.md:32` |
-| REST API | `/api/v1/` markets, tokens, ticker, orderbook, trades, candles, search, stats, register-signing-key, answer-challenge, post, pulse/new-pairs, pulse/final-stretch, pulse/migrated. | [VERIFIED] | `docs/research/mirror-infra.md:95-97` |
-| Realtime channels | trades, orders, orderbook, marketStats, activeAssetCtx. The market page shows book, trades, recent snipes, top snipes. | [VERIFIED] | `docs/research/mirror-infra.md:99-101` |
-| Auth | Wallet or email/phone login. The browser makes a keypair, registered as a "Trading Key" with permissions. Requests carry `X-Gigadex-Api-Key`, `-Timestamp`, `-Signature`. | [VERIFIED] | `docs/research/mirror-infra.md:44-48` |
-| Deposits | Per-chain deposit addresses fetched from Mirror's API. Credited after confirmations (e.g. Ethereum 12, Bitcoin 2). | [VERIFIED] | `docs/research/mirror-infra.md:54-66` |
-| Withdrawals | USDC, USDT, SOL, ETH, TRX, BNB, BTC, DESO. Per-asset `can_withdraw` flag. | [VERIFIED] | `docs/research/mirror-infra.md:68` |
-| "Chain" | The chain table's id 1 is "Mirror". The block explorer is "Coming soon!". | [VERIFIED] | `docs/research/mirror-infra.md:36-37` |
+| Realtime feed | `wss://api.mirror.exchange/ws`, sequence-numbered snapshots and deltas. Staging at `api.staging.mirror.exchange`. | [NOTE] | `docs/research/mirror-infra.md:32` |
+| REST API | `/api/v1/` markets, tokens, ticker, orderbook, trades, candles, search, stats, register-signing-key, answer-challenge, post, pulse/new-pairs, pulse/final-stretch, pulse/migrated. | [NOTE] | `docs/research/mirror-infra.md:95-97` |
+| Realtime channels | trades, orders, orderbook, marketStats, activeAssetCtx. The market page shows book, trades, recent snipes, top snipes. | [NOTE] | `docs/research/mirror-infra.md:99-101` |
+| Auth | Wallet or email/phone login. The browser makes a keypair, registered as a "Trading Key" with permissions. Requests carry `X-Gigadex-Api-Key`, `-Timestamp`, `-Signature`. | [NOTE] | `docs/research/mirror-infra.md:44-48` |
+| Deposits | Per-chain deposit addresses fetched from Mirror's API. Credited after confirmations (e.g. Ethereum 12, Bitcoin 2). | [NOTE] | `docs/research/mirror-infra.md:54-66` |
+| Withdrawals | USDC, USDT, SOL, ETH, TRX, BNB, BTC, DESO. Per-asset `can_withdraw` flag. | [NOTE] | `docs/research/mirror-infra.md:68` |
+| "Chain" | The chain table's id 1 is "Mirror". The block explorer is "Coming soon!". | [NOTE] | `docs/research/mirror-infra.md:36-37` |
 | Consensus, validators, custody keys, proofs | Who runs the core and who holds deposit keys. | [UNKNOWN] | not stated; `mirror-infra.md:39-40` found no such strings |
-| Perps in the shipped app | Leverage, funding, liquidation and ADL appear only in docs and marketing cards. No routes, channels or forms for positions or margin. | [VERIFIED] | `docs/research/mirror-infra.md:102-104` |
+| Perps in the site code | Leverage, funding, liquidation and ADL appear only in docs and marketing cards. No routes, channels or forms for positions or margin. | [NOTE] | `docs/research/mirror-infra.md:102-104` |
 | Launch status | Token countdown shows "– –" and "countdown activates soon". Profile mockup says "Real prices and volumes will show at launch." | [DOCS] | `mirror/what-is-mirror.md:42,275-284` |
 
 ### 1.3 Market types
 
-"In app" means present in the shipped JavaScript. It does not mean public trading is open (see the launch-status row above).
+"In site code" means our research note found it in the JavaScript behind Mirror's invite-gated site [NOTE]. It does not mean public trading is open (see the launch-status row above).
 
 | Market type | Spot on Mirror? | Perp? | Where the perp price comes from | Status |
 |---|---|---|---|---|
-| Attention (profiles) | Yes. Snipe auction, then x·y=k curve [DOCS] `mirror/attention-markets.md:20-23,77-78` | Yes, a MicroPerp from day one [DOCS] `mirror/attention-markets.md:20` | "Uses that spot price for its oracle price calculation" [DOCS] `mirror/attention-markets.md:20`. Exact formula (instant, TWAP, other) [UNKNOWN] | Spot + sniping in app [VERIFIED] `mirror-infra.md:95-101`. Perp documented only [VERIFIED] `mirror-infra.md:102-104` |
+| Attention (profiles) | Yes. Snipe auction, then x·y=k curve [DOCS] `mirror/attention-markets.md:20-23,77-78` | Yes, a MicroPerp from day one [DOCS] `mirror/attention-markets.md:20` | "Uses that spot price for its oracle price calculation" [DOCS] `mirror/attention-markets.md:20`. Exact formula (instant, TWAP, other) [UNKNOWN] | Spot + sniping in site code [NOTE] `mirror-infra.md:95-101`. Perp documented only [NOTE] `mirror-infra.md:102-104` |
 | Pre-IPO (VC-backed private companies) | No. These companies "do not even have a valid spot market yet" [DOCS] `mirror/how-microperps-work.md:47` | Yes, planned. Auto-listed from a VC whitelist [DOCS] `mirror/how-microperps-work.md:47` | "Robust in the absence of a price feed"; "pricing starting whenever the market opens" [DOCS] `mirror/how-microperps-work.md:46-47`. Mockup shows "≈ $91.5B implied val" [DOCS·mockup] `mirror/what-is-mirror.md:47`. Source [UNKNOWN] | Planned ("Immediately after") [DOCS] `mirror/what-is-mirror.md:43` |
 | Stocks (and commodities) | [UNKNOWN] | Yes, planned: NYSE, SSE, Euronext, TSE; CME for commodities [DOCS] `mirror/how-microperps-work.md:46,48` | "Every equity with a price"; "robust to gaps in the price feed" [DOCS] `mirror/how-microperps-work.md:46`. Feed provider [UNKNOWN] | Planned [DOCS] `mirror/what-is-mirror.md:43,102` |
-| On-chain tokens | Spot lives on the external DEX (Uniswap, pump.fun, others) [DOCS] `mirror/how-microperps-work.md:49`. Spot on Mirror itself [UNKNOWN] | Yes, planned. Starts at 3x "the moment a spot market is created" [DOCS] `mirror/how-microperps-work.md:35,49` | How the DEX price becomes an oracle [UNKNOWN] | Planned [DOCS] `mirror/what-is-mirror.md:43,90`. Bundle has `pulse/new-pairs`, `final-stretch`, `migrated` routes [VERIFIED] `mirror-infra.md:96-97` |
+| On-chain tokens | Spot lives on the external DEX (Uniswap, pump.fun, others) [DOCS] `mirror/how-microperps-work.md:49`. Spot on Mirror itself [UNKNOWN] | Yes, planned. Starts at 3x "the moment a spot market is created" [DOCS] `mirror/how-microperps-work.md:35,49` | How the DEX price becomes an oracle [UNKNOWN] | Planned [DOCS] `mirror/what-is-mirror.md:43,90`. Site code has `pulse/new-pairs`, `final-stretch`, `migrated` routes [NOTE] `mirror-infra.md:96-97` |
 | Prediction markets | [UNKNOWN] | Yes, planned: one per Polymarket and Kalshi market [DOCS] `mirror/how-microperps-work.md:50` | Mockup shows Polymarket prices (Brazil 22¢) copied to the perp (22.0¢) [DOCS·mockup] `mirror/what-is-mirror.md:58-71`. Feed and settlement rule [UNKNOWN] | Planned [DOCS] `mirror/what-is-mirror.md:43,57` |
 | Real estate (Zillow) | No | Planned | Basket of Zillow listings aggregated into a city oracle [DOCS] `mirror/how-microperps-work.md:51` | Planned |
 | User-managed | [UNKNOWN] | Yes | The deployer's oracle [DOCS] `mirror/how-microperps-work.md:26` | Documented only |
@@ -141,9 +142,9 @@
 | External price feeds (stocks, tokens, prediction) | NONE | venues named only, `mirror/how-microperps-work.md:46-50` | Yes. Hyperliquid mids, Polymarket midpoints. `server/src/feeds.ts:1-3` | Mirror's sources |
 | Prediction-market resolution | NONE | not stated | Yes. Resolve and margin taper. `src/engine.ts:16-23,701-716` | Mirror's rule |
 | Stealth mode | PARTIAL | `mirror/private-trading.md:15` | No | Everything beyond one paragraph |
-| Signed trading keys | PARTIAL (bundle) | `docs/research/mirror-infra.md:44-48` | No. Bearer API key. `server/src/api.ts:4`, `server/src/exchange.ts:443` | Signature scheme |
-| Realtime websocket | PARTIAL (bundle) | `docs/research/mirror-infra.md:32,99-101` | Yes. Diff-per-channel push every 500 ms. `server/src/api.ts:326-328` | Sequence numbers, deltas |
-| Deposits and withdrawals | PARTIAL (bundle) | `docs/research/mirror-infra.md:54-68` | Paper money only. `server/src/exchange.ts:451-469` | Custody |
+| Signed trading keys | PARTIAL (note) | `docs/research/mirror-infra.md:44-48` | No. Bearer API key. `server/src/api.ts:4`, `server/src/exchange.ts:443` | Signature scheme |
+| Realtime websocket | PARTIAL (note) | `docs/research/mirror-infra.md:32,99-101` | Yes. Diff-per-channel push every 500 ms. `server/src/api.ts:326-328` | Sequence numbers, deltas |
+| Deposits and withdrawals | PARTIAL (note) | `docs/research/mirror-infra.md:54-68` | Paper money only. `server/src/exchange.ts:451-469` | Custody |
 | $MIRROR pre-sale price | FULL | `mirror/tokenomics.md:21-36` | No | — |
 | $MIRROR curve seed (y = sold/19, x = P_end·y) | FULL | `mirror/tokenomics.md:84-97` | No | — |
 | Agentic trading | NONE | `mirror/agentic-trading.md:15-17` | — | Everything |
@@ -203,7 +204,7 @@ Widget check (`mirror/attention-markets.md:33-37`): B = $100K gives 800M tokens 
 | 3 | "More precisely, the price quadruples every time the USDC demand for a token doubles" (`mirror/attention-markets.md:77`) | Their own table shows 2.778x and 3.812x for a doubling (`:83,85`). It approaches 4x only for large demand. `mirror/tokenomics.md:83` says "roughly 4x'es". | [VERIFIED] computed |
 | 4 | All markets are isolated margin by default (`mirror/how-microperps-work.md:33`). Every market starts at 3x (`:15,35`). | Pre-IPO mockup: "Leverage 10× cross" (`mirror/what-is-mirror.md:51`). Token mockup: "20× leverage" (`:98`). Prediction mockup: "10× MAX" (`:68`). | [DOCS] vs [DOCS·mockup] |
 | 5 | x is the USDC reserve; price = x/y (`mirror/attention-markets.md:146`) | The snipe derivation never sets x1 = x0 + B (`:155-168`). For B = $100K, the curve's x grows by $20,000. If every sniper sells back, they get $20,000 of the $100,000 before fees. Where the other $80,000 goes is not stated. | [VERIFIED] computed; destination [UNKNOWN] |
-| 6 | Attention tokens "start with a spot market and a MicroPerp market" (`mirror/attention-markets.md:20`) | The shipped app has no routes, channels or forms for positions, margin, leverage or funding (`docs/research/mirror-infra.md:102-104`). | [DOCS] vs [VERIFIED] |
+| 6 | Attention tokens "start with a spot market and a MicroPerp market" (`mirror/attention-markets.md:20`) | Our research note found no routes, channels or forms for positions, margin, leverage or funding in Mirror's site code (`docs/research/mirror-infra.md:102-104`). | [DOCS] vs [NOTE] |
 | 7 | "Every social profile and every piece of content" gets a market (`mirror/what-is-mirror.md:32`) | A token is identified by network plus user id (`mirror/attention-markets.md:17`). No ID scheme for content is given. | [DOCS] both |
 
 ---
@@ -215,7 +216,7 @@ Widget check (`mirror/attention-markets.md:33-37`): B = $100K gives 800M tokens 
 Mirror = one core per shard: order book + x·y=k curve, matching and risk on one thread [DOCS].
 Every trade and tick checks solvency; ADL settles bad debt in the same tx; no insurance fund [DOCS].
 Attention tokens: 60s snipe at one price, then x·y=k spot, perp priced off that spot [DOCS].
-Shipped app: spot, sniping, signed trading keys, deposits on ~20 chains; no perp routes [VERIFIED].
+Site code (per our note): spot, sniping, signed keys, deposits on ~20 chains; no perps [NOTE].
 Pre-IPO, stocks, DEX tokens, prediction markets: planned perps; price sources unstated [UNKNOWN].
 Custody, consensus, fee rates, margin, ADL ranking, funding formula: not published [UNKNOWN].
 ```
