@@ -58,8 +58,10 @@ Without an external reference price, a perp has to get its price from somewhere.
 | The market's own book or curve | Mirror: "function … even on no price feed at all" | Circular: the price is whatever traders push it to, so it's sentiment, levered, on a manipulable mark |
 | Copy another venue | HIP-3 `xyz:SPCX` (SpaceX), daily candles since May 2026 | Then it's a copy competing on liquidity, not a new market. Ventuals, the pre-IPO venue on HIP-3, shut down in June 2026 |
 
-Before a company lists, there's no price to anchor to. Secondary-market marks are sparse and private. Any pre-IPO
-perp is a bet on sentiment with leverage, and whoever controls the mark controls who gets liquidated.
+Before a company lists, there's no price to anchor to. Secondary-market marks are sparse and private. Ventuals said so
+itself when it shut down: it settled its SpaceX, OpenAI and Anthropic markets to their own book TWAP, "considering that
+these markets do not have a realtime external reference price" ([FACT-CHECK.md](./FACT-CHECK.md)). Any pre-IPO perp
+is a bet on sentiment with leverage, and whoever controls the mark controls who gets liquidated.
 
 ## 3. Established markets
 
