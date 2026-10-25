@@ -19,6 +19,7 @@ pnpm install && pnpm start         # http://localhost:8787 (admin token: impulse
 | Doc | What's in it |
 |---|---|
 | [BRIEF.md](docs/BRIEF.md) | Findings for Cesar |
+| [POSITIONING.md](docs/POSITIONING.md) | For Cesar: MicroPerps vs pump.fun and other perp DEXs, and where a moat could be |
 | [MVP.md](docs/MVP.md) | The paper-trading exchange: how to run it, architecture, API, demo script |
 | [JOURNAL.md](docs/JOURNAL.md) | Progress log, newest last, and current state |
 | [DECISIONS.md](docs/DECISIONS.md) | Every scope and design decision, and why |
