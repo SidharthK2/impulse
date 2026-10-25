@@ -9,6 +9,7 @@ import { extname, join, normalize, resolve } from "node:path";
 import { WebSocket, WebSocketServer } from "ws";
 import type { Bots } from "./bots.js";
 import { type Exchange, ExchangeError, type MarketSpec, type OrderInput } from "./exchange.js";
+import { listHyperliquid, listPolymarket } from "./feeds.js";
 import { coinsFromLots, usd } from "./units.js";
 import { accountView, bookView, candlesView, configView, fillView, leaderboardView, marketView, orderView, tradesView } from "./views.js";
 
@@ -182,6 +183,21 @@ export function createApi(x: Exchange, opts: ApiOptions) {
     // Admin perps get a random-walk oracle so they move on their own; admin binaries move only when told to.
     if (spec.kind === "perp") spec.source = { kind: "sim", volBps: Number((c.body as { volBps?: unknown }).volBps ?? 20) || 20 };
     return marketView(x, x.createMarket(spec).id);
+  });
+  // Listing from live venues is async (it fetches the venue's metadata), so these handlers return promises.
+  route("POST", "/api/admin/polymarket", "admin", async (c) => {
+    try {
+      return marketView(x, (await listPolymarket(x, str(c.body.ref, "ref"), opts.log)).id);
+    } catch (err) {
+      throw err instanceof ExchangeError ? err : new ExchangeError((err as Error).message);
+    }
+  });
+  route("POST", "/api/admin/hyperliquid", "admin", async (c) => {
+    try {
+      return marketView(x, (await listHyperliquid(x, str(c.body.coin, "coin"), opts.log)).id);
+    } catch (err) {
+      throw err instanceof ExchangeError ? err : new ExchangeError((err as Error).message);
+    }
   });
   route("POST", "/api/admin/deposit", "admin", (c) => {
     x.deposit(str(c.body.account, "account"), str(c.body.amount, "amount"));

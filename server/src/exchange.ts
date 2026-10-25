@@ -145,6 +145,7 @@ export interface OrderResult {
 
 export interface Snapshot {
   v: 1;
+  savedAt?: number; // wall-clock ms
   genesis: number;
   state: State;
   markets: Record<string, MarketMeta>;
@@ -201,6 +202,7 @@ export class Exchange {
   toSnapshot(): Snapshot {
     return {
       v: 1,
+      savedAt: this.now(),
       genesis: this.genesis,
       state: this.state,
       markets: this.markets,
@@ -230,6 +232,20 @@ export class Exchange {
     }
     for (const a of Object.values(x.accounts)) x.keys.set(a.apiKey, a.id);
     return x;
+  }
+
+  /**
+   * Treat downtime as a pause: shift the clock origin so engine time resumes where it stopped. Otherwise a restart
+   * would charge every open position the whole outage's funding (at whatever premium was last set) in one step.
+   */
+  resumeAfter(downMs: number) {
+    if (downMs <= 0) return;
+    this.genesis += downMs;
+    for (const m of Object.values(this.markets)) {
+      if (m.resolvesAtMs !== null) m.resolvesAtMs += downMs;
+      if (m.heldUntil !== null) m.heldUntil += downMs;
+    }
+    this.version++;
   }
 
   // ---------- lookups ----------

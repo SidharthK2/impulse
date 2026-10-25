@@ -15,6 +15,9 @@ Newest last. Each entry: the decision, why, and what it rules out.
 | 2026-10-06 | The brief and all docs live as **markdown in the repo**, not published artifacts | User |
 | 2026-10-09 | **Write everything down in `docs/`** (research, decisions, progress) | User |
 | 2026-10-09 | Next phase: intermediate projects that are both research and product inputs (`INTERMEDIATES.md`) | User asked for useful intermediaries toward the final product |
+| 2026-10-25 | **Build an MVP: a paper-trading exchange** (order books, live oracles, bots, web UI) on the unchanged engine | User asked for an MVP with a frontend. It supersedes "simulation only" for the `mvp` branch; still no real money, custody or contracts |
+| 2026-10-25 | MVP lives in `server/` + `web/` (pnpm workspace) on branch `mvp`; local commits, no push | User |
+| 2026-10-25 | Oracles: Hyperliquid mids + Polymarket midpoints + own curves, with admin overrides; simulated prices offline | User chose live feeds; admin gaps make the research findings demoable |
 
 ## Engine and tooling
 
@@ -39,6 +42,20 @@ Newest last. Each entry: the decision, why, and what it rules out.
 | 2026-10-05 | Funding = tier base rate (0.05%/h at launch → 0.00125%/h) + clamp(premium/8, ±4%/h), held between events | Mirror: "maximum base rate" at launch; inactive markets keep paying. **Parameters are ours.** The last trade stands in for the book price |
 | 2026-10-05 | Taper ramps requirements toward **full max loss**, not notional | Notional-based leverage misses the short-at-low-price trap |
 | 2026-10-05 | Risk loop processes **one side per round** (bankrupt side first) | A taper can distress both sides at once |
+
+## MVP exchange
+
+| Date | Decision | Why / alternative rejected |
+|---|---|---|
+| 2026-10-25 | Exchange wraps the engine; each match is one `allocate + trade` transaction | Keeps every engine invariant and proof live. Rejected: a separate margin system in the exchange |
+| 2026-10-25 | Auto-margin per fill at the order's leverage; flat positions sweep back to the wallet | Isolated like Mirror, without manual bucket management. Users can still add or remove margin |
+| 2026-10-25 | No margin reserved for resting orders; an unaffordable maker is cancelled at match time | Simplest correct rule, because the engine re-checks every fill |
+| 2026-10-25 | Lots = 10^-szDecimals coins (Hyperliquid's sizes); 5-significant-figure ticks | Exact integer lots and lot prices from BTC down to $0.000005 tokens |
+| 2026-10-25 | 5% margin buffer when the max-loss cap binds | At the cap IM = MM, so funding liquidated fully collateralized binaries |
+| 2026-10-26 | Downtime is a pause (shift the clock origin on restore) | Rejected: charging the outage's funding at once, which wipes accounts at the stale premium |
+| 2026-10-25 | House bots are ordinary accounts | Their liquidations and haircuts are real data |
+| 2026-10-25 | Bearer API keys instead of Mirror-style signed requests | Paper money; signing is a later step |
+| 2026-10-25 | Default ADL rule `pnl` for MVP markets | Brief recommendation (finding 5) |
 
 ## Deliberately not done (yet)
 

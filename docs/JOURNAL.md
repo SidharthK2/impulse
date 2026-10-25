@@ -80,9 +80,35 @@ What happened, what we learned, and where things stand. Newest last.
 - Added "What we know for sure" to `MIRROR-NOTES.md`. It sorts what we know into fact (checked ourselves: the curve
   math, the web-app code, the team), claim (Mirror's docs: every core mechanic), and unknown.
 
+## 2026-10-25/26: MVP, a paper-trading exchange
+
+- **Scope (user):** build an MVP, frontend included. Answers up front: a paper-trading exchange (not a simulator UI,
+  not the recorder); live oracles plus own curves; new `server/` and `web/` packages in this repo on branch `mvp`;
+  commit locally, no push.
+- **Server** (`server/`): an order book per market in front of the unchanged engine. Each match is one atomic
+  `allocate + trade` engine transaction, with auto-margin at the chosen leverage, marked at the oracle. Ticks, curve
+  trades and a 2-second clock are engine transitions too. Includes the HTTP + websocket API, snapshots, and house bots
+  (`maker` plus four noise traders).
+- **Oracles:** Hyperliquid mids (BTC, ETH, SOL, HYPE, kPEPE, FARTCOIN, HIP-3 AAPL), and Polymarket midpoints for four
+  liquid long-dated binaries (auto-settling on resolution). Two attention markets: one with a TWAP oracle, one instant.
+  The admin can mirror any Polymarket market or Hyperliquid perp.
+- **Web** (`web/`): trade page (candles with entry/liq/bankruptcy lines, book, tape, order form with margin, liquidation
+  and max-loss preview, spot curve panel), positions with an ADL ledger and "who paid", risk feed, leaderboard, how it
+  works, admin (gaps, holds, resolve, list, bots). Checked with headless-Chrome screenshots (desktop and phone) and a
+  scripted run: sign up → order → limit from the book → cancel → close.
+- **Found while building:**
+  - Binary positions at the max-loss cap have IM = MM, so the first funding payment liquidated them. The fix is a
+    5% buffer at the cap.
+  - A restart after downtime would charge the whole outage's funding at once. Downtime is now a pause.
+  - After a forced gap, the stale-last-trade funding premium (finding J) goes to ±4%/h until someone trades. It's
+    visible live and flagged in the UI.
+- 68 tests (53 engine + 15 exchange). Full write-up: [MVP.md](./MVP.md).
+
 ## Current state
 
-- **Engine:** v1 complete (simulation). 10 scenarios (A–J), `pnpm demo | attack | compare | test`, 53 tests.
+- **Engine:** v1 complete (simulation). 10 scenarios (A–J), `pnpm demo | attack | compare | test`.
+- **MVP exchange** (branch `mvp`): live paper-trading venue on the engine, `pnpm start`. See `MVP.md`.
+- **Tests:** 68 (53 engine + 15 exchange).
 - **Docs:**
   - `BRIEF.md`: findings for Cesar.
   - `ACCOUNTING.md`: the model.
@@ -90,4 +116,5 @@ What happened, what we learned, and where things stand. Newest last.
   - `INTERMEDIATES.md`: what's next.
   - `research/`: the research behind it.
   - `sources/`: archived primary material.
-- **Next:** start the market recorder (INTERMEDIATES #1).
+- **Next:** start the market recorder (INTERMEDIATES #1). Its depth data can replace the MVP's open-interest
+  depth proxy, and liquidation through the book is the MVP's biggest realism gap.

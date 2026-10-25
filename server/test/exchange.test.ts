@@ -223,6 +223,14 @@ describe("snapshot", () => {
     expect(bookView(y, "X")).toEqual(bookView(x, "X"));
     expect(accountView(y, "alice")).toEqual(accountView(x, "alice"));
     expect(y.accountByKey(x.accounts.alice!.apiKey)?.id).toBe("alice");
+    // downtime is a pause: engine time resumes where it stopped
+    let later = x.now() + 3_600_000;
+    const z = Exchange.fromSnapshot(deserialize(serialize(x.toSnapshot())), { now: () => later });
+    z.resumeAfter(3_600_000);
+    expect(z.clock()).toEqual([]);
+    later += 5_000;
+    z.clock();
+    expect(z.state.time).toBe(x.state.time + 5n);
     // and it still trades
     y.placeOrder("alice", { market: "X", side: "buy", type: "market", size: "2" });
     expect(size(y, "alice")).toBe(300n);

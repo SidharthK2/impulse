@@ -148,6 +148,12 @@ export function InfoPanel({ market }: { market: MarketView }) {
             </>
           )}
         </dl>
+        {Math.abs(market.funding.ratePerHour - market.funding.baseRatePerHour) >= 0.005 && (
+          <div className="note warn" style={{ fontSize: 11 }}>
+            Funding is {(market.funding.ratePerHour * 100).toFixed(2)}%/h because the last trade ({price(market.last, market.priceDecimals)}) is far from the oracle. The premium uses the last trade as the perp price,
+            so after a gap a stale print drives funding until someone trades (finding J).
+          </div>
+        )}
         {g && (
           <div className="col" style={{ gap: 6 }}>
             <div className="label">Leverage graduation</div>

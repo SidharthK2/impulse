@@ -350,6 +350,8 @@ export function AdminPage({ markets }: { markets: MarketView[] }) {
         </table>
       </div>
 
+      <MirrorMarket onList={(path, body, label) => call(path, body, `listed ${label}`)} />
+
       <CreateMarket onCreate={(body) => call("/api/admin/market", body, `listed ${String((body as { id: string }).id)}`)} />
 
       <h2>House bots</h2>
@@ -369,6 +371,27 @@ export function AdminPage({ markets }: { markets: MarketView[] }) {
 
       <Deposit onDeposit={(account, amount) => call("/api/admin/deposit", { account, amount }, `deposited $${amount} to ${account}`)} />
     </div>
+  );
+}
+
+function MirrorMarket({ onList }: { onList: (path: string, body: object, label: string) => void }) {
+  const [pm, setPm] = useState("");
+  const [coin, setCoin] = useState("");
+  return (
+    <>
+      <h2>Mirror a live market</h2>
+      <p>List any Polymarket market (paste its market URL, slug or id) or any Hyperliquid perp (a coin, or <code>xyz:TSLA</code> for a HIP-3 market). The venue's price becomes the oracle; the order book here is Impulse's own.</p>
+      <div className="row" style={{ flexWrap: "wrap", maxWidth: 900 }}>
+        <input className="input" style={{ flex: "2 1 300px" }} placeholder="polymarket.com/market/… or id" value={pm} onChange={(e) => setPm(e.target.value.trim())} />
+        <button className="btn" disabled={!pm} onClick={() => onList("/api/admin/polymarket", { ref: pm }, pm)}>
+          Mirror Polymarket
+        </button>
+        <input className="input mono" style={{ flex: "1 1 140px" }} placeholder="DOGE or xyz:TSLA" value={coin} onChange={(e) => setCoin(e.target.value.trim())} />
+        <button className="btn" disabled={!coin} onClick={() => onList("/api/admin/hyperliquid", { coin }, coin)}>
+          Mirror Hyperliquid
+        </button>
+      </div>
+    </>
   );
 }
 

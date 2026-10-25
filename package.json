@@ -7,11 +7,15 @@
   },
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p server && tsc --noEmit -p web",
     "replay": "tsx src/cli.ts",
     "demo": "tsx src/cli.ts scenarios/gap-down-resolve-0.json scenarios/gap-down-resolve-1.json scenarios/gap-up-resolve-0.json scenarios/memecoin-squeeze.json scenarios/isolation-two-markets.json scenarios/attention-pump.json scenarios/principal-fallback.json scenarios/graduation-blowup.json scenarios/resolution-taper.json scenarios/funding-drain.json",
     "attack": "tsx src/attack.ts",
-    "compare": "tsx src/compare.ts"
+    "compare": "tsx src/compare.ts",
+    "dev": "pnpm -r --parallel dev",
+    "server": "pnpm --filter impulse-server start",
+    "web:build": "pnpm --filter impulse-web build",
+    "start": "pnpm web:build && pnpm server"
   },
   "devDependencies": {
     "@types/node": "^26.6.4",

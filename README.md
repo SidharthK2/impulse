@@ -9,9 +9,17 @@ The question it answers: **when a price gaps, what happens to leveraged position
 
 **Start with the brief: [docs/BRIEF.md](docs/BRIEF.md)** (findings, design recommendations, open questions).
 
+**New: a live paper-trading exchange built on the engine ([docs/MVP.md](docs/MVP.md)).** It has order books, Hyperliquid and
+Polymarket oracles, attention curves, house bots, and a trading UI where you can watch gaps, liquidations and ADL happen.
+
+```bash
+pnpm install && pnpm start         # http://localhost:8787 (admin token: impulse-admin)
+```
+
 | Doc | What's in it |
 |---|---|
 | [BRIEF.md](docs/BRIEF.md) | Findings for Cesar |
+| [MVP.md](docs/MVP.md) | The paper-trading exchange: how to run it, architecture, API, demo script |
 | [JOURNAL.md](docs/JOURNAL.md) | Progress log, newest last, and current state |
 | [DECISIONS.md](docs/DECISIONS.md) | Every scope and design decision, and why |
 | [INTERMEDIATES.md](docs/INTERMEDIATES.md) | Next projects: research that also sets product parameters |
@@ -27,7 +35,9 @@ pnpm demo                          # ten scenarios, full ledger after every even
 pnpm attack                        # pump-attack sweep on a curve-priced perp (<1s)
 pnpm compare                       # every scenario under both ADL rules, side by side
 pnpm replay scenarios/x.json       # any scenario; add --json for machine-readable output
-pnpm test                          # 53 tests incl. a 300-history multi-market seeded fuzz
+pnpm test                          # 68 tests: engine (incl. a 300-history multi-market seeded fuzz) + exchange
+pnpm start                         # the MVP exchange: web app + API on :8787
+pnpm dev                           # MVP in development: API :8787 + Vite :5173
 ```
 
 ## Mechanism (one paragraph)
@@ -225,7 +235,8 @@ it's a plausible second extraction channel.
   which would act like our "retrace" arbitrageurs, isn't simulated. The spot fee (default 1%) is our assumption,
   since Mirror's isn't published.
 - **Withdrawals: realized cash only, above initial margin.** This is conservative by choice; see ACCOUNTING.md.
-- Not covered: perp trading fees, partial liquidation, cross margin, tokens, contracts, frontend.
+- Not covered: perp trading fees, partial liquidation, cross margin, tokens, contracts. (The order book, live
+  oracles and frontend now exist in the MVP: [docs/MVP.md](docs/MVP.md).)
 
 ## Open questions (solvency doesn't answer these)
 
@@ -245,5 +256,7 @@ src/compare.ts    replays scenarios under each ADL rule
 src/report.ts     ledger rendering, state hash
 src/cli.ts        scenario runner
 scenarios/        A–J above (JSON event lists)
+server/           MVP exchange: order books, feeds, bots, HTTP + websocket API (wraps src/engine.ts)
+web/              MVP trading UI (React + Vite + lightweight-charts)
 docs/             see the docs index above
 ```

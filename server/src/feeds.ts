@@ -172,12 +172,67 @@ export async function listDefaults(x: Exchange, log: (s: string) => void, offlin
       log(`could not list ${spec.id}: ${(err as Error).message}`);
     }
   }
-  if (!offline) await backfill(x, log);
+  // Chart history is cosmetic: fetch it in the background so the server starts listening right away.
+  if (!offline) void backfill(x, log);
+}
+
+/** Mirror one Polymarket market by URL, slug or numeric id. The perp tracks the first outcome ("Yes"). */
+export async function listPolymarket(x: Exchange, ref: string, log: (s: string) => void) {
+  const slug = ref.trim().replace(/^https?:\/\/[^/]+\/(event|market)\//, "").split(/[/?#]/)[0]!;
+  let pm: PmMarket;
+  if (/^\d+$/.test(slug)) pm = await pmMarket(slug);
+  else {
+    const found = await getJson<Record<string, unknown>[]>(`${PM_GAMMA}/markets?slug=${encodeURIComponent(slug)}`);
+    if (!found[0]) throw new Error(`no Polymarket market with slug "${slug}" (event pages hold several markets: use a market's own URL or id)`);
+    pm = parsePm(found[0]);
+  }
+  if (pm.closed) throw new Error(`Polymarket market ${pm.id} is already closed`);
+  if (pm.tokens.length !== 2) throw new Error(`Polymarket market ${pm.id} isn't a two-outcome market`);
+  const mids = await pmMidpoints([pm.tokens[0]!]);
+  const mid = Number(mids[pm.tokens[0]!] ?? pm.prices[0]);
+  const meta = x.createMarket({
+    id: `PM-${pm.id}`,
+    kind: "binary",
+    name: pm.question,
+    base: pm.outcomes[0] ?? "YES",
+    price: (Math.round(mid * 1000) / 1000).toFixed(3),
+    source: { kind: "polymarket", marketId: pm.id, tokenId: pm.tokens[0]!, outcome: pm.outcomes[0] ?? "Yes" },
+    description: `Leveraged mirror of a Polymarket outcome: the oracle is Polymarket's midpoint for "${pm.outcomes[0]}", and it settles when Polymarket resolves. Polymarket ends ${pm.endDate.slice(0, 10)}.`,
+    url: pm.slug ? `https://polymarket.com/market/${pm.slug}` : undefined,
+    creator: "admin",
+  });
+  void backfill(x, log, [meta.id]);
+  return meta;
+}
+
+/** Mirror one Hyperliquid perp (e.g. "DOGE", or "xyz:TSLA" for a HIP-3 market). */
+export async function listHyperliquid(x: Exchange, coin: string, log: (s: string) => void) {
+  const dex = coin.includes(":") ? coin.split(":")[0] : undefined;
+  const [meta, mids] = await Promise.all([hlMeta(dex), hlMids(dex)]);
+  const info = meta.get(coin);
+  const mid = mids[coin];
+  if (!info || mid === undefined) throw new Error(`Hyperliquid has no live perp "${coin}"`);
+  const base = coin.replace(/^.*:/, "");
+  const m = x.createMarket({
+    id: `${base}-PERP`,
+    kind: "perp",
+    name: `${base}${dex ? ` (HIP-3, ${dex})` : ""}`,
+    base,
+    szDecimals: info.szDecimals,
+    price: mid,
+    source: { kind: "hyperliquid", coin, ...(dex && { dex }) },
+    description: `Mirrors Hyperliquid's ${coin} mid price as the oracle. Liquidity comes from Impulse's own order book.`,
+    url: `https://app.hyperliquid.xyz/trade/${coin}`,
+    creator: "admin",
+  });
+  void backfill(x, log, [m.id]);
+  return m;
 }
 
 /** Seed charts with recent real history so they aren't empty on day one. */
-async function backfill(x: Exchange, log: (s: string) => void) {
+async function backfill(x: Exchange, log: (s: string) => void, only?: string[]) {
   for (const meta of Object.values(x.markets)) {
+    if (only && !only.includes(meta.id)) continue;
     try {
       if (meta.source.kind === "hyperliquid") {
         const cs = await hlCandles(meta.source.coin, 360);

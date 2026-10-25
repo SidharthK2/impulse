@@ -22,14 +22,16 @@ const log = (s: string) => console.log(`[${new Date().toISOString().slice(11, 19
 
 const snap = loadSnapshot(DATA_DIR);
 const x = snap ? Exchange.fromSnapshot(snap) : new Exchange();
-if (snap) log(`restored snapshot: ${Object.keys(x.markets).length} markets, ${Object.keys(x.accounts).length} accounts, engine t=${x.state.time}s`);
-else {
+if (snap) {
+  const down = snap.savedAt ? Date.now() - snap.savedAt : 0;
+  x.resumeAfter(down);
+  log(`restored snapshot: ${Object.keys(x.markets).length} markets, ${Object.keys(x.accounts).length} accounts, engine t=${x.state.time}s; paused for ${Math.round(down / 1000)}s of downtime`);
+} else {
   log(`fresh exchange; listing default markets${OFFLINE ? " (offline)" : ""}…`);
   await listDefaults(x, log, OFFLINE);
   log(`listed ${Object.keys(x.markets).join(", ")}`);
 }
 
-// Catch up the engine clock first: downtime accrues funding like any idle period (Mirror: inactive markets keep paying).
 x.clock();
 
 const bots = BOTS ? new Bots(x, log) : null;
