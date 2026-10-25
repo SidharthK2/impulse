@@ -78,5 +78,8 @@ function shutdown() {
   server.close();
   process.exit(0);
 }
+// Last-resort net: every engine transition is clone-then-commit, so a thrown error can't leave half-applied state.
+process.on("unhandledRejection", (err) => log(`unhandled rejection: ${(err as Error)?.stack ?? err}`));
+process.on("uncaughtException", (err) => log(`uncaught exception: ${err.stack ?? err}`));
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);

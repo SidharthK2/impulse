@@ -436,6 +436,7 @@ export class Exchange {
   createAccount(name: string, opts: { bot?: boolean } = {}): AccountMeta {
     const id = name.trim();
     if (!NAME.test(id)) throw new ExchangeError("name must be 3–16 letters, digits or _");
+    if (["curve", "admin"].includes(id.toLowerCase())) throw new ExchangeError(`"${id}" is reserved`, 409);
     if (Object.keys(this.accounts).some((a) => a.toLowerCase() === id.toLowerCase())) throw new ExchangeError(`name "${id}" is taken`, 409);
     const meta: AccountMeta = { id, apiKey: randomBytes(24).toString("base64url"), bot: !!opts.bot, createdAt: this.now(), lastFaucet: 0 };
     this.accounts[id] = meta;

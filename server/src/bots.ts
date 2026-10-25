@@ -53,9 +53,17 @@ export class Bots {
   }
 
   start() {
+    const guard = (fn: () => void) => () => {
+      if (!this.enabled) return;
+      try {
+        fn();
+      } catch (err) {
+        this.log(`bots: ${(err as Error).stack ?? err}`);
+      }
+    };
     // Requote a few markets per second rather than all at once.
-    this.timers.push(setInterval(() => this.enabled && this.requoteSome(3), 1000));
-    this.timers.push(setInterval(() => this.enabled && this.noise(), 2500));
+    this.timers.push(setInterval(guard(() => this.requoteSome(3)), 1000));
+    this.timers.push(setInterval(guard(() => this.noise()), 2500));
   }
 
   stop() {

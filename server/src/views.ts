@@ -56,7 +56,8 @@ export function marketView(x: Exchange, id: string) {
   const book = x.books[id]!;
   const bestBid = book.best("buy");
   const bestAsk = book.best("sell");
-  const last = [...x.fills].reverse().find((f) => f.market === id && f.kind === "perp");
+  let last: Fill | undefined;
+  for (let i = x.fills.length - 1; i >= 0 && !last; i--) if (x.fills[i]!.market === id && x.fills[i]!.kind === "perp") last = x.fills[i];
   return {
     id,
     name: meta.name,

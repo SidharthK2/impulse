@@ -5,7 +5,7 @@
 
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { type IncomingMessage, type ServerResponse, createServer } from "node:http";
-import { extname, join, normalize, resolve } from "node:path";
+import { extname, join, normalize, resolve, sep } from "node:path";
 import { WebSocket, WebSocketServer } from "ws";
 import type { Bots } from "./bots.js";
 import { type Exchange, ExchangeError, type MarketSpec, type OrderInput } from "./exchange.js";
@@ -246,7 +246,14 @@ export function createApi(x: Exchange, opts: ApiOptions) {
       });
       return res.end();
     }
-    if (!url.pathname.startsWith("/api/")) return serveStatic(url.pathname, res);
+    if (!url.pathname.startsWith("/api/")) {
+      try {
+        return serveStatic(url.pathname, res);
+      } catch {
+        res.writeHead(400);
+        return res.end();
+      }
+    }
     try {
       for (const r of routes) {
         if (r.method !== req.method) continue;
@@ -289,7 +296,7 @@ export function createApi(x: Exchange, opts: ApiOptions) {
     }
     const root = resolve(opts.webDir);
     let file = resolve(join(root, normalize(decodeURIComponent(pathname))));
-    if (!file.startsWith(root)) {
+    if (file !== root && !file.startsWith(root + sep)) {
       res.writeHead(403);
       return res.end();
     }
@@ -385,7 +392,11 @@ export function createHub(x: Exchange) {
     if (x.version === lastVersion) return;
     lastVersion = x.version;
     const cache = new Map<string, string>();
-    for (const c of clients) for (const ch of c.subs) push(c, ch, cache);
+    try {
+      for (const c of clients) for (const ch of c.subs) push(c, ch, cache);
+    } catch (err) {
+      console.error("websocket push failed:", (err as Error).stack ?? err);
+    }
   }, 500);
 
   return { wss, close: () => clearInterval(timer), clients };
