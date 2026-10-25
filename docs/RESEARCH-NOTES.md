@@ -47,10 +47,7 @@ evaluate ADL venues at all.
   decides PnL**. The side that was right lost, and the side that was wrong profited. This matters more than the
   fee identity if the oracle is a thin Polymarket book.
 
-## Candidate next steps for the PoC
+## Follow-ups
 
-1. Second ADL policy: capped pro-rata on positive PnL (Chitra), with a principal fallback that reports when it fires. Compare A/B/C side by side.
-2. Pre-resolution leverage compression or a hard-flat time (the memo's Axient idea), to see how much ADL disappears.
-3. Per-side margin on max loss instead of notional, so "3×" means the same thing for longs and shorts.
-4. Oracle guards (bands, TWAP marks, staleness) and a wick-attack scenario, with attacker PnL against cost.
-5. Funding, so the "perp trades off-oracle" question can be measured instead of argued.
+All five follow-ups proposed here (capped-PnL ADL, a pre-resolution taper, max-loss margin, TWAP oracles and a
+wick/pump attack, funding) were built on 2026-10-05; see [JOURNAL.md](./JOURNAL.md) and [BRIEF.md](./BRIEF.md).

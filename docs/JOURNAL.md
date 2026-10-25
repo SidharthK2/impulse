@@ -108,7 +108,8 @@ What happened, what we learned, and where things stand. Newest last.
 
 - **Trigger:** the user asked for full research from primary sources only, because answers in chat had drifted.
 - Re-fetched all 8 Mirror docs pages and diffed them against the archive: **no substantive change** since 2026-10-09.
-  Archived as `sources/mirror/2026-10-26/`, including the new standalone Referrers & Builder Revenue page.
+  Archived in `sources/mirror/` (replacing the older copies), including the new standalone Referrers & Builder
+  Revenue page.
 - **Recomputed both curve tables independently:** spot price and sniping-phase P_open. 14/14 rows match exactly.
 - Re-read the shipped web-app bundle. It has a spot order book, trades, candles, snipes and memecoin-style `pulse`
   feeds; **no perp-trading code**. Mirror isn't live (launch countdown).
@@ -117,6 +118,8 @@ What happened, what we learned, and where things stand. Newest last.
   was unsourced.
 - `MIRROR-NOTES.md` "What we know for sure" rewritten as of 2026-10-26; `research/mirror-infra.md` and
   `POSITIONING.md` updated.
+- **Pruned:** superseded doc copies, duplicated and stale MIRROR-NOTES sections (refreshed the "what our engine chose"
+  table), RESEARCH-NOTES' finished to-do list; added a dated note to BRIEF instead of rewriting what was sent.
 
 ## Current state
 

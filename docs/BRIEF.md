@@ -2,6 +2,11 @@
 
 *Brief for Cesar · October 2026 · repo: `SidharthK2/impulse` (private)*
 
+> **Note (2026-10-26):** this brief is as sent on 2026-10-06. Since then: a live paper-trading MVP exists
+> ([MVP.md](./MVP.md)), so "simulation only" and "53 tests" are out of date (74 tests now); profile owners get 50% of
+> attention-token fees; Mirror isn't live and its shipped app has no perp code yet. Current facts:
+> [MIRROR-NOTES.md](./MIRROR-NOTES.md). The findings and numbers below still stand.
+
 ## TL;DR
 
 - **Mirror's core claim holds, but it's the easy part.** "No bad debt, ever" through ADL on every transaction is

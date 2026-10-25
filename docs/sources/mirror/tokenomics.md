@@ -1,9 +1,17 @@
 # Mirror docs: tokenomics
 
-> Text extract of secret.mirror.exchange/docs/tokenomics (invite-gated), retrieved 2026-10-05.
-> Archived for private research reference; Mirror's claims, not verified behaviour. Math rendered as text may be incomplete.
+> Text extract of secret.mirror.exchange/docs/tokenomics (invite-gated), fetched 2026-10-26 via an invite link, HTML parsed to text (scripts and navigation chrome included as rendered text).
+> Archived for private research reference; Mirror's claims, not verified behaviour. This copy renders the math formulas the 2026-10-03/05/09 copies dropped.
 
-$MIRROR TokenomicsCopy as Markdown
+$MIRROR Tokenomics · Mirror
+Docs
+Create Wallet
+DocsTelegram
+What is Mirror?How MicroPerps WorkAttention MarketsPrivate TradingAgentic TradingReferrers & Builder RevenueTokenomicsFAQ
+Docs navigation
+What is Mirror?How MicroPerps WorkAttention MarketsPrivate TradingAgentic TradingReferrers & Builder RevenueTokenomicsFAQ
+Docs/TokenomicsMarkdownCopy as Markdown
+## $MIRROR TokenomicsCopy as Markdown
 Mirror is not a company, and it does not have equity or pre-existing investors. It is a project that has been fully bootstrapped by its founder.
 If you're reading this right now, you have the exact same access to this project as the most sophisticated financial players in the world.
 ## Buying $MIRROR
@@ -26,20 +34,59 @@ $53,437,50020.0%$0.001250047,500,000,000 (half)
 $69,473,68414.0%$0.001315860,000,000,000
 $89,802,6327.5%$0.001394775,000,000,000
 $118,750,0000.0%$0.001500095,000,000,000 (full)
-This widget shows exactly how many pre-sale tokens you get depending on when you purchase. Set how much has already gone into the pre-sale (which determines your bonus), then set your buy amount. If you prefer a spreadsheet, see here (hit “Make a Copy” to edit).Try it
+This widget shows exactly how many pre-sale tokens you get depending on when you purchase. Set how much has already gone into the pre-sale (which determines your bonus), then set your buy amount. If you prefer a spreadsheet, see here (hit “Make a Copy” to edit).
+Try it
 ## Pre-Sale Buy
-Your bonus depends on how much has already gone in before youBonus If You Buy Now50%50%of 50%50% maxYour Tokens10M10M6.7M6.7M base + 3.3M3.3M bonusYour Effective Price$0.0010$0.0010vs $0.0015$0.0015 baseAlready In Pre-Sale USD$ / $119MYour Pre-Sale Buy USD$ / $119M left
+Your bonus depends on how much has already gone in before you
+Bonus If You Buy Now
+50%50%
+of 50%50% max
+Your Tokens
+10M10M
+6.7M6.7M base + 3.3M3.3M bonus
+Your Effective Price
+$0.0010$0.0010
+vs $0.0015$0.0015 base
+Already In Pre-Sale USD
+$ / $119M
+Your Pre-Sale Buy USD
+$ / $119M left
 After your buy: pre-sale 0%0% filled · bonus drops to 50%50%
 ## The Post-Launch Phase
 After launch, i.e. in the post-launch phase, normal trading begins on a bonding curve that starts at the exact price the pre-sale ended at. Bonding curves automatically increase price the more people buy and decrease price the more people sell, and they are a popular way to bootstrap early liquidity for a market.
-If you don't understand bonding curves at all, you can use this widget to simulate what happens to the price post-launch given a certain amount of pre-sale demand and a certain amount of net buy post-launch. If you prefer a spreadsheet, see here (hit “Make a Copy” to edit).Try it
+If you don't understand bonding curves at all, you can use this widget to simulate what happens to the price post-launch given a certain amount of pre-sale demand and a certain amount of net buy post-launch. If you prefer a spreadsheet, see here (hit “Make a Copy” to edit).
+Try it
 ## Launch Simulator
-Pre-sale raise seeds the curve at its closing price · post-launch buys stack on topPre-SaleTotal Pre-Sale Raise USD$ / $119MPre-Sale Tokens Sold9.7B9.7B10.3%10.3% of 95B95B capAvg Pre-Sale Price$0.0010257$0.0010257bonus remaining 42.7%42.7%Curve Seed513.1M513.1M tokenspaired with $539.5K$539.5K USDCopens at $0.0010513$0.0010513Post-LaunchTotal Post-Launch Buy USD$ / $10MTerminal Price$0.0019753$0.00197531.91.9x the $0.0010513$0.0010513 openTerminal Market Cap$395.1M$395.1M$4.0B$4.0B FDV
-The bonding curve used post-launch is a standard “” bonding curve seeded with a portion of the pre-sale proceeds. If you're unfamiliar with bonding curves, the most important thing to understand is that they consist of two pools: one pool of tokens (the “” pool), and one pool of USDC (the “” pool) such that: 1) the price is always equal to and 2) the price roughly 4x'es every time the cumulative USDC added to doubles (i.e. the price is quadratic in the purchase amount). We provide concrete examples below so that even if you don't follow the math you can still get a sense of the liquidity available at launch.
-The total number of tokens that are allocated across the pre-sale and the bonding curve is 100B (as we will discuss in the supply section). The curve is seeded solely from tokens in this 100B that are not sold in the pre-sale, using a simple and fixed rule. If we call the price the pre-sale ended at (anywhere between $0.001 and $0.0015 depending on how much of the pre-sale filled), the rule is:
-In words, for every 19 tokens sold in the pre-sale we put 1 token into the pool of the bonding curve paired with of USDC in the pool of the bonding curve, which sets the opening price to exactly because of the invariant mentioned earlier.
-The curve therefore always opens at a price, , exactly equal to the price the pre-sale closed at:
-Below is a table showing the values of and for various pre-sale outcomes. Notice that, no matter what happens, the curve opens exactly where the pre-sale left off:
+Pre-sale raise seeds the curve at its closing price · post-launch buys stack on top
+Pre-Sale
+Total Pre-Sale Raise USD
+$ / $119M
+Pre-Sale Tokens Sold
+9.7B9.7B
+10.3%10.3% of 95B95B cap
+Avg Pre-Sale Price
+$0.0010257$0.0010257
+bonus remaining 42.7%42.7%
+Curve Seed
+513.1M513.1M tokens
+paired with $539.5K$539.5K USDC
+opens at $0.0010513$0.0010513
+Post-Launch
+Total Post-Launch Buy USD
+$ / $10M
+Terminal Price
+$0.0019753$0.0019753
+1.91.9x the $0.0010513$0.0010513 open
+Terminal Market Cap
+$395.1M$395.1M
+$4.0B$4.0B FDV
+The bonding curve used post-launch is a standard “x⋅y=k” bonding curve seeded with a portion of the pre-sale proceeds. If you're unfamiliar with x⋅y=k bonding curves, the most important thing to understand is that they consist of two pools: one pool of tokens (the “y” pool), and one pool of USDC (the “x” pool) such that: 1) the price is always equal to xusdc​/ytokens​ and 2) the price roughly 4x'es every time the cumulative USDC added to xusdc​ doubles (i.e. the price is quadratic in the purchase amount). We provide concrete examples below so that even if you don't follow the math you can still get a sense of the liquidity available at launch.
+The total number of tokens that are allocated across the pre-sale and the bonding curve is 100B (as we will discuss in the supply section). The curve is seeded solely from tokens in this 100B that are not sold in the pre-sale, using a simple and fixed rule. If we call the price the pre-sale ended at Pend​ (anywhere between $0.001 and $0.0015 depending on how much of the pre-sale filled), the rule is:
+yopen​=19pre_sale_tokens_sold​xopen​=Pend​×19pre_sale_tokens_sold​
+In words, for every 19 tokens sold in the pre-sale we put 1 token into the y pool of the bonding curve paired with Pend​ of USDC in the x pool of the bonding curve, which sets the opening price to exactly Pend​ because of the p=x/y invariant mentioned earlier.
+The curve therefore always opens at a price, Popen​, exactly equal to the price the pre-sale closed at:
+Popen​=yopen​xopen​​=Pend​
+Below is a table showing the values of xopen​ and yopen​ for various pre-sale outcomes. Notice that, no matter what happens, the curve opens exactly where the pre-sale left off:
 Pre-Sale Outcome (D)Raised (f)Curve Tokens (y_open)Curve USDC (x_open)Open PriceOpen Market Cap
 10,000,000,000$10.3M526,315,789$554,017$0.0010526$210.5M
 25,000,000,000$26.6M1,315,789,474$1,488,920$0.0011316$226.3M
@@ -47,7 +94,7 @@ Pre-Sale Outcome (D)Raised (f)Curve Tokens (y_open)Curve USDC (x_open)Open Price
 60,000,000,000$69.5M3,157,894,737$4,155,125$0.0013158$263.2M
 75,000,000,000$89.8M3,947,368,421$5,505,540$0.0013947$278.9M
 95,000,000,000$118.75M5,000,000,000$7,500,000$0.0015000$300.0M
-If we consider a “full” pre-sale where we have the maximum value of 95 billion for pre_sale_tokens_sold, then we get , which results in the launch allocation hitting its maximum value of 100 billion (95 billion in the pre-sale, 5 billion in the bonding curve, seeded with $7.5M of the $118.75M raised). In other words, no more than 100 billion tokens can be sold in total across the pre-sale and the bonding curve.
+If we consider a “full” pre-sale where we have the maximum value of 95 billion for pre_sale_tokens_sold, then we get yopen​=95B/19=5B, which results in the launch allocation hitting its maximum value of 100 billion (95 billion in the pre-sale, 5 billion in the bonding curve, seeded with $7.5M of the $118.75M raised). In other words, no more than 100 billion tokens can be sold in total across the pre-sale and the bonding curve.
 ## $MIRROR Token Supply
 $MIRROR has a fixed maximum total supply of 2T tokens, and an initial circulating supply of 200B tokens (10% of the maximum total).
 100B launch allocation (circulating). In total, the pre-sale can sell up to 95 billion tokens if it fills completely, which results in a maximum raise amount of $118,750,000. Across the pre-sale and the bonding curve no more than 100 billion tokens can be sold in total (e.g. if the pre-sale sells the full 95 billion tokens then the bonding curve is initialized with the remaining 5 billion tokens for a total of 100 billion tokens across pre-sale & bonding curve). We refer to the 100 billion tokens allocated across the pre-sale and bonding curve as the launch allocation. The launch allocation is considered liquid at launch, and hence part of the circulating supply.
@@ -70,9 +117,20 @@ Opening pricePre-sale closing price: $0.001 to $0.0015 ($200M to $300M circulati
 Maximum raise$118,750,000
 ## $MIRROR Buybacks
 On every trade, Mirror charges a trading fee that is immediately converted to USDC. This is true for all markets, including major tokens like Bitcoin, Ethereum, and Solana. For Attention Tokens, 50% of this fee is allocated to profile owners, while the other 50% is retained by the exchange. In all cases, we call whatever portion is retained by the exchange the “net fees.”
-On every trade the net fees are allocated algorithmically to the buy & burn of $MIRROR tokens. Of these net fees, we allocate a small portion (10%) to algorithmically buy and burn $DESO to support the proliferation of decentralized social media.Try it
+On every trade the net fees are allocated algorithmically to the buy & burn of $MIRROR tokens. Of these net fees, we allocate a small portion (10%) to algorithmically buy and burn $DESO to support the proliferation of decentralized social media.
+Try it
 ## Net fee split
-Drag to set net fees collectedNet fees collected$1.0B$1.0B$1M$1B$1TAllocation$MIRROR buy & burn$900.0M$900.0M90% of net fees$DESO buy & burn$100.0M$100.0M10% of net fees
+Drag to set net fees collected
+Net fees collected
+$1.0B$1.0B
+$1M$1B$1T
+Allocation
+$MIRROR buy & burn
+$900.0M$900.0M
+90% of net fees
+$DESO buy & burn
+$100.0M$100.0M
+10% of net fees
 100% of net fees flow back to token-holders via buy & burn, with no private round, no VC allocation before the public sale.
 As a concrete example, if the exchange were to generate $200 million in fees from Attention Tokens and $900 million in fees from other markets, then the net fees would be $1 billion, because the creators get half of the Attention Token fees, leaving the exchange with $100 million + $900 million in net fees. Then, of this $1 billion in net fees, $900M would go to buy and burn $MIRROR while $100M (10%) would go to buy and burn $DESO.
 ## Referrals
@@ -82,3 +140,22 @@ All of this is just the beginning as well. When you refer another user you also 
 You also get 4% of the trading fees from second-degree referrals and 2% of fees from third-degree referrals. For example, if A refers B, B refers C, and C refers D, then A gets 14% of B’s fees, 4% of C’s fees, and 2% of D’s fees. This represents the same 70%/20%/10% split, but over 20% of trading fees rather than 2.5% of pre-sale buys.
 Unlike most exchange affiliate programs, all of your earnings are paid in USDC so you don’t have to manage fees in lots of different currencies. You just get a steady stream of USDC cashflow as the people you refer (and the people they refer) start buying and/or trading. This was not trivial to implement, especially for highly-illiquid tokens, which is why most exchanges don't do it, but we prioritized it to maximize ease for referrers.
 There is no limit on the referral fees that can be earned on the 2.5% of pre-sale buys. The 10% discount on trading fees for a referee is active until they’ve personally executed $25M in weighted volume (corresponds to roughly $2,500 in exchange fees paid). Referrers keep earning their exchange fee kickback for much longer, until the referee hits 1B in weighted volume (corresponds to roughly $100k in exchange fees paid, 40x longer than the discount lasts). Both caps are per-referee, not lifetime totals across your network, so every newly referred user starts with a new clock.
+PreviousReferrers & Builder RevenueNextFAQ
+Have more questions?
+@mirror_exchanget.me/mirror_dot_exchange
+On this page
+Buying $MIRRORThe Pre-Sale PhaseThe Post-Launch Phase$MIRROR Token Supply$MIRROR BuybacksReferrals
+●$MIRROR launches in
+– –
+Days
+– –
+Hrs
+– –
+Min
+– –
+Secs
+countdown activates soonBuy $MIRROR
+MIRROR
+MIRROR
+Every Market, Reflected.
+What is Mirror?Attention MarketsHow MicroPerps WorkTokenomicsFAQDocsTelegram© 2026 Mirror · Every market, reflected.

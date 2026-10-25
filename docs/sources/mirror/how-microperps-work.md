@@ -1,9 +1,17 @@
 # Mirror docs: how-microperps-work
 
-> Text extract of secret.mirror.exchange/docs/how-microperps-work (invite-gated). First read 2026-10-03; this copy re-fetched 2026-10-09 (page size unchanged).
-> Archived for private research reference; Mirror's claims, not verified behaviour.
+> Text extract of secret.mirror.exchange/docs/how-microperps-work (invite-gated), fetched 2026-10-26 via an invite link, HTML parsed to text (scripts and navigation chrome included as rendered text).
+> Archived for private research reference; Mirror's claims, not verified behaviour. This copy renders the math formulas the 2026-10-03/05/09 copies dropped.
 
-How MicroPerps WorkCopy as Markdown
+How MicroPerps Work · Mirror
+Docs
+Create Wallet
+DocsTelegram
+What is Mirror?How MicroPerps WorkAttention MarketsPrivate TradingAgentic TradingReferrers & Builder RevenueTokenomicsFAQ
+Docs navigation
+What is Mirror?How MicroPerps WorkAttention MarketsPrivate TradingAgentic TradingReferrers & Builder RevenueTokenomicsFAQ
+Docs/How MicroPerps WorkMarkdownCopy as Markdown
+## How MicroPerps WorkCopy as Markdown
 On Mirror, every spot market starts with a perp with 3x leverage, scaling to 100x as the market matures. This is all thanks to a new innovation we’ve developed that we call the Micro Perpetual, or MicroPerp for short.
 MicroPerps allow us to go from perps on hundreds of assets maintained by gatekeepers to perps on millions of assets maintained by no one, making perps permissionless in the original sense of the word.
 Today, exchanges like Binance and Hyperliquid can only list perpetuals for a few hundred out of the millions of assets that exist on-chain and in the real world. Even after listing an asset, if its liquidity subsequently deteriorates, they have to delist it. But why is this the case, and could we question their assumptions to engineer a truly permissionless perps venue? After all, isn’t the point of DeFi that we don’t have gatekeepers telling us what we can and can’t trade?
@@ -42,3 +50,22 @@ A perp for every on-chain token. Similar to listing a perp for every stock and c
 Prediction markets with leverage. MicroPerps uniquely unlock the ability to add leverage to prediction markets. There is no reason why every prediction market on Polymarket and Kalshi can’t have a mirrored MicroPerp on Mirror for those who want to amplify their returns.
 Real-estate speculation (Zillow Perps). Imagine if you could speculate on the value of any basket of homes in real time. Real estate prices are less liquid than traditional equities and commodities, but that's not a problem for MicroPerps. Every listing on Zillow can attach to a unique MicroPerp, and "baskets" of home prices can be aggregated to create an oracle price for every city in the world. This means you can directly long or short baskets of real-estate prices like all homes in SF or all homes in Hong Kong. With time, we think this can become among the most liquid ways to speculate on the value of real-estate.
 These are just some examples of what’s possible with the technology we’ve developed.
+PreviousWhat is Mirror?NextAttention Markets
+Have more questions?
+@mirror_exchanget.me/mirror_dot_exchange
+On this page
+Truly Permissionless ListingPermissionless User-Managed MarketsMathematically-Guaranteed SolvencyMax Leverage on MicroPerpsBootstrapping a MicroPerp MarketOther Applications
+●$MIRROR launches in
+– –
+Days
+– –
+Hrs
+– –
+Min
+– –
+Secs
+countdown activates soonBuy $MIRROR
+MIRROR
+MIRROR
+Every Market, Reflected.
+What is Mirror?Attention MarketsHow MicroPerps WorkTokenomicsFAQDocsTelegram© 2026 Mirror · Every market, reflected.
