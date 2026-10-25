@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { api } from "../api";
 import { clock, num, price, size, tone, usd } from "../format";
 import { useChannel } from "../hooks";
@@ -298,7 +298,57 @@ function WhoPaid({ account }: { account: AccountView }) {
   );
 }
 
+interface PublicPosition {
+  account: string;
+  size: string;
+  collateral: string;
+  adl: string;
+}
+
+/** The whole market is public: who holds what, so who would absorb a shortfall, and what has happened here. */
 function MarketRisk({ market }: { market: MarketView }) {
   const feed = useChannel<RiskEvent[]>("feed") ?? [];
-  return <RiskList events={feed.filter((e) => e.market === market.id)} showMarket={false} />;
+  const [positions, setPositions] = useState<PublicPosition[]>([]);
+  useEffect(() => {
+    let alive = true;
+    const load = () =>
+      api<PublicPosition[]>("GET", `/api/markets/${encodeURIComponent(market.id)}/positions`)
+        .then((p) => alive && setPositions(p))
+        .catch(() => {});
+    void load();
+    const t = setInterval(load, 3000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, [market.id]);
+  const sorted = [...positions].sort((a, b) => Math.abs(num(b.size)) - Math.abs(num(a.size)));
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.4fr)" }}>
+      <div style={{ borderRight: "1px solid var(--line)" }}>
+        <table className="grid">
+          <thead>
+            <tr>
+              <th>Holder</th>
+              <th className="right">Size</th>
+              <th className="right">Collateral</th>
+              <th className="right">ADL ±</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((p) => (
+              <tr key={p.account}>
+                <td>{p.account}</td>
+                <td className={`right mono ${tone(num(p.size))}`}>{size(p.size, market.szDecimals)}</td>
+                <td className="right mono">{usd(p.collateral)}</td>
+                <td className={`right mono ${tone(num(p.adl))}`}>{num(p.adl) === 0 ? "—" : usd(p.adl, { sign: true })}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {sorted.length === 0 && <div className="empty">No open positions in {market.id}.</div>}
+      </div>
+      <RiskList events={feed.filter((e) => e.market === market.id)} showMarket={false} />
+    </div>
+  );
 }

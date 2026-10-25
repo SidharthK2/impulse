@@ -396,7 +396,9 @@ export class Exchange {
   }
 
   private sideSize(meta: MarketMeta, size: bigint): string {
-    return `${size > 0n ? "long" : "short"} ${coinsFromLots(meta, abs(size))} ${meta.base}`;
+    const [int, frac] = coinsFromLots(meta, abs(size)).split(".");
+    const grouped = BigInt(int!).toLocaleString("en-US") + (frac ? `.${frac}` : "");
+    return `${size > 0n ? "long" : "short"} ${grouped} ${meta.base}`;
   }
 
   private markStr(market: string): string {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api, getKey, setKey } from "./api";
 import { AccountPanel } from "./components/AccountPanel";
 import { Chart } from "./components/Chart";
@@ -28,6 +28,8 @@ function Shell() {
   const account = useChannel<AccountView | null>(key ? "account" : null) ?? undefined;
   const connected = useConnected();
   const byId = useMemo(() => Object.fromEntries((markets ?? []).map((m) => [m.id, m])), [markets]);
+
+  useRiskToasts(account);
 
   const page = route[0] ?? "trade";
   const marketId = page === "trade" && route[1] && byId[route[1]] ? route[1] : (markets?.[0]?.id ?? null);
@@ -98,6 +100,23 @@ function Shell() {
       {modal === "list" && <ListAttention onClose={() => setModal(null)} onListed={(id) => (setModal(null), go(`trade/${encodeURIComponent(id)}`))} />}
     </div>
   );
+}
+
+/** Tell the user, wherever they are in the app, when risk processing touches their account. */
+function useRiskToasts(account: AccountView | undefined) {
+  const toast = useToast();
+  const seen = useRef<number | null>(null);
+  useEffect(() => {
+    if (!account) return;
+    const latest = account.risk[0]?.id ?? 0;
+    if (seen.current === null) {
+      seen.current = latest; // don't replay history on load
+      return;
+    }
+    const fresh = account.risk.filter((e) => e.id > seen.current! && ["liquidation", "bankrupt", "haircut", "adl", "settlement"].includes(e.kind));
+    seen.current = Math.max(seen.current, latest);
+    for (const e of fresh.reverse()) toast(e.text, e.kind === "bankrupt" || e.kind === "haircut" ? "down" : e.kind === "settlement" ? "info" : "warn");
+  }, [account, toast]);
 }
 
 function AccountChip({ account, signedIn, onSignUp, onSignOut }: { account: AccountView | undefined; signedIn: boolean; onSignUp: () => void; onSignOut: () => void }) {
