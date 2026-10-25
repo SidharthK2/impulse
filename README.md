@@ -35,7 +35,7 @@ pnpm demo                          # ten scenarios, full ledger after every even
 pnpm attack                        # pump-attack sweep on a curve-priced perp (<1s)
 pnpm compare                       # every scenario under both ADL rules, side by side
 pnpm replay scenarios/x.json       # any scenario; add --json for machine-readable output
-pnpm test                          # 68 tests: engine (incl. a 300-history multi-market seeded fuzz) + exchange
+pnpm test                          # 74 tests: engine (incl. a 300-history multi-market seeded fuzz), exchange, API
 pnpm start                         # the MVP exchange: web app + API on :8787
 pnpm dev                           # MVP in development: API :8787 + Vite :5173
 ```

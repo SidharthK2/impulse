@@ -102,13 +102,13 @@ What happened, what we learned, and where things stand. Newest last.
   - A restart after downtime would charge the whole outage's funding at once. Downtime is now a pause.
   - After a forced gap, the stale-last-trade funding premium (finding J) goes to ±4%/h until someone trades. It's
     visible live and flagged in the UI.
-- 68 tests (53 engine + 15 exchange). Full write-up: [MVP.md](./MVP.md).
+- 74 tests (53 engine + 15 exchange + 6 API). Full write-up: [MVP.md](./MVP.md).
 
 ## Current state
 
 - **Engine:** v1 complete (simulation). 10 scenarios (A–J), `pnpm demo | attack | compare | test`.
 - **MVP exchange** (branch `mvp`): live paper-trading venue on the engine, `pnpm start`. See `MVP.md`.
-- **Tests:** 68 (53 engine + 15 exchange).
+- **Tests:** 74 (53 engine + 15 exchange + 6 API).
 - **Docs:**
   - `BRIEF.md`: findings for Cesar.
   - `ACCOUNTING.md`: the model.

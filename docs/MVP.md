@@ -12,7 +12,7 @@ Gaps, liquidations and ADL happen live, and you can watch who pays.
 pnpm install
 pnpm start          # builds the web app, then serves app + API on http://localhost:8787
 pnpm dev            # development: API on :8787 (tsx watch) + Vite on http://localhost:5173 (proxied)
-pnpm test           # engine tests + exchange tests
+pnpm test           # engine, exchange and API tests (74)
 pnpm typecheck      # engine, server and web
 ```
 
