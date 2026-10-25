@@ -104,6 +104,20 @@ What happened, what we learned, and where things stand. Newest last.
     visible live and flagged in the UI.
 - 74 tests (53 engine + 15 exchange + 6 API). Full write-up: [MVP.md](./MVP.md).
 
+## 2026-10-26: fact check against primary sources
+
+- **Trigger:** the user asked for full research from primary sources only, because answers in chat had drifted.
+- Re-fetched all 8 Mirror docs pages and diffed them against the archive: **no substantive change** since 2026-10-09.
+  Archived as `sources/mirror/2026-10-26/`, including the new standalone Referrers & Builder Revenue page.
+- **Recomputed both curve tables independently:** spot price and sniping-phase P_open. 14/14 rows match exactly.
+- Re-read the shipped web-app bundle. It has a spot order book, trades, candles, snipes and memecoin-style `pulse`
+  feeds; **no perp-trading code**. Mirror isn't live (launch countdown).
+- **Corrections** (logged in `MIRROR-NOTES.md`): profile owners **do** earn 50% of attention-token fees; the 90/10
+  burn split applies to net fees; "perp is order-book only" was our assumption; one legal remark made in chat
+  was unsourced.
+- `MIRROR-NOTES.md` "What we know for sure" rewritten as of 2026-10-26; `research/mirror-infra.md` and
+  `POSITIONING.md` updated.
+
 ## Current state
 
 - **Engine:** v1 complete (simulation). 10 scenarios (A–J), `pnpm demo | attack | compare | test`.

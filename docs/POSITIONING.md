@@ -4,7 +4,8 @@
 
 ## TL;DR
 
-- **On spot, an attention market is pump.fun.** Same idea: a bonding curve, and anyone can launch a token for anyone.
+- **On spot, an attention market is pump.fun.** Same idea: a bonding curve. The difference on spot is that every profile
+  automatically has a token (found by searching its link), and the profile owner gets half the trading fees.
 - **What's new is a leveraged perp, long *or short*, on that token from minute one.** Pump.fun only lets you buy.
 - **What makes it listable is ADL with no insurance fund.** The venue can list anything because it never eats the loss.
   Traders on the winning side do.
@@ -21,7 +22,8 @@
 
 | | pump.fun | Mirror attention market |
 |---|---|---|
-| Who can launch | Anyone, including creators launching their own coin | Anyone, for any social handle |
+| Who can launch | Anyone, including creators launching their own coin | Nobody launches: a token exists for every profile or post the moment anyone searches its link |
+| Creator earnings | Creator fees on their coin | Profile owner gets **50% of trading fees** on their token (Mirror tokenomics) |
 | Spot | Bonding curve, then graduation to a DEX pool | xy=k curve ($5k virtual USDC, 1B tokens: Mirror's published reserves) |
 | Go long | Buy the token | Buy the token, or a leveraged long perp |
 | Go short | Not possible | Leveraged short perp from launch |
@@ -97,6 +99,12 @@ because the long tail is exactly where the oracle is weakest and arbitrage is th
 If we build in this space, the place to compete is **oracle integrity for thin markets**: making a pump unprofitable
 before leverage is switched on. The engine isn't where the edge is, and neither is listing everything faster than
 Mirror.
+
+## Status check (2026-10-26)
+
+Mirror isn't live: the docs show a launch countdown. The shipped web app contains spot trading, sniping and order-book
+code but **no perp-trading code** (no positions, margin, leverage or funding). Everything above about perps is
+therefore what Mirror's docs describe, not observed behaviour. See [MIRROR-NOTES.md](./MIRROR-NOTES.md).
 
 ## Sources in this repo
 

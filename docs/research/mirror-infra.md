@@ -87,3 +87,23 @@ Mirror runs its own order-book exchange: a central limit order book (CLOB) plus 
   - Who holds the deposit keys?
   - Is the public log verifiable (proof of solvency or reserves)?
   - These matter because "mathematically guaranteed solvency" is only as trustworthy as the operator running the core.
+
+## Re-check, 2026-10-26
+
+The production bundle (57 JS files, linked from the invite-gated pages) was fetched again and read as text, not
+executed.
+- **REST routes found:** `/api/v1/` `markets`, `tokens`, `ticker`, `orderbook`, `trades`, `candles`, `search`,
+  `stats/`, `register-signing-key`, `answer-challenge`, `post`, and `pulse/new-pairs`, `pulse/final-stretch`,
+  `pulse/migrated`. **[INFERENCE]** The three `pulse` names match the categories memecoin trading terminals use for
+  new, about-to-graduate and graduated launchpad tokens.
+- **Realtime channels:** `trades`, `orders`, `orderbook`, `marketStats`, `activeAssetCtx`, plus an
+  `ORDERBOOK_UPDATED` event with `affected_side`. The market page groups order book, market trades, recent snipes
+  and top snipes.
+- **Perps:** the words leverage, funding, liquidation and auto-deleveraging occur only inside the docs pages, the
+  router's page descriptions and marketing cards (`ZillowPerpCard`, the referral share text "trade early-stage
+  startups with leverage"). There are no routes, channels or forms for positions, margin, leverage or funding.
+  **[INFERENCE]** The shipped client is a spot + sniping exchange; perps are documented but not visible in code yet.
+  Absence from the client doesn't prove absence from the backend.
+- Deposit, withdrawal and trading-key code is as described above (`depositAddress`, `estimatedSeconds`,
+  `X-Gigadex-*`, `api.mirror.exchange`).
+
