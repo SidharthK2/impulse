@@ -1,0 +1,304 @@
+import { Fragment, useState } from "react";
+import { api } from "../api";
+import { clock, num, price, size, tone, usd } from "../format";
+import { useChannel } from "../hooks";
+import type { AccountView, MarketView, PositionView, RiskEvent } from "../types";
+import { RiskList } from "./RiskFeed";
+import { useToast } from "./ui";
+
+type Tab = "positions" | "orders" | "fills" | "risk" | "market";
+
+interface Props {
+  account: AccountView | undefined;
+  markets: Record<string, MarketView>;
+  current: MarketView;
+  signedIn: boolean;
+  onPick: (id: string) => void;
+}
+
+export function AccountPanel({ account, markets, current, signedIn, onPick }: Props) {
+  const [tab, setTab] = useState<Tab>("positions");
+  const open = account?.positions.filter((p) => p.side !== "flat") ?? [];
+  const tabs: { id: Tab; label: string; count?: number }[] = [
+    { id: "positions", label: "Positions", count: open.length + (account?.spot.length ?? 0) },
+    { id: "orders", label: "Open orders", count: account?.orders.length },
+    { id: "fills", label: "Fills" },
+    { id: "risk", label: "Who paid", count: account?.risk.length },
+    { id: "market", label: `${current.id} risk` },
+  ];
+  return (
+    <div className="panel account-panel" style={{ minHeight: 260 }}>
+      <div className="panel-head">
+        <div className="tabs">
+          {tabs.map((t) => (
+            <button key={t.id} className={tab === t.id ? "on" : ""} onClick={() => setTab(t.id)}>
+              {t.label}
+              {t.count ? <span className="count">{t.count}</span> : null}
+            </button>
+          ))}
+        </div>
+        <span className="spacer" />
+        {tab === "orders" && account && account.orders.length > 0 && <CancelAll />}
+      </div>
+      <div className="scroll" style={{ flex: 1, maxHeight: 360 }}>
+        {tab === "market" ? (
+          <MarketRisk market={current} />
+        ) : !signedIn ? (
+          <div className="empty">Sign up to get $10,000 of paper USDC and start trading.</div>
+        ) : !account ? (
+          <div className="empty">Loading…</div>
+        ) : tab === "positions" ? (
+          <Positions account={account} markets={markets} onPick={onPick} />
+        ) : tab === "orders" ? (
+          <Orders account={account} markets={markets} />
+        ) : tab === "fills" ? (
+          <Fills account={account} markets={markets} />
+        ) : (
+          <WhoPaid account={account} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CancelAll() {
+  const toast = useToast();
+  return (
+    <button
+      className="btn small"
+      onClick={() =>
+        api<{ cancelled: number }>("POST", "/api/orders/cancel-all", {})
+          .then((r) => toast(`Cancelled ${r.cancelled} order${r.cancelled === 1 ? "" : "s"}`))
+          .catch((e) => toast((e as Error).message, "down"))
+      }
+    >
+      Cancel all
+    </button>
+  );
+}
+
+function Positions({ account, markets, onPick }: { account: AccountView; markets: Record<string, MarketView>; onPick: (id: string) => void }) {
+  const toast = useToast();
+  const [marginFor, setMarginFor] = useState<string | null>(null);
+  const [amount, setAmount] = useState("");
+  const open = account.positions.filter((p) => p.side !== "flat");
+  if (open.length === 0 && account.spot.length === 0) return <div className="empty">No open positions.</div>;
+
+  const close = (p: PositionView) =>
+    api<{ status: string; reason: string | null }>("POST", "/api/positions/close", { market: p.market })
+      .then((r) => toast(r.status === "filled" ? `Closed ${p.market}` : `Close ${r.status}: ${r.reason ?? ""}`, r.status === "filled" ? "up" : "warn"))
+      .catch((e) => toast((e as Error).message, "down"));
+  const margin = (p: PositionView, sign: 1 | -1) =>
+    api("POST", "/api/margin", { market: p.market, amount: `${sign < 0 ? "-" : ""}${amount}` })
+      .then(() => {
+        toast(`${sign > 0 ? "Added" : "Removed"} $${amount} margin on ${p.market}`, "up");
+        setAmount("");
+        setMarginFor(null);
+      })
+      .catch((e) => toast((e as Error).message, "down"));
+
+  return (
+    <table className="grid">
+      <thead>
+        <tr>
+          <th>Market</th>
+          <th className="right">Size</th>
+          <th className="right">Entry</th>
+          <th className="right">Mark</th>
+          <th className="right" title="Approximate price where equity hits maintenance margin">Liq.</th>
+          <th className="right">Margin</th>
+          <th className="right">Unrealized</th>
+          <th className="right" title="Funding paid (−) or received (+)">Funding</th>
+          <th className="right" title="ADL transfers: − haircuts you paid for someone else's shortfall, + shortfall covered for you">ADL</th>
+          <th className="right" title="Equity minus net margin posted: trading, funding and ADL together">Total PnL</th>
+          <th className="right">Lev.</th>
+          <th />
+        </tr>
+      </thead>
+      <tbody>
+        {open.map((p) => {
+          const m = markets[p.market];
+          const d = m?.priceDecimals ?? 4;
+          return (
+            <Fragment key={p.market}>
+              <tr>
+                <td>
+                  <a href={`#/trade/${encodeURIComponent(p.market)}`} onClick={() => onPick(p.market)}>
+                    {p.market}
+                  </a>{" "}
+                  <span className={`badge ${p.side === "long" ? "up" : "down"}`}>{p.side}</span>
+                </td>
+                <td className="right mono">{size(p.size, m?.szDecimals ?? 4)}</td>
+                <td className="right mono">{price(p.entry, d)}</td>
+                <td className="right mono">{price(p.mark, d)}</td>
+                <td className="right mono warn">{p.liquidationPrice ? price(p.liquidationPrice, d) : "—"}</td>
+                <td className="right mono">{usd(p.collateral)}</td>
+                <td className={`right mono ${tone(num(p.unrealized))}`}>{usd(p.unrealized, { sign: true })}</td>
+                <td className={`right mono ${tone(num(p.funding))}`}>{usd(p.funding, { sign: true })}</td>
+                <td className={`right mono ${tone(num(p.adl))}`}>{num(p.adl) === 0 ? "—" : usd(p.adl, { sign: true })}</td>
+                <td className={`right mono ${tone(num(p.pnl))}`}>{usd(p.pnl, { sign: true })}</td>
+                <td className="right mono">{p.leverage ? `${p.leverage.toFixed(1)}×` : "—"}</td>
+                <td className="right">
+                  <div className="row" style={{ justifyContent: "flex-end", gap: 4 }}>
+                    <button className="btn small" onClick={() => setMarginFor(marginFor === p.market ? null : p.market)}>
+                      Margin
+                    </button>
+                    <button className="btn small danger" onClick={() => close(p)}>
+                      Close
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              {marginFor === p.market && (
+                <tr>
+                  <td colSpan={12}>
+                    <div className="row" style={{ maxWidth: 520 }}>
+                      <span className="muted">Isolated margin: {usd(p.collateral)}, removable {usd(p.releasable)}</span>
+                      <input className="input mono" style={{ width: 120 }} placeholder="USD" value={amount} onChange={(e) => setAmount(e.target.value.trim())} />
+                      <button className="btn small" disabled={!(num(amount) > 0)} onClick={() => margin(p, 1)}>
+                        Add
+                      </button>
+                      <button className="btn small" disabled={!(num(amount) > 0)} onClick={() => margin(p, -1)}>
+                        Remove
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </Fragment>
+          );
+        })}
+        {account.spot.map((s) => (
+          <tr key={`spot-${s.market}`}>
+            <td>
+              <a href={`#/trade/${encodeURIComponent(s.market)}`} onClick={() => onPick(s.market)}>
+                {s.market}
+              </a>{" "}
+              <span className="badge info">spot</span>
+            </td>
+            <td className="right mono">{size(s.tokens, 0)}</td>
+            <td />
+            <td className="right mono">{price(s.price, markets[s.market]?.priceDecimals ?? 9)}</td>
+            <td />
+            <td className="right mono">{usd(s.value)}</td>
+            <td colSpan={6} />
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function Orders({ account, markets }: { account: AccountView; markets: Record<string, MarketView> }) {
+  const toast = useToast();
+  if (account.orders.length === 0) return <div className="empty">No open orders.</div>;
+  return (
+    <table className="grid">
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Market</th>
+          <th>Side</th>
+          <th className="right">Price</th>
+          <th className="right">Size</th>
+          <th className="right">Filled</th>
+          <th className="right">Lev.</th>
+          <th />
+        </tr>
+      </thead>
+      <tbody>
+        {account.orders.map((o) => {
+          const m = markets[o.market];
+          return (
+            <tr key={o.id}>
+              <td className="mono faint">{clock(o.time)}</td>
+              <td>{o.market}</td>
+              <td className={o.side === "buy" ? "up" : "down"}>
+                {o.side}
+                {o.reduceOnly && <span className="badge" style={{ marginLeft: 6 }}>reduce</span>}
+                {o.tif === "alo" && <span className="badge" style={{ marginLeft: 6 }}>post</span>}
+              </td>
+              <td className="right mono">{price(o.price, m?.priceDecimals ?? 4)}</td>
+              <td className="right mono">{size(o.size, m?.szDecimals ?? 4)}</td>
+              <td className="right mono muted">{size(o.filled, m?.szDecimals ?? 4)}</td>
+              <td className="right mono">{o.leverage}×</td>
+              <td className="right">
+                <button className="btn small" onClick={() => api("DELETE", `/api/orders/${o.id}`).catch((e) => toast((e as Error).message, "down"))}>
+                  Cancel
+                </button>
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+function Fills({ account, markets }: { account: AccountView; markets: Record<string, MarketView> }) {
+  if (account.fills.length === 0) return <div className="empty">No fills yet.</div>;
+  return (
+    <table className="grid">
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Market</th>
+          <th>Side</th>
+          <th className="right">Price</th>
+          <th className="right">Size</th>
+          <th className="right">Notional</th>
+          <th>Role</th>
+          <th>Counterparty</th>
+        </tr>
+      </thead>
+      <tbody>
+        {account.fills.map((f) => {
+          const m = markets[f.market];
+          return (
+            <tr key={f.id}>
+              <td className="mono faint">{clock(f.time)}</td>
+              <td>
+                {f.market}
+                {f.kind === "spot" && <span className="badge info" style={{ marginLeft: 6 }}>spot</span>}
+              </td>
+              <td className={f.mySide === "buy" ? "up" : "down"}>{f.mySide}</td>
+              <td className="right mono">{price(f.price, m?.priceDecimals ?? 4)}</td>
+              <td className="right mono">{size(f.size, m?.szDecimals ?? 4)}</td>
+              <td className="right mono">{usd(f.notional)}</td>
+              <td className="muted">{f.liquidity}</td>
+              <td className="muted">{f.taker === account.id ? f.maker : f.taker}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+function WhoPaid({ account }: { account: AccountView }) {
+  const l = account.ledger;
+  return (
+    <div>
+      <div className="row" style={{ padding: "10px 12px", gap: 24, borderBottom: "1px solid var(--line)", flexWrap: "wrap" }}>
+        <span className="muted" title="ADL haircuts: your profit (or principal) used to cover someone else's negative equity">
+          Haircuts you paid: <b className="mono down">{usd(l.adlPaid)}</b>
+        </span>
+        <span className="muted">
+          Your shortfalls others covered: <b className="mono up">{usd(l.adlCovered)}</b>
+        </span>
+        <span className="muted">
+          Net funding: <b className={`mono ${tone(num(l.funding))}`}>{usd(l.funding, { sign: true })}</b>
+        </span>
+        <span className="muted">
+          Realized trading PnL: <b className={`mono ${tone(num(l.realized))}`}>{usd(l.realized, { sign: true })}</b>
+        </span>
+      </div>
+      <RiskList events={account.risk} />
+    </div>
+  );
+}
+
+function MarketRisk({ market }: { market: MarketView }) {
+  const feed = useChannel<RiskEvent[]>("feed") ?? [];
+  return <RiskList events={feed.filter((e) => e.market === market.id)} showMarket={false} />;
+}

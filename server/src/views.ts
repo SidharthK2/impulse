@@ -223,9 +223,17 @@ export function accountView(x: Exchange, id: string) {
   const wallet = a?.wallet ?? 0n;
   let total = wallet;
   const positions = [];
+  // Lifetime ledger across every market the account ever touched, including ones it has left.
+  const ledger = { realized: 0n, funding: 0n, adlPaid: 0n, adlCovered: 0n };
   for (const mid of Object.keys(x.markets).sort()) {
     const m = x.state.markets[mid]!;
     const p = m.positions[id];
+    if (p) {
+      ledger.realized += p.realized;
+      ledger.funding += p.funding;
+      if (p.adlTransfer < 0n) ledger.adlPaid -= p.adlTransfer;
+      else ledger.adlCovered += p.adlTransfer;
+    }
     if (!p || (p.size === 0n && p.collateral === 0n)) continue;
     const v = positionView(x.markets[mid]!, m, p);
     total += equity(p, m.mark);
@@ -258,6 +266,7 @@ export function accountView(x: Exchange, id: string) {
     equity: usd(total),
     pnl: usd(total - (deposited - withdrawn)),
     positions,
+    ledger: { realized: usd(ledger.realized), funding: usd(ledger.funding), adlPaid: usd(ledger.adlPaid), adlCovered: usd(ledger.adlCovered) },
     spot,
     orders: x.ordersOf(id).map((o) => orderView(x, o)),
     fills,

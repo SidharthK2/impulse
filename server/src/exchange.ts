@@ -166,6 +166,9 @@ const MAX_OPEN_ORDERS = 200;
 const NAME = /^[a-z0-9_]{3,16}$/i;
 const MARKET_ID = /^[A-Za-z0-9@_.-]{1,32}$/;
 
+/** Dollars for human-readable feed text, rounded to cents. The event's `amount` field keeps the exact value. */
+const cents = (v: bigint) => (Number(v) / 1e9).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 const EMPTY_POSITION: Position = { account: "", collateral: 0n, size: 0n, basis: 0n, allocated: 0n, realized: 0n, adlTransfer: 0n, funding: 0n };
 
 /** Did the engine reject a trade because of this account (its margin, or no collateral bucket at all)? */
@@ -312,13 +315,13 @@ export class Exchange {
       switch (e.kind) {
         case "liquidation": {
           const meta = this.markets[e.market]!;
-          this.record(e.market, "liquidation", [e.account], `${e.account} liquidated: ${this.sideSize(meta, e.size)} closed at ${this.markStr(e.market)}, kept $${usd(e.equity)}`, e.equity);
+          this.record(e.market, "liquidation", [e.account], `${e.account} liquidated: ${this.sideSize(meta, e.size)} closed at ${this.markStr(e.market)}, kept $${cents(e.equity)}`, e.equity);
           this.cancelAll(e.account, e.market);
           break;
         }
         case "bankrupt": {
           const meta = this.markets[e.market]!;
-          this.record(e.market, "bankrupt", [e.account], `${e.account} bankrupt: ${this.sideSize(meta, e.size)} closed at ${this.markStr(e.market)}, $${usd(e.shortfall)} shortfall charged to the other side`, e.shortfall);
+          this.record(e.market, "bankrupt", [e.account], `${e.account} bankrupt: ${this.sideSize(meta, e.size)} closed at ${this.markStr(e.market)}, $${cents(e.shortfall)} shortfall charged to the other side`, e.shortfall);
           this.cancelAll(e.account, e.market);
           break;
         }
@@ -327,7 +330,7 @@ export class Exchange {
             e.market,
             "haircut",
             [e.account],
-            `${e.account} paid a $${usd(e.amount)} ADL haircut${e.fromPrincipal > 0n ? ` ($${usd(e.fromPrincipal)} of it from principal)` : " (from profit)"}`,
+            `${e.account} paid a $${cents(e.amount)} ADL haircut${e.fromPrincipal > 0n ? ` ($${cents(e.fromPrincipal)} of it from principal)` : " (from profit)"}`,
             e.amount,
           );
           break;
