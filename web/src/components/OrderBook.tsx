@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef } from "react";
 import { price, size } from "../format";
 import { useBook, useTrades } from "../queries";
 import { Roll } from "./Roll";
@@ -35,6 +36,19 @@ export function OrderBook({ market, onPick }: { market: MarketView; onPick: (p: 
   const bestAsk = asks[0] ? Number(asks[0].price) : NaN;
   const spread = bestAsk - bestBid;
   const mid = (bestAsk + bestBid) / 2;
+
+  // Asks read upward from the spread, so their list starts scrolled to the bottom and stays there as the book
+  // updates, unless the user has scrolled up to look at higher asks.
+  const asksBox = useRef<HTMLDivElement>(null);
+  const pinned = useRef(true);
+  useLayoutEffect(() => {
+    const el = asksBox.current;
+    if (el && pinned.current) el.scrollTop = el.scrollHeight;
+  }, [asks]);
+  useLayoutEffect(() => {
+    pinned.current = true;
+  }, [market.id]);
+
   return (
     <div className="panel" style={{ flex: 1.4, minHeight: 0 }}>
       <div className="panel-head">
@@ -50,7 +64,14 @@ export function OrderBook({ market, onPick }: { market: MarketView; onPick: (p: 
           <span>Size</span>
           <span>Total</span>
         </div>
-        <div className="scroll" style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
+        <div
+          ref={asksBox}
+          className="scroll book-asks"
+          onScroll={(e) => {
+            const el = e.currentTarget;
+            pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 4;
+          }}
+        >
           <Side levels={asks} kind="asks" market={market} max={max} onPick={onPick} />
         </div>
         <div className="mid">

@@ -739,6 +739,14 @@ table.grid tr.click:hover td {
 .book .rows.asks {
   flex-direction: column-reverse;
   justify-content: flex-start;
+  /* Sit against the spread when there's room. Unlike justify-content: flex-end on the scroller, an auto margin
+     collapses to 0 when the asks overflow, so the highest ones stay reachable by scrolling. */
+  margin-top: auto;
+}
+.book .book-asks {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 .book .r {
   display: grid;
