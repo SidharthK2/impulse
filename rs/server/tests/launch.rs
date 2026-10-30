@@ -1,4 +1,4 @@
-// Creator-coin launches through the API, ported from the TypeScript launch.test.ts (archive/tests/http/): snipe
+// Creator-coin launches through the API, ported from the TypeScript launch.test.ts (impulse-research: tests/http/): snipe
 // window, the open on the exchange clock, launch reserve, pump, and the new fields on the websocket channels.
 
 mod common;

@@ -31,8 +31,7 @@ Admin page token: `impulse-admin`. The 5-minute demo, the API, settings and env 
 | `rs/server` | Exchange server: order books, matching, HTTP + websocket API, feeds, house bots; a command journal, snapshots and history tables in SQLite (`DATA_DIR/impulse.db`) |
 | `web/` | Trading UI: React, TanStack Router/Query/Form/Pacer, zustand, custom canvas chart. Its own pnpm project, the only Node code in the app |
 | `docs/` | [MVP.md](docs/MVP.md) (run, demo, API), [API-CONTRACT.md](docs/API-CONTRACT.md), [ACCOUNTING.md](docs/ACCOUNTING.md) (the engine's model and invariants), [DECISIONS.md](docs/DECISIONS.md) |
-| `tests/` | Test data for the Rust tests: `scenarios/` (event streams) and `golden/` (the TypeScript reference engine's frozen results). The tests themselves are in `rs/engine/tests` and `rs/server/tests` |
-| `archive/` | Not used by the app: the TypeScript reference engine and server, their Vitest suite and Node tooling, the golden-file generator, and the research phase (findings, Mirror sources, simulations). See [archive/README.md](archive/README.md). |
+| `tests/` | Test data for the Rust tests: `scenarios/` (event streams) and `golden/` (the TypeScript reference engine's frozen results, generated in the research repo). The tests themselves are in `rs/engine/tests` and `rs/server/tests` |
 
 ## Check it
 
@@ -40,3 +39,9 @@ Admin page token: `impulse-admin`. The 5-minute demo, the API, settings and env 
 make test        # cargo test: engine, golden-file parity, server unit tests, HTTP and websocket tests
 make typecheck   # the web app
 ```
+
+## Research and the TypeScript reference
+
+The research phase (findings, Mirror sources, simulations) and the TypeScript engine and server the Rust code was
+ported from live in a separate private repo, [impulse-research](https://github.com/SidharthK2/impulse-research), with full history. Nothing in it is needed to build, run or
+test the app.

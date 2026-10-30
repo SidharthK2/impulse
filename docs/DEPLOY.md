@@ -29,11 +29,11 @@ Optional: `fly secrets set OFFLINE=1` (or uncomment it in `fly.toml`) for simula
 
 ## Deploys from GitHub
 
-`.github/workflows/fly-deploy.yml` deploys on every push to `mvp`, and from the Actions tab by hand.
+`.github/workflows/fly-deploy.yml` deploys on every push to `main`, and from the Actions tab by hand.
 
 1. `fly tokens create deploy -x 999999h --app <your-app-name>`
 2. GitHub repo → Settings → Secrets and variables → Actions → New secret `FLY_API_TOKEN` with that token.
-3. Push `mvp`.
+3. Push `main`.
 
 ## Day to day
 

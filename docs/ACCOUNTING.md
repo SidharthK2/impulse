@@ -2,7 +2,7 @@
 
 This is **our** design. It's a guess at how a Mirror-style MicroPerp could work for any asset: tokens,
 attention markets, equities, prediction markets. It is not a reproduction of Mirror's engine: Mirror publishes
-no algorithm, only claims (see [MIRROR-NOTES.md](../archive/docs/MIRROR-NOTES.md)).
+no algorithm, only claims (see MIRROR-NOTES.md in [impulse-research](https://github.com/SidharthK2/impulse-research)).
 
 ## Units (all integer, `bigint`)
 

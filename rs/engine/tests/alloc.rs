@@ -1,4 +1,4 @@
-// Largest-remainder apportionment, ported from the TypeScript alloc.test.ts (archive/tests/engine/).
+// Largest-remainder apportionment, ported from the TypeScript alloc.test.ts (impulse-research: tests/engine/).
 
 use impulse_engine::alloc::allocate;
 

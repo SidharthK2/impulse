@@ -1,5 +1,5 @@
 // The Rust engine against the TypeScript reference engine's frozen results (tests/golden/, written by
-// archive/golden/generate.ts). Every scenario and 600 random histories are replayed from their stored event
+// impulse-research: golden/generate.ts). Every scenario and 600 random histories are replayed from their stored event
 // lists; each step's outcome (effects, or the rejection reason) and the final state must match exactly.
 
 use impulse_engine::{apply, initial_state, ApplyError, Event, State};

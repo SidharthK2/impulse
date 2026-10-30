@@ -1,4 +1,4 @@
-// Funding after an oracle gap, ported from the TypeScript funding.test.ts (archive/tests/http/): the premium reads
+// Funding after an oracle gap, ported from the TypeScript funding.test.ts (impulse-research: tests/http/): the premium reads
 // the order book's mid, so once the book is re-quoted around the new mark, funding stays near the base rate
 // instead of riding a stale last trade to its cap.
 

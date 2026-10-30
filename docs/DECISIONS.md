@@ -14,7 +14,7 @@ Newest last. Each entry: the decision, why, and what it rules out.
 | 2026-10-05 | v1 = everything short of a write-up: graduation, funding, taper. **Then** the brief | User |
 | 2026-10-06 | The brief and all docs live as **markdown in the repo**, not published artifacts | User |
 | 2026-10-09 | **Write everything down in `docs/`** (research, decisions, progress) | User |
-| 2026-10-09 | Next phase: intermediate projects that are both research and product inputs (`archive/docs/INTERMEDIATES.md`) | User asked for useful intermediaries toward the final product |
+| 2026-10-09 | Next phase: intermediate projects that are both research and product inputs (`INTERMEDIATES.md`, now in impulse-research) | User asked for useful intermediaries toward the final product |
 | 2026-10-25 | **Build an MVP: a paper-trading exchange** (order books, live oracles, bots, web UI) on the unchanged engine | User asked for an MVP with a frontend. It supersedes "simulation only" for the `mvp` branch; still no real money, custody or contracts |
 | 2026-10-25 | MVP lives in `server/` + `web/` (pnpm workspace) on branch `mvp`; local commits, no push | User |
 | 2026-10-25 | Oracles: Hyperliquid mids + Polymarket midpoints + own curves, with admin overrides; simulated prices offline | User chose live feeds; admin gaps make the research findings demoable |
@@ -62,7 +62,7 @@ Newest last. Each entry: the decision, why, and what it rules out.
 
 | Date | Decision | Why / alternative rejected |
 |---|---|---|
-| 2026-10-31 | The TypeScript backend is retired to `archive/`, its results frozen as golden files (`tests/golden/`: every scenario, 300 random histories, 300 fuzz histories) | The Rust engine's parity stays proven with no TypeScript at runtime: `rs/engine/tests/golden.rs` replays the stored event lists. Rejected: reimplementing the TS generators in Rust, which would test the Rust engine against itself |
+| 2026-10-31 | The TypeScript backend is retired to `archive/` (moved to the impulse-research repo the same day), its results frozen as golden files (`tests/golden/`: every scenario, 300 random histories, 300 fuzz histories) | The Rust engine's parity stays proven with no TypeScript at runtime: `rs/engine/tests/golden.rs` replays the stored event lists. Rejected: reimplementing the TS generators in Rust, which would test the Rust engine against itself |
 | 2026-10-31 | Journal the inputs (commands), not the outputs (state changes or events) | A deterministic core turns the same commands into the same exchange, so the journal is small and replay is the recovery path and the audit trail at once. Requires every clock read and random draw at intake (`intake.rs`), carried in the command |
 | 2026-10-31 | `synchronous=FULL` with WAL, one commit per command, before the reply | An acknowledged order must survive a crash. Measured 0.69 ms per command at the median, 1.9 ms at p99 (apply + commit, bots on, M-series Mac). Rejected: `NORMAL` (can lose the last commits on power loss) and group commit (more throughput than paper trading needs, and replies would wait for a batch) |
 | 2026-10-31 | Fail-stop: a failed journal write, or a panic inside a command, stops the process | The alternative is serving state the journal doesn't have; a restart recovers the last committed state, which is exactly what was acknowledged |

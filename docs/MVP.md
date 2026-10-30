@@ -3,7 +3,7 @@
 *Built 2026-10-25/26 on the `mvp` branch (TypeScript); the backend moved to Rust on 2026-10-30/31. It takes the risk
 engine from simulation to a live venue with play money.*
 
-The research engine (TypeScript, now `archive/reference/engine/engine.ts`, ported to `rs/engine`) answers *what happens when a price gaps, and who pays?* on
+The research engine (TypeScript, now in the impulse-research repo, ported to `rs/engine`) answers *what happens when a price gaps, and who pays?* on
 scripted scenarios. The MVP puts that same engine behind a real exchange: order books, live oracles, accounts, bots and a
 trading UI. Gaps, liquidations and ADL happen live, and you can watch who pays.
 
@@ -18,7 +18,7 @@ Three products sit on it:
 
 ## Run it
 
-You need cargo, and pnpm for the web app (the only Node code outside `archive/`).
+You need cargo, and pnpm for the web app (the only Node code in this repo).
 
 ```bash
 make start          # builds the web app (pnpm in web/), then the Rust server (release) serves app + API on http://localhost:8787
@@ -29,8 +29,8 @@ make typecheck      # the web app
 make clean-data     # how to start from an empty exchange (prints; deletes nothing)
 ```
 
-The TypeScript engine and server that the Rust code was ported from are in `archive/reference/`, no longer used by
-the app or its tests; see [archive/README.md](../archive/README.md) to run them.
+The TypeScript engine and server that the Rust code was ported from are in [impulse-research](https://github.com/SidharthK2/impulse-research),
+no longer used by the app or its tests; its README says how to run them.
 
 | Env var | Default | |
 |---|---|---|
@@ -50,7 +50,7 @@ To start fresh, point `DATA_DIR` at a new directory (`make clean-data` prints ho
 
 | Piece | Where | What it does |
 |---|---|---|
-| Risk engine | `rs/engine` (port of `archive/reference/engine/engine.ts`) | Positions, margin, liquidation, ADL, funding, graduation, taper, curves, launches, invariants |
+| Risk engine | `rs/engine` (port of the TypeScript engine in impulse-research) | Positions, margin, liquidation, ADL, funding, graduation, taper, curves, launches, invariants |
 | Exchange | `rs/server/src/exchange.rs` | Order books, matching, auto-margin, accounts, launches, pre-IPO marks, history; every change is an engine transition |
 | Order book | `rs/server/src/book.rs` | Price-time priority CLOB per market |
 | Units | `rs/server/src/units.rs` | Coins ↔ integer lots (Hyperliquid `szDecimals`), coin price ↔ lot price, ticks |
@@ -253,7 +253,7 @@ All Rust, all in `make test` (`cargo test --manifest-path rs/Cargo.toml`):
   timing with bots on and `synchronous=FULL` (printed with `cargo test --test durability -- --nocapture`).
 - Unit tests in `rs/engine/src` and `rs/server/src` (fixed point, units, book, rng).
 
-`tests/golden/` is regenerated only from the archived TypeScript engine (`archive/golden/generate.ts`).
+`tests/golden/` is regenerated only from the archived TypeScript engine (`golden/generate.ts` in impulse-research).
 
 ## Demo script (5 minutes)
 

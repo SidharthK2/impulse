@@ -1,4 +1,4 @@
-// Engine behaviour, ported from the TypeScript engine.test.ts (archive/tests/engine/): the scenarios' exact numbers,
+// Engine behaviour, ported from the TypeScript engine.test.ts (impulse-research: tests/engine/): the scenarios' exact numbers,
 // ADL policies, graduation, taper, funding, market and trade validation, rounding, curves, launches and the funding
 // premium. Events are written as JSON, as the scenarios are.
 

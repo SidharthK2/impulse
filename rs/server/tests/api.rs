@@ -1,4 +1,4 @@
-// HTTP and websocket API, ported from the TypeScript api.test.ts (archive/tests/http/).
+// HTTP and websocket API, ported from the TypeScript api.test.ts (impulse-research: tests/http/).
 
 mod common;
 use common::*;

@@ -149,7 +149,7 @@ mod tests {
         assert_eq!(group("12"), "12");
     }
 
-    // Ported from the TypeScript units.test.ts (archive/tests/http/).
+    // Ported from the TypeScript units.test.ts (impulse-research: tests/http/).
 
     #[test]
     fn round_trips_scaled_decimals() {

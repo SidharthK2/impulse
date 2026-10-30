@@ -1,5 +1,4 @@
 node_modules
-reference/server/data
 web/dist
 rs/target
 rs/data

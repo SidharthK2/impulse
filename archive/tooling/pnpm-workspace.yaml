@@ -1,5 +1,0 @@
-packages:
-  - reference/server
-  - web
-allowBuilds:
-  esbuild: true

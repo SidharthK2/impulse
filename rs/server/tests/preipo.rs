@@ -1,4 +1,4 @@
-// Pre-IPO markets through the API, ported from the TypeScript preipo.test.ts (archive/tests/http/): the mark is the
+// Pre-IPO markets through the API, ported from the TypeScript preipo.test.ts (impulse-research: tests/http/): the mark is the
 // market's own book until the admin IPO gaps it to a public price.
 
 mod common;

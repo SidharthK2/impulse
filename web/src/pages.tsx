@@ -171,7 +171,7 @@ export function AboutPage() {
       <h2>What this isn't</h2>
       <p>
         It isn't real money, custody, or a chain, and there are no partial liquidations, liquidation fees, perp trading fees or cross margin. The graduation, funding and taper parameters are ours,
-        because Mirror publishes none. The research behind the design is in the repo's <code>archive/docs/BRIEF.md</code>.
+        because Mirror publishes none. The research behind the design is in the impulse-research repo (<code>docs/BRIEF.md</code>).
       </p>
     </div>
   );

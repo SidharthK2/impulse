@@ -1,5 +1,5 @@
 // Matching, margin, risk and persistence through the HTTP API, ported from the TypeScript exchange.test.ts
-// (archive/tests/http/). Each test gets its own market and accounts.
+// (impulse-research: tests/http/). Each test gets its own market and accounts.
 
 mod common;
 use common::*;
