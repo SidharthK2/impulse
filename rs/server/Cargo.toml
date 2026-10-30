@@ -1,0 +1,9 @@
+[package]
+name = "impulse-server"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+impulse-engine = { path = "../engine" }
+serde.workspace = true
+serde_json.workspace = true

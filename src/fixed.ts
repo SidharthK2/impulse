@@ -30,3 +30,12 @@ export const sign = (v: bigint) => (v > 0n ? 1n : v < 0n ? -1n : 0n);
 export const min = (a: bigint, b: bigint) => (a < b ? a : b);
 export const max = (a: bigint, b: bigint) => (a > b ? a : b);
 export const ceilDiv = (a: bigint, b: bigint) => (a + b - 1n) / b; // a, b >= 0
+
+/** Floor square root of a non-negative bigint. */
+export function isqrt(n: bigint): bigint {
+  if (n < 2n) return n;
+  let x = BigInt(Math.floor(Math.sqrt(Number(n))));
+  while (x * x > n) x--;
+  while ((x + 1n) * (x + 1n) <= n) x++;
+  return x;
+}

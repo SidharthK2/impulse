@@ -9,7 +9,7 @@
 // Usage: tsx src/attack.ts   (prints the parameter sweep)
 
 import { type Event, type State, apply, equity, initialState, spotPrice } from "./engine.js";
-import { ceilDiv, fmt, fmtPrice, parseFixed } from "./fixed.js";
+import { ceilDiv, fmt, fmtPrice, isqrt, parseFixed } from "./fixed.js";
 
 export interface AttackParams {
   pump: number; // USDC the attacker spends on spot
@@ -33,14 +33,6 @@ export interface AttackResult {
 }
 
 const usd = (n: number) => n.toFixed(6);
-
-function isqrt(n: bigint): bigint {
-  if (n < 2n) return n;
-  let x = BigInt(Math.floor(Math.sqrt(Number(n))));
-  while (x * x > n) x--;
-  while ((x + 1n) * (x + 1n) <= n) x++;
-  return x;
-}
 
 export function runAttack(params: AttackParams): AttackResult {
   const { pump, window, feeBps, retrace } = params;
