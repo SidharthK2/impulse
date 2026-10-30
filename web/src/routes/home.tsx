@@ -40,7 +40,7 @@ export function HomePage() {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<Sort>("volume");
   useEffect(() => {
-    document.title = "Markets · Impulse";
+    document.title = "Impulse · paper-trading MicroPerps exchange";
   }, []);
 
   const q = query.trim().toLowerCase();

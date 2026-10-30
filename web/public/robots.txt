@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /admin
+Disallow: /portfolio
+
+Sitemap: https://impulse.sidkap.xyz/sitemap.xml
