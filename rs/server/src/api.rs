@@ -5,12 +5,14 @@
 
 use crate::book::{Side, Tif};
 use crate::bots::Bots;
-use crate::exchange::{wall_ms, Clock, ExError, Exchange, Kind, MarketSpec, OrderInput, OrderType, Source};
+use crate::command::{Command, Reply, Tick};
+pub use crate::sequencer::Core;
+use crate::exchange::{ExError, Exchange, Kind, MarketSpec, OrderInput, OrderType, Source};
+use crate::intake::{api_key, wall_ms};
 use crate::feeds;
 use crate::rng::Rng;
-use crate::units::{coins_from_lots, usd};
+use crate::units::usd;
 use crate::views;
-use crate::ws::Hub;
 use axum::extract::{FromRequest, FromRequestParts, Path, Query, Request, State};
 use axum::http::{header, request::Parts, HeaderValue, Method, StatusCode, Uri};
 use axum::middleware::Next;
@@ -29,14 +31,6 @@ pub fn log(s: &str) {
     use std::io::Write;
     let t = crate::feeds::iso_utc(wall_ms());
     let _ = writeln!(std::io::stdout(), "[{}] {s}", &t[11..19]);
-}
-
-/// Everything the single-threaded core owns. One lock, held for one synchronous step at a time.
-pub struct Core {
-    pub x: Exchange,
-    pub bots: Option<Bots>,
-    pub hub: Hub,
-    pub sim: Rng,
 }
 
 pub struct Inner {
@@ -268,13 +262,36 @@ async fn positions(State(app): State<App>, Path(id): Path<String>) -> ApiResult 
     ok(views::public_positions(&core.x, &id))
 }
 
+/// `?before=<id>` and `limit` page through the full history (the database); `limit` alone too.
+fn page(q: &HashMap<String, String>) -> Option<(Option<u64>, usize)> {
+    if !q.contains_key("before") && !q.contains_key("limit") {
+        return None;
+    }
+    let before = q.get("before").and_then(|b| b.parse().ok());
+    let limit = q.get("limit").and_then(|l| l.parse().ok()).unwrap_or(200).clamp(1, 1000);
+    Some((before, limit))
+}
+
 async fn feed(State(app): State<App>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
     let core = app.lock();
     let market = q.get("market").filter(|m| !m.is_empty());
+    if let (Some((before, limit)), Some(store)) = (page(&q), core.store()) {
+        return ok(store.risk_page(market.map(String::as_str), before, limit).map_err(ExError::Internal)?);
+    }
     let mut rows: Vec<_> = core.x.risk.iter().filter(|r| market.is_none_or(|m| *m == r.market)).collect();
     rows = rows.split_off(rows.len().saturating_sub(200));
     rows.reverse();
     ok(rows)
+}
+
+/// A market's trades, newest first: the latest 60 from memory, or pages of the full history (`before`, `limit`).
+async fn trades(State(app): State<App>, Path(id): Path<String>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
+    let core = app.lock();
+    core.x.market(&id)?;
+    if let (Some((before, limit)), Some(store)) = (page(&q), core.store()) {
+        return ok(store.fills_page(&id, before, limit).map_err(ExError::Internal)?);
+    }
+    ok(views::trades_view(&core.x, &id, 60))
 }
 
 async fn leaderboard(State(app): State<App>) -> ApiResult {
@@ -282,11 +299,23 @@ async fn leaderboard(State(app): State<App>) -> ApiResult {
 }
 
 async fn signup(State(app): State<App>, b: Body) -> ApiResult {
-    let mut core = app.lock();
-    let meta = core.x.create_account(&b.str("name")?, false)?;
-    core.x.faucet(&meta.id)?;
+    let Reply::Account(meta) = app.lock().submit(Command::Signup { name: b.str("name")?, api_key: api_key() })? else { unreachable!() };
     log(&format!("new account {}", meta.id));
     ok(json!({ "id": meta.id, "apiKey": meta.api_key }))
+}
+
+fn effects_of(r: Reply) -> Vec<&'static str> {
+    kinds(&r.effects())
+}
+
+fn order_reply(x: &Exchange, id: &str, r: Reply, with_order: bool) -> ApiResult {
+    let Reply::Order(r) = r else { unreachable!() };
+    let fills: Vec<_> = r.fills.iter().map(|f| views::fill_view(x, f, Some(id))).collect();
+    if with_order {
+        ok(json!({ "status": r.status, "reason": r.reason, "order": views::order_view(x, &r.order), "fills": fills }))
+    } else {
+        ok(json!({ "status": r.status, "reason": r.reason, "fills": fills }))
+    }
 }
 
 // ---------- trading ----------
@@ -296,12 +325,12 @@ async fn account(State(app): State<App>, User(id): User) -> ApiResult {
 }
 
 async fn faucet(State(app): State<App>, User(id): User) -> ApiResult {
-    let amount = app.lock().x.faucet(&id)?;
+    let Reply::Faucet(amount) = app.lock().submit(Command::Faucet { account: id })? else { unreachable!() };
     ok(json!({ "amount": usd(amount) }))
 }
 
 async fn withdraw(State(app): State<App>, User(id): User, b: Body) -> ApiResult {
-    app.lock().x.withdraw(&id, &b.str("amount")?)?;
+    app.lock().submit(Command::Withdraw { account: id, amount: b.str("amount")? })?;
     ok(json!({ "ok": true }))
 }
 
@@ -338,18 +367,12 @@ async fn place_order(State(app): State<App>, User(id): User, b: Body) -> ApiResu
         slippage: b.num("slippage"),
     };
     let mut core = app.lock();
-    let r = core.x.place_order(&id, input)?;
-    let x = &core.x;
-    ok(json!({
-        "status": r.status,
-        "reason": r.reason,
-        "order": views::order_view(x, &r.order),
-        "fills": r.fills.iter().map(|f| views::fill_view(x, f, Some(&id))).collect::<Vec<_>>(),
-    }))
+    let r = core.submit(Command::PlaceOrder { account: id.clone(), order: input })?;
+    order_reply(&core.x, &id, r, true)
 }
 
 async fn cancel(State(app): State<App>, User(id): User, Path(order): Path<String>) -> ApiResult {
-    app.lock().x.cancel(&id, &order)?;
+    app.lock().submit(Command::Cancel { account: id, order })?;
     ok(json!({ "ok": true }))
 }
 
@@ -358,36 +381,29 @@ async fn cancel_all(State(app): State<App>, User(id): User, b: Body) -> ApiResul
         Some(Value::String(m)) => Some(m.clone()),
         _ => None,
     };
-    ok(json!({ "cancelled": app.lock().x.cancel_all(&id, market.as_deref())? }))
+    let Reply::Cancelled(n) = app.lock().submit(Command::CancelAll { account: id, market })? else { unreachable!() };
+    ok(json!({ "cancelled": n }))
 }
 
 async fn close_position(State(app): State<App>, User(id): User, b: Body) -> ApiResult {
-    let market = b.str("market")?;
+    let cmd = Command::ClosePosition { account: id.clone(), market: b.str("market")?, slippage: b.num("slippage").unwrap_or(0.1) };
     let mut core = app.lock();
-    let sz = core.x.market(&market)?.sz_decimals;
-    let size = core.x.size_of(&market, &id);
-    if size == 0 {
-        return Err(ExError::bad(format!("no open position in {market}")).into());
-    }
-    let side = if size > 0 { Side::Sell } else { Side::Buy };
-    let input = OrderInput { reduce_only: true, slippage: Some(b.num("slippage").unwrap_or(0.1)), ..OrderInput::market(&market, side, coins_from_lots(sz, size.abs())) };
-    let r = core.x.place_order(&id, input)?;
-    let x = &core.x;
-    ok(json!({ "status": r.status, "reason": r.reason, "fills": r.fills.iter().map(|f| views::fill_view(x, f, Some(&id))).collect::<Vec<_>>() }))
+    let r = core.submit(cmd)?;
+    order_reply(&core.x, &id, r, false)
 }
 
 async fn margin(State(app): State<App>, User(id): User, b: Body) -> ApiResult {
-    app.lock().x.adjust_margin(&id, &b.str("market")?, &b.str("amount")?)?;
+    app.lock().submit(Command::Margin { account: id, market: b.str("market")?, amount: b.str("amount")? })?;
     ok(json!({ "ok": true }))
 }
 
 async fn spot_buy(State(app): State<App>, User(id): User, b: Body) -> ApiResult {
-    app.lock().x.spot_buy(&id, &b.str("market")?, &b.str("usdc")?)?;
+    app.lock().submit(Command::SpotBuy { account: id, market: b.str("market")?, usdc: b.str("usdc")? })?;
     ok(json!({ "ok": true }))
 }
 
 async fn spot_sell(State(app): State<App>, User(id): User, b: Body) -> ApiResult {
-    app.lock().x.spot_sell(&id, &b.str("market")?, &b.str("tokens")?)?;
+    app.lock().submit(Command::SpotSell { account: id, market: b.str("market")?, tokens: b.str("tokens")? })?;
     ok(json!({ "ok": true }))
 }
 
@@ -422,13 +438,18 @@ fn coin_spec(raw: &str, window: f64, adl: &str, creator: &str) -> Result<MarketS
 async fn attention(State(app): State<App>, User(id): User, b: Body) -> ApiResult {
     let adl = if b.0.get("adl") == Some(&json!("size")) { "size" } else { "pnl" };
     let spec = coin_spec(&b.str("handle")?, b.num("oracleWindow").unwrap_or(600.0), adl, &id)?;
+    list(&app, spec)
+}
+
+/// List a market and reply with its view.
+fn list(app: &App, spec: MarketSpec) -> ApiResult {
     let mut core = app.lock();
-    let mid = core.x.create_market(spec)?.id.clone();
-    ok(views::market_view(&core.x, &mid))
+    let Reply::Market(id) = core.submit(Command::ListMarket { spec })? else { unreachable!() };
+    ok(views::market_view(&core.x, &id))
 }
 
 async fn snipe(State(app): State<App>, User(id): User, b: Body) -> ApiResult {
-    app.lock().x.snipe(&id, &b.str("market")?, &b.str("usdc")?)?;
+    app.lock().submit(Command::Snipe { account: id, market: b.str("market")?, usdc: b.str("usdc")? })?;
     ok(json!({ "ok": true }))
 }
 
@@ -437,36 +458,34 @@ async fn snipe(State(app): State<App>, User(id): User, b: Body) -> ApiResult {
 /// After a gap the book is still quoted around the old price; have the bot maker re-quote that market now
 /// (rather than on its next turn), so the book, and the funding premium read from it, follow the new mark.
 fn requote(core: &mut Core, market: &str) {
-    let Core { x, bots, .. } = core;
-    if let Some(b) = bots.as_mut().filter(|b| b.enabled) {
-        b.quote(x, market);
+    let cmd = if core.bots.is_some() && core.x.bots_enabled { Command::BotQuote { market: market.into() } } else { Command::Clock };
+    if let Err(e) = core.submit(cmd) {
+        log(&format!("requote {market}: {}", e.message()));
     }
-    x.sync_books();
 }
 
 async fn admin_price(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
     let market = b.str("market")?;
     let mut core = app.lock();
-    let effects = core.x.admin_price(&market, &b.str("price")?, b.num("holdSeconds").unwrap_or(60.0))?;
+    let r = core.submit(Command::AdminPrice { market: market.clone(), price: b.str("price")?, hold_seconds: b.num("holdSeconds").unwrap_or(60.0) })?;
     requote(&mut core, &market);
-    ok(json!({ "effects": kinds(&effects) }))
+    ok(json!({ "effects": effects_of(r) }))
 }
 
 async fn admin_release(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
-    app.lock().x.release_hold(&b.str("market")?)?;
+    app.lock().submit(Command::ReleaseHold { market: b.str("market")? })?;
     ok(json!({ "ok": true }))
 }
 
 async fn admin_resolve(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
-    app.lock().x.resolve(&b.str("market")?, &b.str("price")?)?;
+    app.lock().submit(Command::Resolve { market: b.str("market")?, price: b.str("price")? })?;
     ok(json!({ "ok": true }))
 }
 
 async fn admin_market(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
     let id = b.str("id")?;
     let kind = parse_kind(&b.opt_str("kind").unwrap_or_else(|| "binary".into()))?;
-    let mut core = app.lock();
-    let now = core.x.now();
+    let now = app.lock().clock.now();
     let sz = match b.num("szDecimals") {
         None => None,
         Some(v) if v.fract() == 0.0 && (0.0..=9.0).contains(&v) => Some(v as u32),
@@ -493,8 +512,7 @@ async fn admin_market(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
         creator: Some("admin".into()),
         ..MarketSpec::new(id, kind, source)
     };
-    let mid = core.x.create_market(spec)?.id.clone();
-    ok(views::market_view(&core.x, &mid))
+    list(&app, spec)
 }
 
 // Listing from live venues fetches the venue's metadata first, outside the lock.
@@ -518,15 +536,12 @@ async fn admin_demo_coin(State(app): State<App>, _: Admin, b: Body) -> ApiResult
             format!("demo_{tag}")
         }
     };
-    let spec = coin_spec(&handle, 600.0, "pnl", "admin")?;
-    let mut core = app.lock();
-    let mid = core.x.create_market(spec)?.id.clone();
-    ok(views::market_view(&core.x, &mid))
+    list(&app, coin_spec(&handle, 600.0, "pnl", "admin")?)
 }
 
 async fn admin_pump(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
-    let effects = app.lock().x.pump(&b.str("market")?, &b.str("usdc")?)?;
-    ok(json!({ "effects": kinds(&effects) }))
+    let r = app.lock().submit(Command::Pump { market: b.str("market")?, usdc: b.str("usdc")?, house_key: api_key() })?;
+    ok(json!({ "effects": effects_of(r) }))
 }
 
 /// A pre-IPO perp: no outside price, the mark is the market's own book until the admin IPO.
@@ -542,44 +557,35 @@ async fn admin_preipo(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
         creator: Some("admin".into()),
         ..MarketSpec::new(id, Kind::Preipo, Source::Book)
     };
-    let mut core = app.lock();
-    let mid = core.x.create_market(spec)?.id.clone();
-    ok(views::market_view(&core.x, &mid))
+    list(&app, spec)
 }
 
 async fn admin_ipo(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
     let market = b.str("market")?;
     let mut core = app.lock();
-    let effects = core.x.ipo(&market, &b.str("price")?)?;
+    let r = core.submit(Command::Ipo { market: market.clone(), price: b.str("price")? })?;
     requote(&mut core, &market);
-    ok(json!({ "effects": kinds(&effects) }))
+    ok(json!({ "effects": effects_of(r) }))
 }
 
 async fn admin_deposit(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
-    app.lock().x.deposit(&b.str("account")?, &b.str("amount")?)?;
+    app.lock().submit(Command::Deposit { account: b.str("account")?, amount: b.str("amount")? })?;
     ok(json!({ "ok": true }))
 }
 
 async fn admin_bots(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
     let mut core = app.lock();
-    let Core { x, bots, .. } = &mut *core;
-    let Some(bots) = bots.as_mut() else {
+    if core.bots.is_none() {
         return Err(ExError::bad("bots are not running (BOTS=0)").into());
-    };
-    bots.enabled = b.truthy("enabled");
-    if !bots.enabled {
-        for id in Bots::ids() {
-            if x.accounts.contains_key(id) {
-                x.cancel_all(id, None)?;
-            }
-        }
     }
-    ok(json!({ "enabled": bots.enabled }))
+    let enabled = b.truthy("enabled");
+    core.submit(Command::SetBots { enabled })?;
+    ok(json!({ "enabled": enabled }))
 }
 
 async fn admin_status(State(app): State<App>, _: Admin) -> ApiResult {
     let core = app.lock();
-    let bots = core.bots.as_ref().map(|b| json!({ "enabled": b.enabled, "accounts": Bots::summary(&core.x) }));
+    let bots = core.bots.as_ref().map(|_| json!({ "enabled": core.x.bots_enabled, "accounts": Bots::summary(&core.x) }));
     ok(json!({ "bots": bots }))
 }
 
@@ -587,9 +593,9 @@ async fn admin_status(State(app): State<App>, _: Admin) -> ApiResult {
 
 async fn test_advance(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
     let mut core = app.lock();
-    core.x.advance_clock(b.num("ms").unwrap_or(0.0) as i64);
-    let effects = core.x.clock()?;
-    ok(json!({ "effects": kinds(&effects), "now": core.x.now() }))
+    core.clock.advance(b.num("ms").unwrap_or(0.0) as i64);
+    let r = core.submit(Command::Clock)?;
+    ok(json!({ "effects": effects_of(r), "now": core.clock.now(), "seq": core.seq }))
 }
 
 async fn test_market(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
@@ -606,14 +612,12 @@ async fn test_market(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
         snipe_seconds: b.num("snipeSeconds").map(|v| v as i64),
         ..MarketSpec::new(b.str("id")?, parse_kind(&b.str("kind")?)?, source)
     };
-    let mut core = app.lock();
-    let id = core.x.create_market(spec)?.id.clone();
-    ok(views::market_view(&core.x, &id))
+    list(&app, spec)
 }
 
 async fn test_tick(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
-    let price = crate::units::parse_fixed(&b.str("price")?).map_err(ExError::bad)?;
-    let effects = app.lock().x.tick(&b.str("market")?, price, false)?;
+    let tick = Tick { market: b.str("market")?, price: crate::units::parse_fixed(&b.str("price")?).map_err(ExError::bad)? };
+    let Reply::Tick(effects) = app.lock().submit(Command::Tick { tick })? else { unreachable!() };
     ok(json!({ "effects": effects.map(|e| kinds(&e)) }))
 }
 
@@ -621,18 +625,27 @@ async fn test_invariants(State(app): State<App>, _: Admin) -> ApiResult {
     ok(check_invariants(&app.lock().x.state))
 }
 
+/// The journal's position and the time each journaled command took (apply + journal commit), since the start.
+async fn admin_stats(State(app): State<App>, _: Admin) -> ApiResult {
+    let core = app.lock();
+    let mut us: Vec<u64> = core.timings.iter().map(|d| d.as_micros() as u64).collect();
+    us.sort_unstable();
+    let at = |q: f64| us.get(((us.len() as f64 - 1.0) * q).round() as usize).copied().unwrap_or(0);
+    let mean = if us.is_empty() { 0 } else { us.iter().sum::<u64>() / us.len() as u64 };
+    ok(json!({ "seq": core.seq, "n": us.len(), "p50_us": at(0.5), "p99_us": at(0.99), "max_us": us.last().copied().unwrap_or(0), "mean_us": mean }))
+}
+
+async fn test_hash(State(app): State<App>, _: Admin) -> ApiResult {
+    let core = app.lock();
+    ok(json!({ "hash": core.x.state_hash(), "seq": core.seq }))
+}
+
 /// Round-trip the whole exchange through a snapshot in place, then treat `downMs` as downtime.
 async fn test_reload(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
-    let mut core = app.lock();
-    let before = crate::persist::serialize(&core.x);
-    let (mut y, _) = crate::persist::deserialize(&before, core.x.clock).map_err(ExError::Internal)?;
-    y.version = core.x.version + 1;
-    let identical = crate::persist::serialize(&y) == before;
     let down = b.num("downMs").unwrap_or(0.0) as i64;
-    y.advance_clock(down);
-    y.resume_after(down);
-    let effects = y.clock()?;
-    core.x = y;
+    let mut core = app.lock();
+    core.clock.advance(down);
+    let Reply::Reload { identical, effects } = core.submit(Command::TestReload { down_ms: down })? else { unreachable!() };
     ok(json!({ "identical": identical, "effects": kinds(&effects) }))
 }
 
@@ -682,7 +695,7 @@ fn content_type(path: &std::path::Path) -> &'static str {
 
 async fn serve_static(web_dir: Option<&std::path::Path>, path: &str) -> Response {
     let Some(root) = web_dir.filter(|d| d.is_dir()) else {
-        return ([(header::CONTENT_TYPE, "text/plain")], "Impulse API is running. The web app isn't built: run `pnpm --filter impulse-web dev` (or `pnpm web:build`).")
+        return ([(header::CONTENT_TYPE, "text/plain")], "Impulse API is running. The web app isn't built: run `make web` (or `make dev` for the Vite dev server).")
             .into_response();
     };
     let Some(decoded) = percent_decode(path) else {
@@ -728,6 +741,7 @@ pub fn router(app: App) -> Router {
         .route("/api/markets/{id}", get(market))
         .route("/api/markets/{id}/candles", get(candles))
         .route("/api/markets/{id}/positions", get(positions))
+        .route("/api/markets/{id}/trades", get(trades))
         .route("/api/feed", get(feed))
         .route("/api/leaderboard", get(leaderboard))
         .route("/api/accounts", post(signup))
@@ -756,6 +770,7 @@ pub fn router(app: App) -> Router {
         .route("/api/admin/ipo", post(admin_ipo))
         .route("/api/admin/bots", post(admin_bots))
         .route("/api/admin/status", get(admin_status))
+        .route("/api/admin/stats", get(admin_stats))
         .route("/ws", get(crate::ws::upgrade));
     if app.test_hooks {
         r = r
@@ -763,19 +778,9 @@ pub fn router(app: App) -> Router {
             .route("/api/test/market", post(test_market))
             .route("/api/test/tick", post(test_tick))
             .route("/api/test/invariants", get(test_invariants))
+            .route("/api/test/hash", get(test_hash))
             .route("/api/test/reload", post(test_reload));
     }
     r.method_not_allowed_fallback(not_found).fallback(fallback).layer(axum::middleware::from_fn(cors)).with_state(app)
 }
 
-pub fn new_core(x: Exchange, bots: bool) -> Core {
-    Core { x, bots: bots.then(Bots::new), hub: Hub::default(), sim: Rng::new(42) }
-}
-
-pub fn test_clock(enabled: bool) -> Clock {
-    if enabled {
-        Clock::Manual(wall_ms())
-    } else {
-        Clock::Wall
-    }
-}

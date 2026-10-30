@@ -8,8 +8,8 @@
 //
 // Usage: tsx archive/sims/attack.ts   (prints the parameter sweep)
 
-import { type Event, type State, apply, equity, initialState, spotPrice } from "../../reference/engine/engine.js";
-import { ceilDiv, fmt, fmtPrice, isqrt, parseFixed } from "../../reference/engine/fixed.js";
+import { type Event, type State, apply, equity, initialState, spotPrice } from "../reference/engine/engine.js";
+import { ceilDiv, fmt, fmtPrice, isqrt, parseFixed } from "../reference/engine/fixed.js";
 
 export interface AttackParams {
   pump: number; // USDC the attacker spends on spot

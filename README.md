@@ -12,11 +12,12 @@ Play money only.
 
 ## Run it
 
+Needs cargo, and pnpm for the web app.
+
 ```bash
-pnpm install
-OFFLINE=1 pnpm start   # http://localhost:8787 — builds the web app, then runs the Rust server (release)
-pnpm start             # same, with live Hyperliquid and Polymarket prices
-pnpm dev               # Rust server (debug) on :8787 + Vite on http://localhost:5173
+OFFLINE=1 make start   # http://localhost:8787 — builds the web app, then runs the Rust server (release)
+make start             # same, with live Hyperliquid and Polymarket prices
+make dev               # Rust server (debug) on :8787 + Vite on http://localhost:5173
 ```
 
 Admin page token: `impulse-admin`. The 5-minute demo, the API, settings and env vars are in
@@ -27,17 +28,15 @@ Admin page token: `impulse-admin`. The 5-minute demo, the API, settings and env 
 | Path | What it is |
 |---|---|
 | `rs/engine` | Risk engine: margin, liquidation, ADL, funding, graduation, bonding curves, launches, invariants |
-| `rs/server` | Exchange server: order books, matching, HTTP + websocket API, feeds, house bots, snapshots |
-| `web/` | Trading UI: React, TanStack Router/Query/Form/Pacer, zustand, custom canvas chart |
+| `rs/server` | Exchange server: order books, matching, HTTP + websocket API, feeds, house bots; a command journal, snapshots and history tables in SQLite (`DATA_DIR/impulse.db`) |
+| `web/` | Trading UI: React, TanStack Router/Query/Form/Pacer, zustand, custom canvas chart. Its own pnpm project, the only Node code in the app |
 | `docs/` | [MVP.md](docs/MVP.md) (run, demo, API), [API-CONTRACT.md](docs/API-CONTRACT.md), [ACCOUNTING.md](docs/ACCOUNTING.md) (the engine's model and invariants), [DECISIONS.md](docs/DECISIONS.md) |
-| `tests/` | The test suite: `engine/` (engine tests, Rust-vs-TypeScript differential test), `http/` (API tests against the Rust server), `scenarios/` (event streams) |
-| `reference/` | The original TypeScript engine and server. Not used by the app; the tests check the Rust code against them. |
-| `archive/` | The research phase: findings, Mirror sources, simulations. Not used by the app. See [archive/README.md](archive/README.md). |
+| `tests/` | Test data for the Rust tests: `scenarios/` (event streams) and `golden/` (the TypeScript reference engine's frozen results). The tests themselves are in `rs/engine/tests` and `rs/server/tests` |
+| `archive/` | Not used by the app: the TypeScript reference engine and server, their Vitest suite and Node tooling, the golden-file generator, and the research phase (findings, Mirror sources, simulations). See [archive/README.md](archive/README.md). |
 
 ## Check it
 
 ```bash
-pnpm typecheck   # TypeScript: reference engine and server, tests, web
-pnpm test        # builds the Rust binaries, then engine, differential and API tests
-pnpm test:rust   # cargo test
+make test        # cargo test: engine, golden-file parity, server unit tests, HTTP and websocket tests
+make typecheck   # the web app
 ```

@@ -37,3 +37,24 @@ Endpoints
 
 Websocket: no new channels. The `markets` channel carries the new MarketView fields, `account` carries
 snipes, and `feed` carries the new RiskEvent kinds and price.
+
+## Additions (2026-10-31, branch `db`): history beyond the in-memory caps
+
+The exchange keeps the latest 2,000 risk events and 5,000 fills in memory; the database keeps all of them. Both
+endpoints are unchanged without the new parameters.
+
+```
+GET /api/feed?market=&before=<id>&limit=<n>         → RiskEvent[]   newest first, id < before; limit 1–1000 (default 200)
+GET /api/markets/:id/trades?before=<id>&limit=<n>   → Fill[]        newest first, id < before; limit 1–1000 (default 200)
+GET /api/markets/:id/trades                         → Fill[]        the latest 60, as in GET /api/markets/:id
+```
+
+Either parameter switches the feed to the full history. Fills from the history have the same fields as
+`trades` in `GET /api/markets/:id`.
+
+```
+GET /api/admin/stats   (admin)   → {seq, n, p50_us, p99_us, max_us, mean_us}
+```
+
+The journal's last sequence number, and the time each journaled command has taken since the server started
+(applying it and committing it to the journal), for watching throughput.

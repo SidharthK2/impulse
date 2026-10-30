@@ -9,7 +9,7 @@ impl Rng {
     }
 
     pub fn from_time() -> Self {
-        Rng(crate::exchange::wall_ms() as u32 ^ std::process::id().rotate_left(16))
+        Rng(crate::intake::wall_ms() as u32 ^ std::process::id().rotate_left(16))
     }
 
     /// Uniform in [0, 1).

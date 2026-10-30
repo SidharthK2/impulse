@@ -9,5 +9,5 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["reference/engine/**/*.ts", "tests/**/*.ts", "archive/sims/**/*.ts"]
+  "include": ["../reference/engine/**/*.ts", "../tests/**/*.ts", "../sims/**/*.ts", "../golden/**/*.ts"]
 }

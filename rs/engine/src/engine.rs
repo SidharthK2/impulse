@@ -1,4 +1,4 @@
-// Impulse risk engine, ported from src/engine.ts: same events, effects, invariants and rounding.
+// Impulse risk engine, ported from archive/reference/engine/engine.ts: same events, effects, invariants and rounding.
 // Markets are isolated shards: each owns its positions, collateral vault and config, and risk processing
 // (liquidation + ADL) only ever reads and writes the market it runs in. Accounts hold a wallet and move
 // collateral into per-market buckets explicitly.
@@ -22,7 +22,7 @@ pub struct Tier {
 
 const USD: i128 = 1_000_000_000;
 
-/// Leverage graduation tiers (OUR criteria; see src/engine.ts): a tier unlocks once cumulative traded notional
+/// Leverage graduation tiers (OUR criteria; see archive/reference/engine/engine.ts): a tier unlocks once cumulative traded notional
 /// AND depth (open-interest notional at mark, plus real USDC in the spot curve) both reach its thresholds.
 pub const GRADUATION: [Tier; 5] = [
     Tier { leverage: 5, volume: 100_000 * USD, depth: 10_000 * USD },

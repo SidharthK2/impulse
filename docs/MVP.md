@@ -3,7 +3,7 @@
 *Built 2026-10-25/26 on the `mvp` branch (TypeScript); the backend moved to Rust on 2026-10-30/31. It takes the risk
 engine from simulation to a live venue with play money.*
 
-The research engine (`reference/engine/engine.ts`, ported to `rs/engine`) answers *what happens when a price gaps, and who pays?* on
+The research engine (TypeScript, now `archive/reference/engine/engine.ts`, ported to `rs/engine`) answers *what happens when a price gaps, and who pays?* on
 scripted scenarios. The MVP puts that same engine behind a real exchange: order books, live oracles, accounts, bots and a
 trading UI. Gaps, liquidations and ADL happen live, and you can watch who pays.
 
@@ -18,34 +18,39 @@ Three products sit on it:
 
 ## Run it
 
+You need cargo, and pnpm for the web app (the only Node code outside `archive/`).
+
 ```bash
-pnpm install
-pnpm start          # builds the web app, then the Rust server (release) serves app + API on http://localhost:8787
-pnpm dev            # development: Rust server (debug) on :8787 + Vite on http://localhost:5173 (proxied)
-pnpm test           # builds the Rust binaries, then engine, differential, exchange and API tests (vitest)
-pnpm test:rust      # cargo test: engine and server unit tests
-pnpm typecheck      # engine, TS server and web
+make start          # builds the web app (pnpm in web/), then the Rust server (release) serves app + API on http://localhost:8787
+make dev            # development: Rust server (debug) on :8787 + Vite on http://localhost:5173 (proxied); Ctrl+C stops both
+make test           # cargo test: engine, golden-file parity, server unit tests, HTTP and websocket tests
+make web            # install and build the web app
+make typecheck      # the web app
+make clean-data     # how to start from an empty exchange (prints; deletes nothing)
 ```
 
-The TypeScript server is still there as the reference implementation: `pnpm server:ts`, `pnpm dev:ts`.
+The TypeScript engine and server that the Rust code was ported from are in `archive/reference/`, no longer used by
+the app or its tests; see [archive/README.md](../archive/README.md) to run them.
 
 | Env var | Default | |
 |---|---|---|
 | `PORT` | `8787` | API + static app (`0` picks a free port) |
-| `DATA_DIR` | `rs/data` | snapshot location (gitignored) |
+| `DATA_DIR` | `rs/data` | the database, `impulse.db` (gitignored) |
 | `WEB_DIR` | `web/dist` | the built app |
 | `ADMIN_TOKEN` | `impulse-admin` | header `x-admin-token` for the admin page/API |
 | `OFFLINE` | unset | `1` = no network: every market gets a simulated price |
 | `BOTS` | on | `0` = no house market maker or noise traders |
 | `TEST_CLOCK` | unset | `1` = a clock only `/api/test/*` moves, and those hooks are on (tests only) |
+| `TIMER_SPEEDUP` | `1` | `N` = the clock, bots and offline walk run N× faster (tests) |
+| `EXIT_WITH_STDIN` | unset | `1` = exit when stdin closes (test harnesses) |
 
-To start fresh, point `DATA_DIR` at a new directory. Nothing deletes old snapshots.
+To start fresh, point `DATA_DIR` at a new directory (`make clean-data` prints how). Nothing deletes old data.
 
 ## What's in it
 
 | Piece | Where | What it does |
 |---|---|---|
-| Risk engine | `rs/engine` (port of `reference/engine/engine.ts`) | Positions, margin, liquidation, ADL, funding, graduation, taper, curves, launches, invariants |
+| Risk engine | `rs/engine` (port of `archive/reference/engine/engine.ts`) | Positions, margin, liquidation, ADL, funding, graduation, taper, curves, launches, invariants |
 | Exchange | `rs/server/src/exchange.rs` | Order books, matching, auto-margin, accounts, launches, pre-IPO marks, history; every change is an engine transition |
 | Order book | `rs/server/src/book.rs` | Price-time priority CLOB per market |
 | Units | `rs/server/src/units.rs` | Coins ↔ integer lots (Hyperliquid `szDecimals`), coin price ↔ lot price, ticks |
@@ -53,11 +58,86 @@ To start fresh, point `DATA_DIR` at a new directory. Nothing deletes old snapsho
 | Bots | `rs/server/src/bots.rs` | `maker` ladders every market; `ape`, `degen`, `whale`, `scalper` trade with leverage, snipe new coins, trade curves |
 | API | `rs/server/src/api.rs`, `ws.rs` | JSON over HTTP (axum), websocket hub, static app |
 | Views | `rs/server/src/views.rs` | Exact decimal-string JSON for markets, books, accounts, leaderboard |
-| Persistence | `rs/server/src/persist.rs` | Whole-exchange JSON snapshot every 15 s and on shutdown (atomic rename) |
+| Commands | `rs/server/src/command.rs` | Every state-changing input as data, and `apply`, the only code that changes the exchange |
+| Sequencer | `rs/server/src/sequencer.rs` | The single-threaded core: `submit` (journal before reply, fail-stop), snapshots, recovery, replay |
+| Store | `rs/server/src/store.rs` | SQLite: schema and migrations, the journal, snapshots, read tables, history paging |
+| Intake | `rs/server/src/intake.rs` | Wall clock and randomness, the only places the server reads either; the core gets them in commands |
+| Legacy JSON | `rs/server/src/persist.rs` | The pre-database snapshot format: imported on first start, written by `export-json` |
 | Web | `web/src/` | React trading UI: TanStack Router, Query, Form and Pacer, zustand, a custom canvas chart |
 
 One process, one core: the exchange sits behind a single mutex on a single-threaded runtime, and each request is one
 synchronous step against it. Money is `i128` nano-USD everywhere; the engine has no floats.
+
+## Storage: a journal, a deterministic core, snapshots, read tables
+
+The standard exchange design (LMAX style), on SQLite:
+
+```
+clients (API, bots, feeds, clock) → sequencer → journal (SQLite, before the reply) → deterministic core → views
+```
+
+- **Commands.** Every state-changing input is a `Command` (`command.rs`): sign-up, faucet, deposits and
+  withdrawals, orders, cancels, closes, margin, spot trades, snipes, every listing (a venue mirror carries the
+  metadata fetched from Hyperliquid or Polymarket inside it), admin price/hold/release, resolve, IPO, pump, the bots
+  switch, feed ticks (one command per poll or random-walk step), chart backfill, the bot maker's requotes, the 2 s
+  clock, `Genesis` for a fresh exchange and `Resume` after downtime. The bots are ordinary clients that submit
+  commands; nothing about them lives in the core except what the exchange records.
+- **Deterministic core.** `command::apply(exchange, command)` reads nothing else. Time is the command's timestamp,
+  assigned at intake; anything random (API keys, demo-coin handles, the bots' and the walk's choices) is drawn at
+  intake and carried in the command; the core iterates only ordered maps. The same commands in the same order give
+  the same exchange, down to its `state_hash` (FNV-1a over the whole exchange: engine state, books, orders,
+  accounts and keys, history, clock).
+- **Journal before reply.** Per command: `BEGIN`; apply it in memory; if the exchange changed, `INSERT` the command
+  and its history rows and `COMMIT`; only then reply. A command that changed nothing (refused before any change) is
+  rolled back and never journaled. If a journal write fails, or a command panics, the server stops (exit 70)
+  rather than run with memory ahead of disk; a restart recovers the last committed state.
+- **Recovery.** Load the latest snapshot, replay every command after it through the same `apply`, with no feeds,
+  bots or timers running, then take a snapshot (so a later recovery never runs old commands through newer code),
+  then start serving. Replay writes nothing. A gap in the journal, or a journaled command that changes nothing on
+  replay, stops the start. Downtime is a pause: a `Resume` command shifts the clock origin by the outage.
+- **Snapshots.** The exchange's serde serialization, every 1,000 commands or 60 s, at clean shutdown, and after every
+  recovery; the last 5 are kept.
+- **Read side.** History tables written in the command's own transaction. The exchange keeps its in-memory caps
+  (5,000 fills, 2,000 risk events, a day of 1-minute candles) for the API and websocket; the tables keep everything,
+  and `?before=&limit=` pages through them (`/api/feed`, `/api/markets/:id/trades`).
+- **Legacy import.** If `impulse.db` doesn't exist but `DATA_DIR/snapshot.json` (the format before the database)
+  does, it's imported as snapshot 0, with its history into the read tables, and the JSON file is kept.
+
+One file, `DATA_DIR/impulse.db`; `PRAGMA journal_mode=WAL, synchronous=FULL, foreign_keys=ON`. Schema (migrations
+are numbered in `store.rs`; `meta.schema_version` says how many have run):
+
+| Table | Columns | |
+|---|---|---|
+| `commands` | `seq` PK, `ts`, `kind`, `payload` (JSON) | the journal: every command that changed the exchange |
+| `snapshots` | `seq` PK, `ts`, `version` (build), `state` (JSON blob) | the exchange after command `seq` |
+| `fills` | `id` PK, `seq`, `ts`, `market`, `kind`, `price`, `size`, `notional`, `side`, `taker`, `maker`, `taker_order`, `maker_order` | every fill, perp and spot |
+| `risk_events` | `id` PK, `seq`, `ts`, `market`, `kind`, `accounts` (JSON), `text`, `amount`, `price` | the risk feed: who paid |
+| `candles` | `market`, `t` (PK together), `o`, `h`, `l`, `c`, `v` | 1-minute mark candles |
+| `accounts` | `id` PK, `created_at`, `bot` | |
+| `meta` | `key` PK, `value` | `schema_version`, `created_at` |
+
+Money and prices are exact decimal strings (USD, USD per coin) and sizes are coins, as the API shows them; never
+floats. `seq` ties every history row to the command that produced it.
+
+Inspect it while the server runs (WAL lets readers in), or rebuild it offline:
+
+```bash
+sqlite3 rs/data/impulse.db
+  sqlite> SELECT kind, COUNT(*) FROM commands GROUP BY kind ORDER BY 2 DESC;
+  sqlite> SELECT ts, kind, text, amount FROM risk_events WHERE kind IN ('bankrupt', 'haircut', 'ipo') ORDER BY id DESC LIMIT 20;
+  sqlite> SELECT seq, ts, version, length(state) FROM snapshots;
+DATA_DIR=rs/data rs/target/release/impulse-server replay           # latest snapshot + tail → {seq, hash, …}
+DATA_DIR=rs/data rs/target/release/impulse-server replay --full    # from seq 1 (or a legacy import's snapshot 0)
+DATA_DIR=rs/data rs/target/release/impulse-server export-json DIR  # the legacy JSON snapshot format, DIR/snapshot.json
+```
+
+`GET /api/admin/stats` reports the journal's position and the time per command (apply + commit).
+
+Measured 2026-10-31 (release build, `OFFLINE=1`, bots on, 10 minutes, `synchronous=FULL`, an M-series Mac): 2,699
+commands (4.5/s: mostly the maker's requotes, then ticks, clock steps and bot orders); per command p50 0.69 ms, p99
+1.9 ms, max 4.2 ms, about 1,200 commands/s of capacity. The debug build is no slower, so the fsync on commit is the
+cost. The database was 1.1 MB plus a 4.1 MB WAL (checkpointed as it grows); a snapshot is about 130 KB, and five are
+kept.
 
 ## How a fill works
 
@@ -155,19 +235,25 @@ carries snipes, and `feed` carries the `open` and `ipo` kinds and each event's m
 
 ## Tests
 
-- `tests/engine/differential.test.ts`: every scenario and 300 random histories (each now launches a creator coin: snipes,
-  refused pre-open trades, the open at a random step) through both engines; identical state and effects.
-- `tests/engine/engine.test.ts`: engine behaviour, including P_open for $100,000 and the launch reserve in conservation.
-- `tests/http/api.test.ts`, `exchange.test.ts`: the HTTP and websocket API, run against an in-process TS server and
-  against the Rust binary (started by the vitest global setup with `TEST_CLOCK=1 OFFLINE=1 BOTS=0`).
-- `tests/http/launch.test.ts`, `preipo.test.ts`: creator coins and pre-IPO, Rust server only.
+All Rust, all in `make test` (`cargo test --manifest-path rs/Cargo.toml`):
 
-Against a server you started yourself:
+- `rs/engine/tests/golden.rs`: parity with the TypeScript reference engine, with no TypeScript at runtime. Its
+  results for every scenario in `tests/scenarios/` and for 600 random histories (300 that launch a creator coin and
+  set book mids, 300 fuzz histories under both ADL policies) are frozen in `tests/golden/`; the Rust engine replays
+  the stored event lists and must match every step's effects or rejection reason, and the final state.
+- `rs/engine/tests/engine.rs`, `alloc.rs`: engine behaviour (scenarios' exact numbers, ADL policies, graduation,
+  taper, funding, validation, rounding, curves, launches, the funding premium) and largest-remainder apportionment.
+- `rs/server/tests/*.rs`: the HTTP and websocket API. Each test binary starts the server binary it was built with
+  (`TEST_CLOCK=1 OFFLINE=1 BOTS=0`, a temp `DATA_DIR`) and drives it with reqwest and tokio-tungstenite: `api`,
+  `exchange` (matching, risk, snapshot), `launch`, `preipo`, `funding`, `endpoints`.
+- `rs/server/tests/durability.rs`: a bots-on session of 3,000 commands replays from seq 1 to the live state hash;
+  a snapshot plus its tail reaches the same hash; `kill -9` mid-trading loses nothing acknowledged and the
+  restarted state equals the journal's; refused commands write no journal row; the read tables match the
+  in-memory history and the journal's effects; a legacy JSON snapshot imports with the same state; and per-command
+  timing with bots on and `synchronous=FULL` (printed with `cargo test --test durability -- --nocapture`).
+- Unit tests in `rs/engine/src` and `rs/server/src` (fixed point, units, book, rng).
 
-```bash
-TEST_CLOCK=1 OFFLINE=1 BOTS=0 ADMIN_TOKEN=t PORT=8790 DATA_DIR=$(mktemp -d) cargo run --manifest-path rs/Cargo.toml -p impulse-server
-BASE_URL=http://localhost:8790 pnpm vitest run tests/http
-```
+`tests/golden/` is regenerated only from the archived TypeScript engine (`archive/golden/generate.ts`).
 
 ## Demo script (5 minutes)
 
@@ -175,7 +261,7 @@ Start the exchange offline (bots on), and drive it from a second terminal with `
 in the web app at http://localhost:8787 (risk feed, **Who paid**, leaderboard).
 
 ```bash
-OFFLINE=1 pnpm start                      # terminal 1
+OFFLINE=1 make start                      # terminal 1
 
 B=http://localhost:8787; J='content-type: application/json'; A='x-admin-token: impulse-admin'
 KEY=$(curl -s -XPOST $B/api/accounts -H "$J" -d '{"name":"you"}' | jq -r .apiKey); U="authorization: Bearer $KEY"
@@ -258,7 +344,7 @@ Each market reports these in `settings`, with `ours: true` where the number is o
 | Decision | Why |
 |---|---|
 | The engine is reused unchanged except for launches; the exchange wraps it | The research guarantees (invariants, proofs, fuzz) carry over to the live venue; launches are in both engines so the differential test covers them |
-| Backend in Rust, same JSON as the TS server | The TS tests prove parity: the API tests run against both servers |
+| Backend in Rust, same JSON as the TS server | Parity was proven by running the API tests against both servers; the engine's parity is now pinned by golden files |
 | Auto-margin per fill, isolated per market; flat positions sweep back to the wallet | Mirror is isolated by default. Users never manage buckets by hand, but can add or remove margin |
 | No margin reserved for resting orders; a fill that can't be afforded cancels the maker | Simplest correct behaviour: the engine re-checks every fill anyway |
 | 5% buffer when margin hits the max-loss cap | At the cap, IM = MM, so the first funding payment would liquidate a fully collateralized binary position |
@@ -283,7 +369,13 @@ Each market reports these in `settings`, with `ours: true` where the number is o
   for the bot maker after an admin gap or IPO, within seconds otherwise), the old quotes still drive it; with a side
   of the book empty it falls back to the last trade, which can be stale (finding J).
 - Polymarket mirrors have no taper, because Polymarket's end dates aren't reliable resolution times. Admin binaries can taper.
-- One process, in memory, snapshotted every 15 s; a crash loses at most 15 s. Each engine transition clones the state,
-  which is fine at this size and would need rethinking at real scale.
-- Snapshots are not shared between the servers: the Rust server reads and writes its own format in `rs/data`, the TS
-  server its own in `reference/server/data`.
+- One process: the exchange lives in memory and every command is journaled to SQLite before its reply, so a crash
+  loses nothing acknowledged. There's no replication: the database is one file on one disk. On macOS,
+  `synchronous=FULL` is an `fsync`, which survives a process or OS crash; surviving power loss would also need
+  `PRAGMA fullfsync`.
+- Replay is only as deterministic as the build: commands replay through the current code, and a snapshot after every
+  recovery keeps replays short, but a journal written by an older build could replay differently. The bot maker's
+  ladder (`BotQuote`) computes its prices with f64 inside the core: deterministic for one build on one platform,
+  not across platforms. The noise traders' and the walk's float math runs at intake, and only its results are
+  journaled.
+- Each engine transition clones the state, which is fine at this size and would need rethinking at real scale.

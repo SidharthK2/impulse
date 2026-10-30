@@ -58,6 +58,18 @@ Newest last. Each entry: the decision, why, and what it rules out.
 | 2026-10-25 | Default ADL rule `pnl` for MVP markets | Brief recommendation (finding 5) |
 | 2026-10-31 | **Deliberate change:** the funding premium's perp price is the order book's mid when both sides are quoted, else the last trade, else the mark (premium 0). The exchange sends the mid to the engine as a `book` event on every 2 s clock step, ahead of the `advance`, and the bot maker re-quotes a market right after an admin gap or IPO | After a gap (crash, IPO) the last trade is stale, so the premium sat at its ±4%/h cap until someone traded (finding J), which reads as a bug. The book is re-quoted around the new mark within seconds. Supersedes "the last trade stands in for the book price" (2026-10-05). Both engines; the differential histories include `book` events |
 
+## Storage and the Rust-only backend (branch `db`)
+
+| Date | Decision | Why / alternative rejected |
+|---|---|---|
+| 2026-10-31 | The TypeScript backend is retired to `archive/`, its results frozen as golden files (`tests/golden/`: every scenario, 300 random histories, 300 fuzz histories) | The Rust engine's parity stays proven with no TypeScript at runtime: `rs/engine/tests/golden.rs` replays the stored event lists. Rejected: reimplementing the TS generators in Rust, which would test the Rust engine against itself |
+| 2026-10-31 | Journal the inputs (commands), not the outputs (state changes or events) | A deterministic core turns the same commands into the same exchange, so the journal is small and replay is the recovery path and the audit trail at once. Requires every clock read and random draw at intake (`intake.rs`), carried in the command |
+| 2026-10-31 | `synchronous=FULL` with WAL, one commit per command, before the reply | An acknowledged order must survive a crash. Measured 0.69 ms per command at the median, 1.9 ms at p99 (apply + commit, bots on, M-series Mac). Rejected: `NORMAL` (can lose the last commits on power loss) and group commit (more throughput than paper trading needs, and replies would wait for a batch) |
+| 2026-10-31 | Fail-stop: a failed journal write, or a panic inside a command, stops the process | The alternative is serving state the journal doesn't have; a restart recovers the last committed state, which is exactly what was acknowledged |
+| 2026-10-31 | A snapshot right after every recovery (and every 1,000 commands or 60 s, and at shutdown; keep 5) | A replay then never runs old commands through newer code for long; snapshots are an optimization, so a failed one is logged, not fatal |
+| 2026-10-31 | Bots and the random walk are clients that submit commands; feed polls are one `Ticks` command each | The core stays a function of its inputs, and a whole poll is one journal row instead of one per market |
+| 2026-10-31 | Read tables (fills, risk events, candles, accounts) in the command's transaction, as exact decimal strings | History beyond the in-memory caps, always consistent with the journal; SQLite is never read on the trading path |
+
 ## Deliberately not done (yet)
 
 - **Order book and matching, liquidation through the book, perp fees:** the biggest realism gap.

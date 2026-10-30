@@ -149,7 +149,8 @@ pub struct Opened {
     pub reserve: i128,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MarketSpec {
     pub id: String,
     pub kind: Kind,
@@ -276,13 +277,15 @@ pub struct Candle {
     pub v: i128, // traded notional, nano-USD
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum OrderType {
     Limit,
     Market,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct OrderInput {
     pub market: String,
     pub side: Side,
@@ -318,23 +321,6 @@ pub struct OrderResult {
     pub fills: Vec<Fill>,
     pub status: OrderStatus,
     pub reason: Option<String>,
-}
-
-/// Wall time, or a clock only the test hooks move (TEST_CLOCK=1).
-#[derive(Clone, Copy, Debug)]
-pub enum Clock {
-    Wall,
-    Manual(i64),
-}
-
-impl Default for Clock {
-    fn default() -> Self {
-        Clock::Wall
-    }
-}
-
-pub fn wall_ms() -> i64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
 }
 
 const FILL_HISTORY: usize = 5000;
@@ -374,34 +360,6 @@ fn parse(v: &str) -> XResult<i128> {
     parse_fixed(v).map_err(ExError::bad)
 }
 
-fn api_key() -> String {
-    let mut bytes = [0u8; 24];
-    if let Ok(mut f) = std::fs::File::open("/dev/urandom") {
-        let _ = std::io::Read::read_exact(&mut f, &mut bytes);
-    } else {
-        // no /dev/urandom: fall back to the std hasher's per-process random keys
-        use std::hash::{BuildHasher, Hasher};
-        for chunk in bytes.chunks_mut(8) {
-            let mut h = std::collections::hash_map::RandomState::new().build_hasher();
-            h.write_i64(wall_ms());
-            chunk.copy_from_slice(&h.finish().to_le_bytes()[..chunk.len()]);
-        }
-    }
-    base64url(&bytes)
-}
-
-fn base64url(bytes: &[u8]) -> String {
-    const A: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-    let mut out = String::new();
-    for c in bytes.chunks(3) {
-        let n = (c[0] as u32) << 16 | (*c.get(1).unwrap_or(&0) as u32) << 8 | *c.get(2).unwrap_or(&0) as u32;
-        for i in 0..=c.len() {
-            out.push(A[(n >> (18 - 6 * i) & 63) as usize] as char);
-        }
-    }
-    out
-}
-
 fn ev_deposit(account: &str, amount: String) -> Event {
     Event::Deposit { account: account.into(), amount: amount.into() }
 }
@@ -433,16 +391,27 @@ pub struct Exchange {
     #[serde(skip)]
     order_market: BTreeMap<u64, String>, // resting order id → market, in time priority
     #[serde(skip)]
-    pub version: u64, // bumps on every change; the websocket hub diffs on it
+    pub version: u64, // bumps on every change: the websocket hub diffs on it, and the journal records a step only if it moved
+    /// The current step's time (wall-clock ms), set at intake. The core never reads a clock.
+    #[serde(default)]
+    pub now: i64,
+    /// Admin switch for the house bots (they only act while it's on).
+    #[serde(default = "yes")]
+    pub bots_enabled: bool,
+    /// Candles changed since the store last looked: (market, minute). Not state; the read tables' to-do list.
     #[serde(skip)]
-    pub clock: Clock,
+    pub dirty_candles: std::collections::BTreeSet<(String, i64)>,
+}
+
+fn yes() -> bool {
+    true
 }
 
 impl Exchange {
-    pub fn new(clock: Clock) -> Self {
-        let mut x = Exchange {
+    pub fn new(genesis: i64) -> Self {
+        Exchange {
             state: initial_state(),
-            genesis: 0,
+            genesis,
             markets: IndexMap::new(),
             books: BTreeMap::new(),
             accounts: IndexMap::new(),
@@ -453,15 +422,14 @@ impl Exchange {
             keys: HashMap::new(),
             order_market: BTreeMap::new(),
             version: 0,
-            clock,
-        };
-        x.genesis = x.now();
-        x
+            now: genesis,
+            bots_enabled: true,
+            dirty_candles: Default::default(),
+        }
     }
 
     /// Rebuild the indexes a snapshot doesn't carry.
-    pub fn restored(mut self, clock: Clock) -> Self {
-        self.clock = clock;
+    pub fn restored(mut self) -> Self {
         self.keys = self.accounts.values().map(|a| (a.api_key.clone(), a.id.clone())).collect();
         self.order_market = self.books.iter().flat_map(|(id, b)| b.orders().map(move |o| (o.id, id.clone()))).collect();
         for id in self.markets.keys() {
@@ -471,17 +439,12 @@ impl Exchange {
     }
 
     pub fn now(&self) -> i64 {
-        match self.clock {
-            Clock::Wall => wall_ms(),
-            Clock::Manual(t) => t,
-        }
+        self.now
     }
 
-    /// Test clock only.
-    pub fn advance_clock(&mut self, ms: i64) {
-        if let Clock::Manual(t) = self.clock {
-            self.clock = Clock::Manual(t + ms);
-        }
+    /// Stable hash of the whole exchange: engine state, books and orders, accounts and keys, history, clock.
+    pub fn state_hash(&self) -> String {
+        format!("{:016x}", crate::intake::fnv64(&serde_json::to_vec(self).expect("exchange serializes")))
     }
 
     /// Treat downtime as a pause: shift the clock origin so engine time resumes where it stopped. Otherwise a restart
@@ -512,6 +475,7 @@ impl Exchange {
     }
 
     fn market_mut(&mut self, id: &str) -> XResult<&mut MarketMeta> {
+        self.version += 1;
         self.markets.get_mut(id).ok_or_else(|| ExError::status(404, format!("unknown market \"{id}\"")))
     }
 
@@ -696,6 +660,7 @@ impl Exchange {
     }
 
     fn bump_id(&mut self) -> u64 {
+        self.version += 1;
         let id = self.next_id;
         self.next_id += 1;
         id
@@ -731,6 +696,7 @@ impl Exchange {
     }
 
     fn push_fill(&mut self, f: Fill) {
+        self.version += 1;
         self.fills.push_back(f);
         while self.fills.len() > FILL_HISTORY {
             self.fills.pop_front();
@@ -738,6 +704,7 @@ impl Exchange {
     }
 
     pub fn candle(&mut self, market: &str, lot_px: i128, volume: i128, at: Option<i64>) {
+        self.version += 1;
         let at = at.unwrap_or_else(|| self.now());
         let t = at.div_euclid(60_000) * 60_000;
         let cs = self.candles.entry(market.into()).or_default();
@@ -750,11 +717,13 @@ impl Exchange {
                 last.l = last.l.min(lot_px);
                 last.c = lot_px;
                 last.v += volume;
+                self.dirty_candles.insert((market.into(), t));
                 return;
             }
         }
         let o = cs.last().map_or(lot_px, |c| c.c);
         cs.push(Candle { t, o, h: o.max(lot_px), l: o.min(lot_px), c: lot_px, v: volume });
+        self.dirty_candles.insert((market.into(), t));
         if cs.len() > CANDLES {
             let extra = cs.len() - CANDLES;
             cs.drain(..extra);
@@ -763,7 +732,8 @@ impl Exchange {
 
     // ---------- accounts and money ----------
 
-    pub fn create_account(&mut self, name: &str, bot: bool) -> XResult<AccountMeta> {
+    /// `api_key` comes from intake (the core has no randomness).
+    pub fn create_account(&mut self, name: &str, bot: bool, api_key: &str) -> XResult<AccountMeta> {
         let id = name.trim();
         if !valid_name(id) {
             return Err(ExError::bad("name must be 3–16 letters, digits or _"));
@@ -774,7 +744,7 @@ impl Exchange {
         if self.accounts.keys().any(|a| a.eq_ignore_ascii_case(id)) {
             return Err(ExError::status(409, format!("name \"{id}\" is taken")));
         }
-        let meta = AccountMeta { id: id.into(), api_key: api_key(), bot, created_at: self.now(), last_faucet: 0 };
+        let meta = AccountMeta { id: id.into(), api_key: api_key.into(), bot, created_at: self.now(), last_faucet: 0 };
         self.accounts.insert(id.into(), meta.clone());
         self.keys.insert(meta.api_key.clone(), id.into());
         self.version += 1;
@@ -1143,7 +1113,8 @@ impl Exchange {
     }
 
     /// Admin pump: the house account buys (usdc > 0) or sells about |usdc| of tokens (usdc < 0) on the curve.
-    pub fn pump(&mut self, market: &str, usdc: &str) -> XResult<Vec<Effect>> {
+    /// `house_key` (from intake) is the house account's API key if this pump creates it.
+    pub fn pump(&mut self, market: &str, usdc: &str, house_key: &str) -> XResult<Vec<Effect>> {
         let meta = self.market(market)?;
         if meta.kind != Kind::Attention {
             return Err(ExError::bad(format!("{market} has no spot curve: use /api/admin/price")));
@@ -1153,7 +1124,8 @@ impl Exchange {
             return Err(ExError::bad("usdc must be non-zero"));
         }
         if !self.accounts.contains_key(HOUSE) {
-            let meta = AccountMeta { id: HOUSE.into(), api_key: api_key(), bot: true, created_at: self.now(), last_faucet: 0 };
+            let meta = AccountMeta { id: HOUSE.into(), api_key: house_key.into(), bot: true, created_at: self.now(), last_faucet: 0 };
+            self.version += 1;
             self.keys.insert(meta.api_key.clone(), HOUSE.into());
             self.accounts.insert(HOUSE.into(), meta);
         }
@@ -1538,6 +1510,8 @@ impl Exchange {
         older.append(cs);
         let extra = older.len().saturating_sub(CANDLES);
         *cs = older.split_off(extra);
+        let touched: Vec<i64> = cs.iter().map(|c| c.t).collect();
+        self.dirty_candles.extend(touched.into_iter().map(|t| (market.to_string(), t)));
         self.version += 1;
     }
 }
@@ -1552,5 +1526,65 @@ fn clamp_lot(kind: Kind, lot: i128) -> i128 {
         lot.clamp(0, impulse_engine::fixed::ONE)
     } else {
         lot.max(1)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A small session: a market, two accounts, a resting order and a fill.
+    fn session(key: &str) -> Exchange {
+        let mut x = Exchange::new(1_000_000);
+        let spec = MarketSpec { price: Some("100".into()), sz_decimals: Some(2), ..MarketSpec::new("X", Kind::Perp, Source::Manual) };
+        x.create_market(spec).unwrap();
+        for (i, id) in ["alice", "bob"].into_iter().enumerate() {
+            x.now += 1000;
+            x.create_account(id, false, &format!("{key}{i}")).unwrap();
+            x.deposit(id, "1000").unwrap();
+        }
+        x.now += 1000;
+        x.place_order("bob", OrderInput::limit("X", Side::Sell, "100".into(), "5".into())).unwrap();
+        x.place_order("alice", OrderInput::market("X", Side::Buy, "2".into())).unwrap();
+        x
+    }
+
+    #[test]
+    fn the_same_steps_at_the_same_times_give_the_same_hash() {
+        assert_eq!(session("k").state_hash(), session("k").state_hash());
+    }
+
+    #[test]
+    fn the_hash_covers_keys_time_books_and_history() {
+        let base = session("k").state_hash();
+        assert_ne!(session("other").state_hash(), base); // API keys
+        let mut later = session("k");
+        later.now += 1;
+        assert_ne!(later.state_hash(), base); // the clock
+        let mut cancelled = session("k");
+        cancelled.cancel_all("bob", None).unwrap();
+        assert_ne!(cancelled.state_hash(), base); // books and orders
+        let mut noted = session("k");
+        noted.record("X", RiskKind::Gap, vec![], "note".into(), None);
+        assert_ne!(noted.state_hash(), base); // history
+    }
+
+    #[test]
+    fn every_change_bumps_the_version() {
+        let mut x = session("k");
+        for step in [
+            (|x: &mut Exchange| x.candle("X", 1, 0, None)) as fn(&mut Exchange),
+            |x| x.record("X", RiskKind::Gap, vec![], "note".into(), None),
+            |x| {
+                x.release_hold("X").unwrap();
+            },
+            |x| {
+                x.cancel_all("bob", None).unwrap();
+            },
+        ] {
+            let v = x.version;
+            step(&mut x);
+            assert!(x.version > v);
+        }
     }
 }

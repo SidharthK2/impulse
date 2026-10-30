@@ -1,5 +1,5 @@
-//! Impulse risk engine: pure library, no IO. A port of src/engine.ts with identical events, effects,
-//! invariants and rounding (checked by the differential test in test/differential.test.ts).
+//! Impulse risk engine: pure library, no IO. A port of archive/reference/engine/engine.ts with identical events, effects,
+//! invariants and rounding (checked against its frozen results in tests/golden/ by tests/golden.rs).
 
 pub mod alloc;
 pub mod engine;
