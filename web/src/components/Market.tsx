@@ -82,9 +82,20 @@ export function MarketBar({ market, markets, onPick }: { market: MarketView; mar
     <div className="mbar">
       <MarketPicker markets={markets} current={market} onPick={onPick} />
       <div className="col" style={{ gap: 0 }}>
-        <span className="big">{price(market.mark, market.priceDecimals)}</span>
+        <span className="big">{price(headline(market), Math.max(market.priceDecimals, market.mark ? 0 : 6))}</span>
+        {!market.mark && market.snipe && <span className="faint small">projected open</span>}
       </div>
       <div className="mbar-stats">
+      {market.launch && (
+        <>
+          <Stat label="Open price" title={`Opened ${new Date(market.launch.openedAt).toLocaleString()}`}>
+            {price(market.launch.openPrice, market.priceDecimals)}
+          </Stat>
+          <Stat label="Launch reserve" title="USDC the snipe pool left in the curve">
+            {usd(market.launch.reserve, { compact: true })}
+          </Stat>
+        </>
+      )}
       <Stat label="24h">
         <span className={tone(ch)}>{pct(ch)}</span>
       </Stat>
@@ -226,7 +237,7 @@ export function SpotPanel({ market, account, signedIn }: { market: MarketView; a
   return (
     <div className="panel">
       <div className="panel-head">
-        <h3>Spot curve</h3>
+        <h3>Spot · buy on the curve</h3>
         <span className="spacer" />
         <span className={`badge ${c.oracleWindow === 0 ? "down" : "info"}`}>{c.oracleWindow === 0 ? "instant oracle" : `${c.oracleWindow / 60}m TWAP oracle`}</span>
       </div>
@@ -248,8 +259,21 @@ export function SpotPanel({ market, account, signedIn }: { market: MarketView; a
           <button className="btn buy" disabled={!signedIn || busy || !(num(usdc) > 0)} onClick={() => run("/api/spot/buy", { usdc }, `Bought ${market.id} with $${usdc}`)}>
             Buy
           </button>
-          <button className="btn sell" disabled={!signedIn || busy || !held} onClick={() => run("/api/spot/sell", { tokens: "all" }, `Sold all ${market.id}`)}>
-            Sell all
+        </div>
+        <div className="row" style={{ gap: 4 }}>
+          <span className="muted small grow">Sell</span>
+          {[0.25, 0.5].map((f) => (
+            <button
+              key={f}
+              className="btn small sell"
+              disabled={!signedIn || busy || !held}
+              onClick={() => held && run("/api/spot/sell", { tokens: String(Math.floor(num(held.tokens) * f)) }, `Sold ${f * 100}% of ${market.id}`)}
+            >
+              {f * 100}%
+            </button>
+          ))}
+          <button className="btn small sell" disabled={!signedIn || busy || !held} onClick={() => run("/api/spot/sell", { tokens: "all" }, `Sold all ${market.id}`)}>
+            All
           </button>
         </div>
         <div className="faint" style={{ fontSize: 11 }}>
