@@ -17,6 +17,7 @@
   --warn-bg: rgba(245, 165, 36, 0.12);
   --info: #5b9cff;
   --info-bg: rgba(91, 156, 255, 0.12);
+  --brand-tile: #151a23;
   --radius: 6px;
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
   --sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
@@ -910,4 +911,194 @@ table.grid tr.click:hover td {
 .acct .who small {
   color: var(--muted);
   font-family: var(--mono);
+}
+
+/* ---------- home ---------- */
+
+.page.wide {
+  max-width: 1320px;
+}
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(300px, 1fr);
+  gap: 24px;
+  align-items: center;
+  padding: 12px 0 8px;
+}
+.hero h1 {
+  font-size: 30px;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  margin: 0 0 10px;
+}
+.launch {
+  padding: 16px;
+  gap: 8px;
+}
+.launch h3 {
+  margin: 0;
+  font-size: 14px;
+}
+.launch p {
+  margin: 0 0 4px;
+  font-size: 12px;
+}
+.adorn {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.adorn .prefix {
+  position: absolute;
+  left: 10px;
+  color: var(--faint);
+  pointer-events: none;
+}
+.adorn .prefix + .input {
+  padding-left: 24px;
+}
+.market-section {
+  margin-top: 28px;
+}
+.section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.section-head h2 {
+  margin: 0;
+  font-size: 17px;
+}
+.page p.section-lead {
+  margin: 2px 0 12px;
+  font-size: 12px;
+}
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+}
+.mcard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--text);
+  transition:
+    border-color 0.15s,
+    transform 0.15s;
+}
+.mcard:hover {
+  text-decoration: none;
+  border-color: var(--line-2);
+  transform: translateY(-1px);
+}
+.mcard.sniping {
+  border-color: color-mix(in srgb, var(--warn) 45%, var(--line));
+}
+.mcard-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mcard-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mcard-price {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.mcard-price .big {
+  font-size: 20px;
+  font-weight: 600;
+}
+.small {
+  font-size: 11px;
+}
+.mcard-stats {
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  grid-auto-flow: column;
+  grid-template-rows: auto auto;
+  justify-content: space-between;
+  margin: 0;
+  gap: 2px 12px;
+  font-size: 12px;
+}
+.mcard-stats dt,
+.mcard-price .small {
+  white-space: nowrap;
+}
+.mcard-stats dt {
+  color: var(--faint);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.mcard-stats dd {
+  margin: 0;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  white-space: nowrap;
+  background: var(--panel-2);
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+.chip.live {
+  color: var(--up);
+  background: var(--up-bg);
+  border-color: transparent;
+}
+.chip.snipe {
+  color: var(--warn);
+  background: var(--warn-bg);
+  border-color: transparent;
+  font-variant-numeric: tabular-nums;
+}
+.chip.info {
+  color: var(--info);
+  background: var(--info-bg);
+  border-color: transparent;
+}
+.pulse {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: pulse 1.6s ease-in-out infinite;
+}
+@keyframes pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+@media (max-width: 760px) {
+  .hero {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .hero h1 {
+    font-size: 24px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pulse {
+    animation: none;
+  }
 }

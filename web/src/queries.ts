@@ -112,7 +112,7 @@ export function useConfig(): ConfigView | undefined {
 
 /**
  * Send a request. Fixture markets are handled in the browser; with fixtures on, a contract endpoint the server
- * doesn't have yet (404) falls through to the fixtures too.
+ * doesn't have yet (404), or one sent while signed out (401), falls through to the fixtures too.
  */
 export async function act<T = unknown>(method: string, path: string, body?: Record<string, unknown>, opts: { admin?: boolean } = {}): Promise<T> {
   const local = fixtureCall(method, path, body);
@@ -120,10 +120,11 @@ export async function act<T = unknown>(method: string, path: string, body?: Reco
   try {
     return await api<T>(method, path, body, opts);
   } catch (e) {
-    if (e instanceof ApiError && e.status === 404) {
+    // 404: the server predates this endpoint. 401: signed out, but fixtures can still play it locally.
+    if (e instanceof ApiError && (e.status === 404 || e.status === 401)) {
       const fallback = fixtureCall(method, path, body, true);
       if (fallback) return fallback.value as T;
-      throw new ApiError(`${path} isn't supported by this server yet`, 404);
+      if (e.status === 404) throw new ApiError(`${path} isn't supported by this server yet`, 404);
     }
     throw e;
   }
