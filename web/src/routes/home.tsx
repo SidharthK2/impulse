@@ -6,7 +6,9 @@ import { Sparkline } from "../components/Sparkline";
 import { StatusChip, displayName, headline } from "../components/status";
 import { FieldError, FormError, invalid, useServerError } from "../components/form";
 import { Roll } from "../components/Roll";
-import { useToast } from "../components/ui";
+import { KindBadge, useToast } from "../components/ui";
+import { PulseField } from "../components/PulseField";
+import { Ticker } from "../components/Ticker";
 import { incidents } from "../components/WhoPaid";
 import { ago, compact, countdown, num, pct, price, tone, usd } from "../format";
 import { useNow } from "../hooks";
@@ -71,7 +73,7 @@ export function HomePage() {
 
   return (
     <div className="page wide home">
-      <Hero markets={markets} />
+      <Hero markets={markets} now={now} />
       <Spotlight markets={markets} now={now} />
 
       <div ref={toolbarRef} className="home-toolbar" role="search">
@@ -132,7 +134,7 @@ const order = (now: number, sort: Sort) => (a: MarketView, b: MarketView) => {
   return num(b.volume24h) - num(a.volume24h);
 };
 
-function Hero({ markets }: { markets: MarketView[] }) {
+function Hero({ markets, now }: { markets: MarketView[]; now: number }) {
   const lastMarket = usePrefs((s) => s.lastMarket);
   const leaders = useLeaderboard();
   const feed = useFeed();
@@ -145,45 +147,127 @@ function Hero({ markets }: { markets: MarketView[] }) {
     feed.filter((e) => e.kind === "haircut").reduce((s, e) => s + num(e.amount ?? "0"), 0),
   );
   const start = lastMarket && markets.some((m) => m.id === lastMarket) ? lastMarket : (markets.find((m) => m.kind === "perp")?.id ?? markets[0]?.id ?? "BTC-PERP");
+  // The preview shows the coin opening soonest, else the busiest live perp.
+  const featured =
+    markets.filter((m) => m.snipe && m.snipe.opensAt > now).sort((a, b) => a.snipe!.opensAt - b.snipe!.opensAt)[0] ??
+    open.filter((m) => !m.snipe && m.kind === "perp").sort((a, b) => num(b.volume24h) - num(a.volume24h))[0] ??
+    open[0];
   return (
-    <section className="hero">
-      <div className="hero-copy">
-        <span className="eyebrow">
-          <i className="pulse" /> Paper-money exchange · live
-        </span>
-        <h1>Trade anything before it lists.</h1>
-        <p className="lead">
-          Snipe creator coins at one open price, trade pre-IPO perps priced by our own book, and see exactly who pays when a position goes bankrupt. There's no insurance fund.
-        </p>
-        <div className="row hero-ctas">
-          <Link className="btn primary lg" to="/trade/$market" params={{ market: start }}>
-            Start trading
-          </Link>
-          <Link className="btn ghost lg" to="/about">
-            How it works
-          </Link>
+    <section className="landing">
+      <Ticker markets={markets} />
+      <div className="landing-stage">
+        <PulseField />
+        <div className="landing-inner">
+          <div className="landing-copy">
+            <span className="eyebrow">
+              <i className="pulse" /> paper-money exchange · live
+            </span>
+            <h1 className="wordmark">impulse</h1>
+            <ul className="claims">
+              <li>
+                <b>snipe launches</b>, one open price for every bid
+              </li>
+              <li>
+                <b>pre-IPO perps</b> priced by our own order book
+              </li>
+              <li>
+                <b>no insurance fund</b>: the other side pays, by name
+              </li>
+              <li>
+                <b>paper money</b>, real matching and margin
+              </li>
+            </ul>
+            <div className="row hero-ctas">
+              <Link className="btn primary lg" to="/trade/$market" params={{ market: start }}>
+                Start trading →
+              </Link>
+              <a className="btn ghost lg" href="#launch">
+                Launch a coin
+              </a>
+            </div>
+          </div>
+          {featured && <Preview market={featured} now={now} />}
         </div>
-      </div>
-      <LaunchBox />
-      <div className="kpis">
-        <div className="kpi">
-          <span className="label">Markets</span>
-          <span className="v mono">{open.length}</span>
-        </div>
-        <div className="kpi">
-          <span className="label">24h volume</span>
-          <Roll className="v mono" text={usd(volume, { compact: true })} value={volume} flash={false} />
-        </div>
-        <div className="kpi">
-          <span className="label">Open interest</span>
-          <Roll className="v mono" text={usd(oi, { compact: true })} value={oi} flash={false} />
-        </div>
-        <div className="kpi" title="ADL haircuts: profit (or principal) taken from the winning side to cover other traders' bankruptcies">
-          <span className="label">ADL haircuts paid</span>
-          <Roll className="v mono down" text={usd(haircuts, { compact: true })} value={haircuts} flash={false} />
+        <div className="kpis landing-kpis">
+          <div className="kpi">
+            <span className="label">Markets</span>
+            <span className="v mono">{open.length}</span>
+          </div>
+          <div className="kpi">
+            <span className="label">24h volume</span>
+            <Roll className="v mono" text={usd(volume, { compact: true })} value={volume} flash={false} />
+          </div>
+          <div className="kpi">
+            <span className="label">Open interest</span>
+            <Roll className="v mono" text={usd(oi, { compact: true })} value={oi} flash={false} />
+          </div>
+          <div className="kpi" title="ADL haircuts: profit (or principal) taken from the winning side to cover other traders' bankruptcies">
+            <span className="label">ADL haircuts paid</span>
+            <Roll className="v mono down" text={usd(haircuts, { compact: true })} value={haircuts} flash={false} />
+          </div>
         </div>
       </div>
     </section>
+  );
+}
+
+/** A live market in a frame, standing in for a product screenshot: price, 24h line, and the latest risk event. */
+function Preview({ market: m, now }: { market: MarketView; now: number }) {
+  const feed = useFeed();
+  const sniping = !!m.snipe && m.snipe.opensAt > now;
+  const candles = useCandles(m.id, !m.snipe);
+  const px = headline(m);
+  const ch = change24h(m);
+  const latest = feed.find((e) => ["bankrupt", "haircut", "liquidation", "open", "ipo", "listing"].includes(e.kind));
+  return (
+    <Link to="/trade/$market" params={{ market: m.id }} className="preview" aria-label={`Open ${m.id}`}>
+      <div className="preview-bar">
+        <span className="preview-dots" aria-hidden="true">
+          <i />
+          <i />
+          <i />
+        </span>
+        <span className="faint small">impulse / trade / {m.id}</span>
+      </div>
+      <div className="preview-body">
+        <div className="preview-head">
+          <b>{displayName(m)}</b>
+          <StatusChip market={m} now={now} />
+        </div>
+        <div className="preview-price">
+          <Roll className="mono" text={price(px, Math.max(m.priceDecimals, m.snipe ? 6 : 0))} value={num(px)} />
+          {sniping ? <span className="faint small">projected open</span> : <span className={`mono ${tone(ch)}`}>{pct(ch)}</span>}
+        </div>
+        {sniping ? (
+          <div className="preview-snipe">
+            <span className="label">Opens in</span>
+            <span className="mono">{countdown(m.snipe!.opensAt - now)}</span>
+            <span className="faint small">
+              {usd(m.snipe!.total)} from {m.snipe!.snipers} sniper{m.snipe!.snipers === 1 ? "" : "s"}
+            </span>
+          </div>
+        ) : (
+          <div className="preview-chart">
+            <Sparkline candles={candles} decimals={m.priceDecimals} since={now - 24 * 3_600_000} />
+          </div>
+        )}
+        <dl className="preview-stats">
+          <dt>Open interest</dt>
+          <dd>{usd(m.openInterestUsd, { compact: true })}</dd>
+          <dt>24h volume</dt>
+          <dd>{usd(m.volume24h, { compact: true })}</dd>
+          <dt>Max leverage</dt>
+          <dd>{m.maxLeverage}×</dd>
+        </dl>
+        {latest && (
+          <div className="preview-event">
+            <KindBadge kind={latest.kind} />
+            <span className="preview-event-text">{latest.text}</span>
+            <span className="faint small">{ago(latest.time, now)}</span>
+          </div>
+        )}
+      </div>
+    </Link>
   );
 }
 
@@ -194,7 +278,7 @@ function Spotlight({ markets, now }: { markets: MarketView[]; now: number }) {
   const next = sniping[0];
   const recent = useMemo(() => incidents(feed.filter((e) => e.kind === "bankrupt" || e.kind === "haircut")).filter((i) => i.bankrupt.length > 0).slice(0, 4), [feed]);
   return (
-    <section className="spotlight">
+    <section className={`spotlight ${next ? "three" : ""}`}>
       {next ? (
         <Link to="/trade/$market" params={{ market: next.id }} className="panel snipe-spot">
           <div className="snipe-spot-head">
@@ -223,15 +307,9 @@ function Spotlight({ markets, now }: { markets: MarketView[]; now: number }) {
           </dl>
           <span className="btn primary snipe-spot-cta">Snipe {next.id} →</span>
         </Link>
-      ) : (
-        <a href="#launch" className="panel snipe-spot idle">
-          <div className="snipe-spot-head">
-            <span className="chip">No snipes open</span>
-          </div>
-          <div className="snipe-spot-name">Launch the next creator coin</div>
-          <div className="muted small">Pick a handle above. Its snipe window opens right away, and every bid fills at one price when it closes.</div>
-        </a>
-      )}
+      ) : null}
+
+      <LaunchBox />
 
       <div className="panel paid-spot">
         <div className="panel-head">
