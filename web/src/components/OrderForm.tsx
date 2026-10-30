@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api } from "../api";
+import { act } from "../queries";
 import { num, price as fmtPrice, size as fmtSize, toInput, usd } from "../format";
 import type { AccountView, FillView, MarketView } from "../types";
 import { useToast } from "./ui";
@@ -82,7 +82,7 @@ export function OrderForm({ market, account, signedIn, picked, onSignUp }: Props
     if (type === "limit" && !(num(priceStr) > 0)) return toast("Enter a limit price", "warn");
     setBusy(true);
     try {
-      const r = await api<{ status: string; reason: string | null; fills: FillView[] }>("POST", "/api/orders", {
+      const r = await act<{ status: string; reason: string | null; fills: FillView[] }>("POST", "/api/orders", {
         market: market.id,
         side,
         type,

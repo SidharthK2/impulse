@@ -10,6 +10,7 @@ import {
 } from "lightweight-charts";
 import { useEffect, useRef, useState } from "react";
 import { api, live } from "../api";
+import { fixtureCandles } from "../fixtures";
 import type { Candle, MarketView, PositionView } from "../types";
 
 const INTERVALS = [1, 5, 15] as const;
@@ -84,6 +85,20 @@ export function Chart({ market, position }: { market: MarketView; position?: Pos
     raw.current = [];
 
     let alive = true;
+    if (fixtureCandles(market.id)) {
+      const poll = () => {
+        raw.current = fixtureCandles(market.id) ?? raw.current;
+        draw(!raw.current.length);
+      };
+      poll();
+      const t = setInterval(poll, 1000);
+      return () => {
+        clearInterval(t);
+        c.remove();
+        chart.current = null;
+        series.current = null;
+      };
+    }
     api<Candle[]>("GET", `/api/markets/${encodeURIComponent(market.id)}/candles`)
       .then((cs) => {
         if (!alive) return;

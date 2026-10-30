@@ -1,9 +1,10 @@
+import { Link } from "@tanstack/react-router";
 import { ago, usd } from "../format";
 import { useNow } from "../hooks";
 import type { RiskEvent } from "../types";
 import { KindBadge } from "./ui";
 
-export function RiskList({ events, showMarket = true, onMarket }: { events: RiskEvent[]; showMarket?: boolean; onMarket?: (id: string) => void }) {
+export function RiskList({ events, showMarket = true }: { events: RiskEvent[]; showMarket?: boolean }) {
   const now = useNow(5000);
   if (events.length === 0) return <div className="empty">Nothing yet. Liquidations, ADL and graduations show up here as they happen.</div>;
   return (
@@ -15,14 +16,11 @@ export function RiskList({ events, showMarket = true, onMarket }: { events: Risk
           </div>
           <div className="txt">{e.text}</div>
           <div className="meta">
-            {showMarket &&
-              (onMarket ? (
-                <a href={`#/trade/${encodeURIComponent(e.market)}`} onClick={() => onMarket(e.market)}>
-                  {e.market}
-                </a>
-              ) : (
-                e.market
-              ))}
+            {showMarket && (
+              <Link to="/trade/$market" params={{ market: e.market }}>
+                {e.market}
+              </Link>
+            )}
             {showMarket && " · "}
             {ago(e.time, now)}
             {e.amount && (e.kind === "haircut" || e.kind === "bankrupt") ? ` · ${usd(e.amount)}` : ""}

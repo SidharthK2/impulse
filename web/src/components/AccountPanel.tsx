@@ -1,8 +1,10 @@
+import { Link } from "@tanstack/react-router";
 import { Fragment, useEffect, useState } from "react";
 import { api } from "../api";
+import { isFixtureMarket } from "../fixtures";
 import { clock, num, price, size, tone, usd } from "../format";
-import { useChannel } from "../hooks";
-import type { AccountView, MarketView, PositionView, RiskEvent } from "../types";
+import { act, useFeed } from "../queries";
+import type { AccountView, MarketView, PositionView } from "../types";
 import { RiskList } from "./RiskFeed";
 import { useToast } from "./ui";
 
@@ -13,10 +15,9 @@ interface Props {
   markets: Record<string, MarketView>;
   current: MarketView;
   signedIn: boolean;
-  onPick: (id: string) => void;
 }
 
-export function AccountPanel({ account, markets, current, signedIn, onPick }: Props) {
+export function AccountPanel({ account, markets, current, signedIn }: Props) {
   const [tab, setTab] = useState<Tab>("positions");
   const open = account?.positions.filter((p) => p.side !== "flat") ?? [];
   const tabs: { id: Tab; label: string; count?: number }[] = [
@@ -48,7 +49,7 @@ export function AccountPanel({ account, markets, current, signedIn, onPick }: Pr
         ) : !account ? (
           <div className="empty">Loading…</div>
         ) : tab === "positions" ? (
-          <Positions account={account} markets={markets} onPick={onPick} />
+          <Positions account={account} markets={markets} />
         ) : tab === "orders" ? (
           <Orders account={account} markets={markets} />
         ) : tab === "fills" ? (
@@ -77,7 +78,7 @@ function CancelAll() {
   );
 }
 
-function Positions({ account, markets, onPick }: { account: AccountView; markets: Record<string, MarketView>; onPick: (id: string) => void }) {
+function Positions({ account, markets }: { account: AccountView; markets: Record<string, MarketView> }) {
   const toast = useToast();
   const [marginFor, setMarginFor] = useState<string | null>(null);
   const [amount, setAmount] = useState("");
@@ -85,11 +86,11 @@ function Positions({ account, markets, onPick }: { account: AccountView; markets
   if (open.length === 0 && account.spot.length === 0) return <div className="empty">No open positions.</div>;
 
   const close = (p: PositionView) =>
-    api<{ status: string; reason: string | null }>("POST", "/api/positions/close", { market: p.market })
+    act<{ status: string; reason: string | null }>("POST", "/api/positions/close", { market: p.market })
       .then((r) => toast(r.status === "filled" ? `Closed ${p.market}` : `Close ${r.status}: ${r.reason ?? ""}`, r.status === "filled" ? "up" : "warn"))
       .catch((e) => toast((e as Error).message, "down"));
   const margin = (p: PositionView, sign: 1 | -1) =>
-    api("POST", "/api/margin", { market: p.market, amount: `${sign < 0 ? "-" : ""}${amount}` })
+    act("POST", "/api/margin", { market: p.market, amount: `${sign < 0 ? "-" : ""}${amount}` })
       .then(() => {
         toast(`${sign > 0 ? "Added" : "Removed"} $${amount} margin on ${p.market}`, "up");
         setAmount("");
@@ -123,9 +124,9 @@ function Positions({ account, markets, onPick }: { account: AccountView; markets
             <Fragment key={p.market}>
               <tr>
                 <td>
-                  <a href={`#/trade/${encodeURIComponent(p.market)}`} onClick={() => onPick(p.market)}>
+                  <Link to="/trade/$market" params={{ market: p.market }}>
                     {p.market}
-                  </a>{" "}
+                  </Link>{" "}
                   <span className={`badge ${p.side === "long" ? "up" : "down"}`}>{p.side}</span>
                 </td>
                 <td className="right mono">{size(p.size, m?.szDecimals ?? 4)}</td>
@@ -171,9 +172,9 @@ function Positions({ account, markets, onPick }: { account: AccountView; markets
         {account.spot.map((s) => (
           <tr key={`spot-${s.market}`}>
             <td>
-              <a href={`#/trade/${encodeURIComponent(s.market)}`} onClick={() => onPick(s.market)}>
+              <Link to="/trade/$market" params={{ market: s.market }}>
                 {s.market}
-              </a>{" "}
+              </Link>{" "}
               <span className="badge info">spot</span>
             </td>
             <td className="right mono">{size(s.tokens, 0)}</td>
@@ -307,10 +308,14 @@ interface PublicPosition {
 
 /** The whole market is public: who holds what, so who would absorb a shortfall, and what has happened here. */
 function MarketRisk({ market }: { market: MarketView }) {
-  const feed = useChannel<RiskEvent[]>("feed") ?? [];
+  const feed = useFeed();
   const [positions, setPositions] = useState<PublicPosition[]>([]);
   useEffect(() => {
     let alive = true;
+    if (isFixtureMarket(market.id)) {
+      setPositions([]);
+      return;
+    }
     const load = () =>
       api<PublicPosition[]>("GET", `/api/markets/${encodeURIComponent(market.id)}/positions`)
         .then((p) => alive && setPositions(p))

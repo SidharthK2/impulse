@@ -1,6 +1,6 @@
 import { price, size } from "../format";
-import { useChannel } from "../hooks";
-import type { BookView, FillView, Level, MarketView } from "../types";
+import { useBook, useTrades } from "../queries";
+import type { Level, MarketView } from "../types";
 
 const DEPTH = 11;
 
@@ -25,7 +25,7 @@ function Side({ levels, kind, market, max, onPick }: { levels: Level[]; kind: "a
 }
 
 export function OrderBook({ market, onPick }: { market: MarketView; onPick: (p: string) => void }) {
-  const book = useChannel<BookView>(`book:${market.id}`);
+  const book = useBook(market.id);
   const bids = book?.bids ?? [];
   const asks = book?.asks ?? [];
   const sum = (ls: Level[]) => ls.slice(0, DEPTH).reduce((s, l) => s + Number(l.size), 0);
@@ -70,7 +70,7 @@ export function OrderBook({ market, onPick }: { market: MarketView; onPick: (p: 
 }
 
 export function Trades({ market }: { market: MarketView }) {
-  const trades = useChannel<FillView[]>(`trades:${market.id}`) ?? [];
+  const trades = useTrades(market.id);
   return (
     <div className="panel" style={{ flex: 1, minHeight: 0 }}>
       <div className="panel-head">

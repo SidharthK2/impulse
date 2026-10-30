@@ -1,15 +1,16 @@
+import { Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api } from "../api";
+import { act } from "../queries";
 import { compact, countdown, num, pct, price, tone, usd } from "../format";
 import { useNow } from "../hooks";
 import type { AccountView, MarketView } from "../types";
 import { Stat, useToast } from "./ui";
 
-const KIND_LABEL: Record<string, string> = { perp: "Perps", binary: "Prediction markets", attention: "Attention markets" };
+const KIND_LABEL: Record<string, string> = { attention: "Creator coins", preipo: "Pre-IPO", perp: "Crypto and equities", binary: "Prediction markets" };
 
 export const change24h = (m: MarketView) => (m.open24h && m.mark ? num(m.mark) / num(m.open24h) - 1 : NaN);
 
-export function MarketPicker({ markets, current, onPick, onList }: { markets: MarketView[]; current: MarketView; onPick: (id: string) => void; onList: () => void }) {
+export function MarketPicker({ markets, current, onPick }: { markets: MarketView[]; current: MarketView; onPick: (id: string) => void }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const ref = useRef<HTMLDivElement>(null);
@@ -20,7 +21,7 @@ export function MarketPicker({ markets, current, onPick, onList }: { markets: Ma
   }, []);
   const groups = useMemo(() => {
     const f = markets.filter((m) => (m.id + m.name).toLowerCase().includes(q.toLowerCase()));
-    return (["perp", "binary", "attention"] as const).map((k) => ({ kind: k, items: f.filter((m) => m.kind === k) })).filter((g) => g.items.length);
+    return (["attention", "preipo", "perp", "binary"] as const).map((k) => ({ kind: k, items: f.filter((m) => m.kind === k) })).filter((g) => g.items.length);
   }, [markets, q]);
   return (
     <div className="picker" ref={ref}>
@@ -32,15 +33,9 @@ export function MarketPicker({ markets, current, onPick, onList }: { markets: Ma
         <div className="picker-menu">
           <div style={{ padding: 10, display: "flex", gap: 8 }}>
             <input className="input" autoFocus placeholder="Search markets" value={q} onChange={(e) => setQ(e.target.value)} />
-            <button
-              className="btn"
-              onClick={() => {
-                setOpen(false);
-                onList();
-              }}
-            >
-              + List
-            </button>
+            <Link className="btn" to="/" hash="launch" onClick={() => setOpen(false)}>
+              + Launch
+            </Link>
           </div>
           {groups.map((g) => (
             <div key={g.kind}>
@@ -78,13 +73,13 @@ export function MarketPicker({ markets, current, onPick, onList }: { markets: Ma
   );
 }
 
-export function MarketBar({ market, markets, onPick, onList }: { market: MarketView; markets: MarketView[]; onPick: (id: string) => void; onList: () => void }) {
+export function MarketBar({ market, markets, onPick }: { market: MarketView; markets: MarketView[]; onPick: (id: string) => void }) {
   const now = useNow(1000);
   const ch = change24h(market);
   const f = market.funding.ratePerHour;
   return (
     <div className="mbar">
-      <MarketPicker markets={markets} current={market} onPick={onPick} onList={onList} />
+      <MarketPicker markets={markets} current={market} onPick={onPick} />
       <div className="col" style={{ gap: 0 }}>
         <span className="big">{price(market.mark, market.priceDecimals)}</span>
       </div>
@@ -216,7 +211,7 @@ export function SpotPanel({ market, account, signedIn }: { market: MarketView; a
   async function run(path: string, body: object, done: string) {
     setBusy(true);
     try {
-      await api("POST", path, { market: market.id, ...body });
+      await act("POST", path, { market: market.id, ...body });
       toast(done, "up");
       setUsdc("");
     } catch (err) {

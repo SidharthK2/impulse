@@ -1,6 +1,39 @@
-// Shapes of the server's JSON views (server/src/views.ts). Money and prices are exact decimal strings.
+// Shapes of the server's JSON views (server/src/views.ts, plus the additions in docs/API-CONTRACT.md).
+// Money and prices are exact decimal strings in USD; times are ms since epoch. normalize.ts fills in any
+// contract field an older server leaves out, so components can rely on every field below being present.
 
-export type Kind = "perp" | "binary" | "attention";
+export type Kind = "perp" | "binary" | "attention" | "preipo";
+
+export interface SnipeView {
+  opensAt: number;
+  total: string;
+  snipers: number;
+  projectedOpenPrice: string;
+  top: { account: string; usdc: string }[];
+  recent: { account: string; usdc: string; time: number }[];
+}
+
+export interface LaunchView {
+  openPrice: string;
+  openedAt: number;
+  sniped: string;
+  tokensSold: string;
+  reserve: string;
+}
+
+export interface PreIpoView {
+  seedPrice: string;
+  impliedValuation: string;
+  status: "private" | "public";
+  ipoAt: number | null;
+  ipoPrice: string | null;
+}
+
+export interface Setting {
+  label: string;
+  value: string;
+  ours: boolean;
+}
 
 export interface MarketView {
   id: string;
@@ -38,6 +71,10 @@ export interface MarketView {
   heldUntil: number | null;
   createdAt: number;
   positions: number;
+  snipe: SnipeView | null;
+  launch: LaunchView | null;
+  preipo: PreIpoView | null;
+  settings: Setting[];
 }
 
 export interface Level {
@@ -105,7 +142,7 @@ export interface PositionView {
   releasable: string;
 }
 
-export type RiskKind = "liquidation" | "bankrupt" | "haircut" | "adl" | "settlement" | "graduation" | "gap" | "listing";
+export type RiskKind = "liquidation" | "bankrupt" | "haircut" | "adl" | "settlement" | "graduation" | "gap" | "listing" | "open" | "ipo";
 
 export interface RiskEvent {
   id: number;
@@ -115,6 +152,8 @@ export interface RiskEvent {
   accounts: string[];
   text: string;
   amount: string | null;
+  /** Mark at the event, for chart markers. */
+  price: string | null;
 }
 
 export interface AccountView {
@@ -133,6 +172,8 @@ export interface AccountView {
   orders: OrderView[];
   fills: FillView[];
   risk: RiskEvent[];
+  /** Snipe bids still waiting for their market to open. */
+  snipes: { market: string; usdc: string; time: number }[];
 }
 
 export interface Candle {

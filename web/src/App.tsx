@@ -1,103 +1,87 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { api, getKey, setKey } from "./api";
-import { AccountPanel } from "./components/AccountPanel";
-import { Chart } from "./components/Chart";
-import { InfoPanel, MarketBar, SpotPanel } from "./components/Market";
-import { OrderBook, Trades } from "./components/OrderBook";
-import { OrderForm } from "./components/OrderForm";
-import { RiskList } from "./components/RiskFeed";
-import { Modal, ToastProvider, useToast } from "./components/ui";
+import { Link, Outlet, useRouterState } from "@tanstack/react-router";
+import { useEffect, useRef, useState } from "react";
+import { api } from "./api";
+import { Modal, useToast } from "./components/ui";
+import { useFixtureDriver } from "./fixtures";
 import { countdown, num, tone, usd } from "./format";
-import { useChannel, useConnected, useHashRoute, useNow } from "./hooks";
-import { AboutPage, AdminPage, FeedPage, LeaderboardPage } from "./pages";
-import type { AccountView, MarketView, RiskEvent } from "./types";
+import { useConnected, useNow } from "./hooks";
+import { useAccount, useMarkets } from "./queries";
+import { usePrefs, useSession, useUi } from "./store";
+import type { AccountView } from "./types";
 
-export default function App() {
-  return (
-    <ToastProvider>
-      <Shell />
-    </ToastProvider>
-  );
-}
+const NAV = [
+  { to: "/", label: "Markets" },
+  { to: "/trade", label: "Trade" },
+  { to: "/portfolio", label: "Portfolio" },
+  { to: "/leaderboard", label: "Leaderboard" },
+  { to: "/feed", label: "Who paid" },
+  { to: "/admin", label: "Admin" },
+] as const;
 
-function Shell() {
-  const [route, go] = useHashRoute();
-  const [key, setKeyState] = useState(getKey());
-  const [modal, setModal] = useState<"signup" | "list" | null>(null);
-  const markets = useChannel<MarketView[]>("markets");
-  const account = useChannel<AccountView | null>(key ? "account" : null) ?? undefined;
+export function Layout() {
+  useFixtureDriver();
+  const theme = usePrefs((s) => s.theme);
+  const setTheme = usePrefs((s) => s.setTheme);
+  const fixtures = usePrefs((s) => s.fixtures);
+  const lastMarket = usePrefs((s) => s.lastMarket);
+  const key = useSession((s) => s.key);
+  const signIn = useSession((s) => s.signIn);
+  const modal = useUi((s) => s.modal);
+  const open = useUi((s) => s.open);
+  const markets = useMarkets();
+  const account = useAccount();
   const connected = useConnected();
-  const byId = useMemo(() => Object.fromEntries((markets ?? []).map((m) => [m.id, m])), [markets]);
+  const path = useRouterState({ select: (s) => s.location.pathname });
 
   useRiskToasts(account);
-
-  const page = route[0] ?? "trade";
-  const marketId = page === "trade" && route[1] && byId[route[1]] ? route[1] : (markets?.[0]?.id ?? null);
-  const signIn = (k: string | null) => {
-    setKey(k);
-    setKeyState(k);
-  };
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
 
   return (
     <div className="app">
       <header className="header">
-        <a className="brand" href="#/trade">
+        <Link className="brand" to="/">
           <svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true">
-            <rect width="32" height="32" rx="7" fill="#151a23" />
+            <rect width="32" height="32" rx="7" fill="var(--brand-tile)" />
             <path d="M4 18h6l3-9 5 15 3-8h7" fill="none" stroke="var(--accent)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
           IMPULSE <small>paper</small>
-        </a>
+        </Link>
         <nav className="nav">
-          {[
-            ["trade", "Trade"],
-            ["feed", "Risk feed"],
-            ["leaderboard", "Leaderboard"],
-            ["about", "How it works"],
-            ["admin", "Admin"],
-          ].map(([id, label]) => (
-            <a key={id} href={`#/${id}${id === "trade" && marketId ? `/${encodeURIComponent(marketId)}` : ""}`} className={page === id ? "active" : ""}>
-              {label}
-            </a>
-          ))}
+          {NAV.map((n) => {
+            const active = n.to === "/" ? path === "/" : path.startsWith(n.to);
+            return n.to === "/trade" ? (
+              <Link key={n.to} to="/trade/$market" params={{ market: lastMarket ?? markets?.[0]?.id ?? "BTC-PERP" }} className={active ? "active" : ""}>
+                {n.label}
+              </Link>
+            ) : (
+              <Link key={n.to} to={n.to} className={active ? "active" : ""}>
+                {n.label}
+              </Link>
+            );
+          })}
         </nav>
         <span className="spacer" />
-        <span className="row muted" title={connected ? "Live" : "Reconnecting…"} style={{ fontSize: 12 }}>
-          <span className={`dot ${connected ? "on" : ""}`} /> {connected ? "live" : "offline"}
+        {import.meta.env.DEV && (
+          <label className="check dev-toggle" title="Dev only: merge typed fixtures (web/src/fixtures) for contract fields this server doesn't send yet">
+            <input type="checkbox" checked={fixtures} onChange={(e) => usePrefs.getState().setFixtures(e.target.checked)} /> fixtures
+          </label>
+        )}
+        <button className="btn small ghost icon" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} title={`Switch to ${theme === "dark" ? "light" : "dark"} theme`} aria-label="Toggle theme">
+          {theme === "dark" ? "☀" : "☾"}
+        </button>
+        <span className="row muted live-dot" title={connected ? "Live" : "Reconnecting…"}>
+          <span className={`dot ${connected ? "on" : ""}`} /> {connected ? "live" : fixtures ? "fixtures" : "offline"}
         </span>
-        <AccountChip account={account} signedIn={!!key} onSignUp={() => setModal("signup")} onSignOut={() => signIn(null)} />
+        <AccountChip account={account} signedIn={!!key} onSignUp={() => open("signup")} onSignOut={() => signIn(null)} />
       </header>
 
       <main className="main">
-        {!markets ? (
-          <div className="empty">Connecting to the exchange…</div>
-        ) : page === "feed" ? (
-          <FeedPage />
-        ) : page === "leaderboard" ? (
-          <LeaderboardPage me={account?.id} />
-        ) : page === "about" ? (
-          <AboutPage />
-        ) : page === "admin" ? (
-          <AdminPage markets={markets} />
-        ) : marketId ? (
-          <TradePage
-            key={marketId}
-            market={byId[marketId]!}
-            markets={markets}
-            byId={byId}
-            account={account}
-            signedIn={!!key}
-            onPick={(id) => go(`trade/${encodeURIComponent(id)}`)}
-            onSignUp={() => setModal("signup")}
-            onList={() => (key ? setModal("list") : setModal("signup"))}
-          />
-        ) : (
-          <div className="empty">No markets listed.</div>
-        )}
+        {!markets ? <div className="empty">Connecting to the exchange…{import.meta.env.DEV && " (no server? tick “fixtures” in the header)"}</div> : <Outlet />}
       </main>
 
-      {modal === "signup" && <SignUp onDone={(k) => (signIn(k), setModal(null))} onClose={() => setModal(null)} />}
-      {modal === "list" && <ListAttention onClose={() => setModal(null)} onListed={(id) => (setModal(null), go(`trade/${encodeURIComponent(id)}`))} />}
+      {modal === "signup" && <SignUp onDone={(k) => (signIn(k), open(null))} onClose={() => open(null)} />}
     </div>
   );
 }
@@ -108,7 +92,7 @@ function useRiskToasts(account: AccountView | undefined) {
   const seen = useRef<number | null>(null);
   useEffect(() => {
     if (!account) return;
-    const latest = account.risk[0]?.id ?? 0;
+    const latest = Math.max(0, ...account.risk.map((e) => e.id));
     if (seen.current === null) {
       seen.current = latest; // don't replay history on load
       return;
@@ -216,105 +200,5 @@ function SignUp({ onDone, onClose }: { onDone: (key: string) => void; onClose: (
         </button>
       </div>
     </Modal>
-  );
-}
-
-function ListAttention({ onClose, onListed }: { onClose: () => void; onListed: (id: string) => void }) {
-  const [handle, setHandle] = useState("");
-  const [oracleWindow, setOracleWindow] = useState(600);
-  const [adl, setAdl] = useState<"pnl" | "size">("pnl");
-  const [err, setErr] = useState("");
-  async function list() {
-    setErr("");
-    try {
-      const m = await api<MarketView>("POST", "/api/attention", { handle, oracleWindow, adl });
-      onListed(m.id);
-    } catch (e) {
-      setErr((e as Error).message);
-    }
-  }
-  return (
-    <Modal onClose={onClose}>
-      <h2>List an attention market</h2>
-      <p>Listing is permissionless, as on Mirror: any handle gets a spot token on an xy=k curve ($5k virtual USDC, 1B tokens) plus a perp that marks to that curve.</p>
-      <input className="input" autoFocus placeholder="@handle" value={handle} onChange={(e) => setHandle(e.target.value)} />
-      <div className="field">
-        <label>Perp oracle</label>
-        <div className="seg">
-          {[
-            [0, "instant"],
-            [60, "1m TWAP"],
-            [600, "10m TWAP"],
-            [3600, "60m TWAP"],
-          ].map(([w, l]) => (
-            <button key={w} className={oracleWindow === w ? "on" : ""} onClick={() => setOracleWindow(w as number)}>
-              {l}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="field">
-        <label>ADL rule</label>
-        <div className="seg">
-          <button className={adl === "pnl" ? "on" : ""} onClick={() => setAdl("pnl")}>
-            capped PnL
-          </button>
-          <button className={adl === "size" ? "on" : ""} onClick={() => setAdl("size")}>
-            size pro-rata
-          </button>
-        </div>
-      </div>
-      {oracleWindow === 0 && <div className="note warn">An instant oracle lets anyone with a spot buy move the perp's mark in the same transaction. That's the pump attack.</div>}
-      {err && <div className="note down">{err}</div>}
-      <button className="btn primary block" disabled={handle.replace("@", "").length < 2} onClick={list}>
-        List market
-      </button>
-    </Modal>
-  );
-}
-
-interface TradeProps {
-  market: MarketView;
-  markets: MarketView[];
-  byId: Record<string, MarketView>;
-  account: AccountView | undefined;
-  signedIn: boolean;
-  onPick: (id: string) => void;
-  onSignUp: () => void;
-  onList: () => void;
-}
-
-function TradePage({ market, markets, byId, account, signedIn, onPick, onSignUp, onList }: TradeProps) {
-  const [picked, setPicked] = useState<{ price: string; n: number } | null>(null);
-  const feed = useChannel<RiskEvent[]>("feed") ?? [];
-  const position = account?.positions.find((p) => p.market === market.id && p.side !== "flat");
-  useEffect(() => {
-    document.title = `${market.mark ?? ""} ${market.id} · Impulse`;
-  }, [market.mark, market.id]);
-  return (
-    <div className="trade">
-      <MarketBar market={market} markets={markets} onPick={onPick} onList={onList} />
-      <Chart market={market} position={position} />
-      <div className="book-col">
-        <OrderBook market={market} onPick={(p) => setPicked({ price: p, n: Date.now() })} />
-        <Trades market={market} />
-      </div>
-      <div className="form-col scroll">
-        <OrderForm market={market} account={account} signedIn={signedIn} picked={picked} onSignUp={onSignUp} />
-        {market.curve && <SpotPanel market={market} account={account} signedIn={signedIn} />}
-        <InfoPanel market={market} />
-        <div className="panel">
-          <div className="panel-head">
-            <h3>Risk feed</h3>
-            <span className="spacer" />
-            <a href="#/feed" style={{ fontSize: 12 }}>
-              all
-            </a>
-          </div>
-          <RiskList events={feed.slice(0, 12)} onMarket={onPick} />
-        </div>
-      </div>
-      <AccountPanel account={account} markets={byId} current={market} signedIn={signedIn} onPick={onPick} />
-    </div>
   );
 }
