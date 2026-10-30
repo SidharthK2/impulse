@@ -262,13 +262,36 @@ async fn positions(State(app): State<App>, Path(id): Path<String>) -> ApiResult 
     ok(views::public_positions(&core.x, &id))
 }
 
+/// `?before=<id>` and `limit` page through the full history (the database); `limit` alone too.
+fn page(q: &HashMap<String, String>) -> Option<(Option<u64>, usize)> {
+    if !q.contains_key("before") && !q.contains_key("limit") {
+        return None;
+    }
+    let before = q.get("before").and_then(|b| b.parse().ok());
+    let limit = q.get("limit").and_then(|l| l.parse().ok()).unwrap_or(200).clamp(1, 1000);
+    Some((before, limit))
+}
+
 async fn feed(State(app): State<App>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
     let core = app.lock();
     let market = q.get("market").filter(|m| !m.is_empty());
+    if let (Some((before, limit)), Some(store)) = (page(&q), core.store()) {
+        return ok(store.risk_page(market.map(String::as_str), before, limit).map_err(ExError::Internal)?);
+    }
     let mut rows: Vec<_> = core.x.risk.iter().filter(|r| market.is_none_or(|m| *m == r.market)).collect();
     rows = rows.split_off(rows.len().saturating_sub(200));
     rows.reverse();
     ok(rows)
+}
+
+/// A market's trades, newest first: the latest 60 from memory, or pages of the full history (`before`, `limit`).
+async fn trades(State(app): State<App>, Path(id): Path<String>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
+    let core = app.lock();
+    core.x.market(&id)?;
+    if let (Some((before, limit)), Some(store)) = (page(&q), core.store()) {
+        return ok(store.fills_page(&id, before, limit).map_err(ExError::Internal)?);
+    }
+    ok(views::trades_view(&core.x, &id, 60))
 }
 
 async fn leaderboard(State(app): State<App>) -> ApiResult {
@@ -708,6 +731,7 @@ pub fn router(app: App) -> Router {
         .route("/api/markets/{id}", get(market))
         .route("/api/markets/{id}/candles", get(candles))
         .route("/api/markets/{id}/positions", get(positions))
+        .route("/api/markets/{id}/trades", get(trades))
         .route("/api/feed", get(feed))
         .route("/api/leaderboard", get(leaderboard))
         .route("/api/accounts", post(signup))

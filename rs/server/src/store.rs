@@ -12,6 +12,18 @@ const MIGRATIONS: &[&str] = &[
     // 1: the journal and snapshots
     "CREATE TABLE commands (seq INTEGER PRIMARY KEY, ts INTEGER NOT NULL, kind TEXT NOT NULL, payload TEXT NOT NULL);
      CREATE TABLE snapshots (seq INTEGER PRIMARY KEY, ts INTEGER NOT NULL, version TEXT NOT NULL, state BLOB NOT NULL);",
+    // 2: read tables (full history; the exchange keeps only the latest in memory). Money and prices are exact
+    // decimal strings in USD (per coin), sizes in coins, as the API shows them.
+    "CREATE TABLE fills (id INTEGER PRIMARY KEY, seq INTEGER NOT NULL, ts INTEGER NOT NULL, market TEXT NOT NULL, kind TEXT NOT NULL,
+                         price TEXT NOT NULL, size TEXT NOT NULL, notional TEXT NOT NULL, side TEXT NOT NULL,
+                         taker TEXT NOT NULL, maker TEXT NOT NULL, taker_order INTEGER, maker_order INTEGER);
+     CREATE INDEX fills_market ON fills (market, id);
+     CREATE TABLE risk_events (id INTEGER PRIMARY KEY, seq INTEGER NOT NULL, ts INTEGER NOT NULL, market TEXT NOT NULL, kind TEXT NOT NULL,
+                               accounts TEXT NOT NULL, text TEXT NOT NULL, amount TEXT, price TEXT);
+     CREATE INDEX risk_events_market ON risk_events (market, id);
+     CREATE TABLE candles (market TEXT NOT NULL, t INTEGER NOT NULL, o TEXT NOT NULL, h TEXT NOT NULL, l TEXT NOT NULL, c TEXT NOT NULL,
+                           v TEXT NOT NULL, PRIMARY KEY (market, t));
+     CREATE TABLE accounts (id TEXT PRIMARY KEY, created_at INTEGER NOT NULL, bot INTEGER NOT NULL);",
 ];
 
 pub const BUILD: &str = concat!("impulse-server ", env!("CARGO_PKG_VERSION"));
@@ -134,5 +146,140 @@ impl Store {
         tx.execute("INSERT OR REPLACE INTO snapshots (seq, ts, version, state) VALUES (?1, ?2, ?3, ?4)", params![seq as i64, ts, BUILD, state]).map_err(err)?;
         tx.execute("DELETE FROM snapshots WHERE seq NOT IN (SELECT seq FROM snapshots ORDER BY seq DESC LIMIT 5)", []).map_err(err)?;
         tx.commit().map_err(err)
+    }
+}
+
+// ---------- read tables ----------
+
+use crate::exchange::{Exchange, Fill, RiskEvent};
+use crate::units::{coin_price, fmt, usd};
+use serde_json::{json, Value};
+
+impl Store {
+    fn insert_fill(&self, seq: u64, x: &Exchange, f: &Fill) -> Result<(), String> {
+        let v = serde_json::to_value(crate::views::fill_view(x, f, None)).expect("fill view serializes");
+        self.conn
+            .execute(
+                "INSERT OR REPLACE INTO fills (id, seq, ts, market, kind, price, size, notional, side, taker, maker, taker_order, maker_order)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                params![
+                    f.id as i64,
+                    seq as i64,
+                    f.time,
+                    f.market,
+                    v["kind"].as_str(),
+                    v["price"].as_str(),
+                    v["size"].as_str(),
+                    v["notional"].as_str(),
+                    v["side"].as_str(),
+                    f.taker,
+                    f.maker,
+                    f.taker_order.map(|o| o as i64),
+                    f.maker_order.map(|o| o as i64)
+                ],
+            )
+            .map_err(err)
+            .map(|_| ())
+    }
+
+    fn insert_risk(&self, seq: u64, r: &RiskEvent) -> Result<(), String> {
+        let kind = serde_json::to_value(r.kind).expect("kind serializes");
+        self.conn
+            .execute(
+                "INSERT OR REPLACE INTO risk_events (id, seq, ts, market, kind, accounts, text, amount, price) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                params![r.id as i64, seq as i64, r.time, r.market, kind.as_str(), serde_json::to_string(&r.accounts).unwrap(), r.text, r.amount, r.price],
+            )
+            .map_err(err)
+            .map(|_| ())
+    }
+
+    fn upsert_candle(&self, x: &Exchange, market: &str, t: i64) -> Result<(), String> {
+        let (Some(meta), Some(cs)) = (x.markets.get(market), x.candles.get(market)) else { return Ok(()) };
+        let Ok(i) = cs.binary_search_by_key(&t, |c| c.t) else { return Ok(()) }; // already rolled out of memory
+        let c = &cs[i];
+        let p = |lot: i128| fmt(coin_price(meta.sz_decimals, lot), 0);
+        self.conn
+            .execute(
+                "INSERT OR REPLACE INTO candles (market, t, o, h, l, c, v) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![market, t, p(c.o), p(c.h), p(c.l), p(c.c), usd(c.v)],
+            )
+            .map_err(err)
+            .map(|_| ())
+    }
+
+    /// Write what step `seq` added to the exchange's history: fills and risk events with ids past the given ones,
+    /// accounts past the given count, and the candles it touched. Returns the new high-water marks.
+    pub fn write_history(&self, seq: u64, x: &mut Exchange, marks: HistoryMarks) -> Result<HistoryMarks, String> {
+        let mut next = marks;
+        for f in x.fills.iter().rev().take_while(|f| f.id > marks.fill) {
+            self.insert_fill(seq, x, f)?;
+            next.fill = next.fill.max(f.id);
+        }
+        for r in x.risk.iter().rev().take_while(|r| r.id > marks.risk) {
+            self.insert_risk(seq, r)?;
+            next.risk = next.risk.max(r.id);
+        }
+        for a in x.accounts.values().skip(marks.accounts) {
+            self.conn
+                .execute("INSERT OR REPLACE INTO accounts (id, created_at, bot) VALUES (?1, ?2, ?3)", params![a.id, a.created_at, a.bot as i64])
+                .map_err(err)?;
+        }
+        next.accounts = x.accounts.len();
+        for (market, t) in std::mem::take(&mut x.dirty_candles) {
+            self.upsert_candle(x, &market, t)?;
+        }
+        Ok(next)
+    }
+
+    /// Risk events newest first, from the full history: ids below `before`, optionally one market.
+    pub fn risk_page(&self, market: Option<&str>, before: Option<u64>, limit: usize) -> Result<Vec<Value>, String> {
+        let mut st = self
+            .conn
+            .prepare("SELECT id, ts, market, kind, accounts, text, amount, price FROM risk_events WHERE (?1 IS NULL OR market = ?1) AND id < ?2 ORDER BY id DESC LIMIT ?3")
+            .map_err(err)?;
+        let rows = st
+            .query_map(params![market, before.map_or(i64::MAX, |b| b as i64), limit as i64], |r| {
+                let accounts: String = r.get(4)?;
+                Ok(json!({
+                    "id": r.get::<_, i64>(0)?, "time": r.get::<_, i64>(1)?, "market": r.get::<_, String>(2)?, "kind": r.get::<_, String>(3)?,
+                    "accounts": serde_json::from_str::<Value>(&accounts).unwrap_or(Value::Null), "text": r.get::<_, String>(5)?,
+                    "amount": r.get::<_, Option<String>>(6)?, "price": r.get::<_, Option<String>>(7)?,
+                }))
+            })
+            .map_err(err)?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(err)
+    }
+
+    /// A market's fills newest first, from the full history: ids below `before`.
+    pub fn fills_page(&self, market: &str, before: Option<u64>, limit: usize) -> Result<Vec<Value>, String> {
+        let mut st = self
+            .conn
+            .prepare("SELECT id, ts, market, kind, price, size, notional, side, taker, maker FROM fills WHERE market = ?1 AND id < ?2 ORDER BY id DESC LIMIT ?3")
+            .map_err(err)?;
+        let rows = st
+            .query_map(params![market, before.map_or(i64::MAX, |b| b as i64), limit as i64], |r| {
+                Ok(json!({
+                    "id": r.get::<_, i64>(0)?, "time": r.get::<_, i64>(1)?, "market": r.get::<_, String>(2)?, "kind": r.get::<_, String>(3)?,
+                    "price": r.get::<_, String>(4)?, "size": r.get::<_, String>(5)?, "notional": r.get::<_, String>(6)?,
+                    "side": r.get::<_, String>(7)?, "taker": r.get::<_, String>(8)?, "maker": r.get::<_, String>(9)?,
+                }))
+            })
+            .map_err(err)?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(err)
+    }
+}
+
+/// How far the read tables have caught up with the exchange's history.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct HistoryMarks {
+    pub fill: u64,
+    pub risk: u64,
+    pub accounts: usize,
+}
+
+impl HistoryMarks {
+    /// Everything the exchange holds now counts as written.
+    pub fn of(x: &Exchange) -> Self {
+        HistoryMarks { fill: x.fills.back().map_or(0, |f| f.id), risk: x.risk.back().map_or(0, |r| r.id), accounts: x.accounts.len() }
     }
 }

@@ -398,6 +398,9 @@ pub struct Exchange {
     /// Admin switch for the house bots (they only act while it's on).
     #[serde(default = "yes")]
     pub bots_enabled: bool,
+    /// Candles changed since the store last looked: (market, minute). Not state; the read tables' to-do list.
+    #[serde(skip)]
+    pub dirty_candles: std::collections::BTreeSet<(String, i64)>,
 }
 
 fn yes() -> bool {
@@ -421,6 +424,7 @@ impl Exchange {
             version: 0,
             now: genesis,
             bots_enabled: true,
+            dirty_candles: Default::default(),
         }
     }
 
@@ -713,11 +717,13 @@ impl Exchange {
                 last.l = last.l.min(lot_px);
                 last.c = lot_px;
                 last.v += volume;
+                self.dirty_candles.insert((market.into(), t));
                 return;
             }
         }
         let o = cs.last().map_or(lot_px, |c| c.c);
         cs.push(Candle { t, o, h: o.max(lot_px), l: o.min(lot_px), c: lot_px, v: volume });
+        self.dirty_candles.insert((market.into(), t));
         if cs.len() > CANDLES {
             let extra = cs.len() - CANDLES;
             cs.drain(..extra);
@@ -1504,6 +1510,8 @@ impl Exchange {
         older.append(cs);
         let extra = older.len().saturating_sub(CANDLES);
         *cs = older.split_off(extra);
+        let touched: Vec<i64> = cs.iter().map(|c| c.t).collect();
+        self.dirty_candles.extend(touched.into_iter().map(|t| (market.to_string(), t)));
         self.version += 1;
     }
 }

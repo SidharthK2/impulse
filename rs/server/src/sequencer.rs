@@ -14,7 +14,7 @@ use crate::command::{self, Command, Reply};
 use crate::exchange::{ExError, Exchange, XResult};
 use crate::intake::IntakeClock;
 use crate::rng::Rng;
-use crate::store::Store;
+use crate::store::{HistoryMarks, Store};
 use crate::ws::Hub;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::Path;
@@ -35,6 +35,8 @@ pub struct Core {
     /// The last journaled sequence number.
     pub seq: u64,
     store: Option<Store>,
+    /// How far the read tables have caught up with the exchange's history.
+    history: HistoryMarks,
     since_snapshot: u64,
     snapshot_at: Instant,
     /// Time spent in submit (apply + journal), per step, for the throughput report.
@@ -78,6 +80,7 @@ impl Core {
             clock,
             seq: 0,
             store,
+            history: HistoryMarks::default(),
             since_snapshot: 0,
             snapshot_at: Instant::now(),
             timings: vec![],
@@ -105,9 +108,15 @@ impl Core {
         }
         self.seq += 1;
         if let Some(s) = &self.store {
+            // The command and the history it produced, in one transaction.
             let payload = serde_json::to_string(&cmd).expect("commands serialize");
-            if let Err(e) = s.insert_command(self.seq, self.x.now, cmd.kind(), &payload).and_then(|_| s.commit()) {
-                fail_stop(&format!("journal write failed at seq {}: {e}", self.seq));
+            let written = s
+                .insert_command(self.seq, self.x.now, cmd.kind(), &payload)
+                .and_then(|_| s.write_history(self.seq, &mut self.x, self.history))
+                .and_then(|marks| s.commit().map(|_| marks));
+            match written {
+                Ok(marks) => self.history = marks,
+                Err(e) => fail_stop(&format!("journal write failed at seq {}: {e}", self.seq)),
             }
         }
         if self.timings.len() < 1_000_000 {
@@ -122,6 +131,10 @@ impl Core {
 
     /// Store a snapshot of the exchange at the current sequence number. A failure is logged, not fatal: the
     /// journal alone is enough to recover.
+    pub fn store(&self) -> Option<&Store> {
+        self.store.as_ref()
+    }
+
     pub fn snapshot(&mut self) {
         self.since_snapshot = 0;
         self.snapshot_at = Instant::now();
@@ -143,13 +156,22 @@ impl Core {
                 None => return Ok(Recovery::Fresh),
                 Some((mut x, saved_at)) => {
                     x.now = saved_at.unwrap_or(x.now);
+                    // The read tables start with whatever history the snapshot carries.
+                    for c in x.candles.iter().flat_map(|(m, cs)| cs.iter().map(move |c| (m.clone(), c.t))).collect::<Vec<_>>() {
+                        x.dirty_candles.insert(c);
+                    }
+                    store.begin()?;
+                    store.write_history(0, &mut x, HistoryMarks::default())?;
+                    store.commit()?;
                     store.save_snapshot(0, x.now, &encode(&x))?;
                     crate::api::log(&format!("imported the legacy snapshot {} as snapshot 0 (the file is kept)", data_dir.join("snapshot.json").display()));
                     imported = true;
                 }
             }
         }
-        let (x, seq, replayed) = rebuild(store, false, None)?;
+        let (mut x, seq, replayed) = rebuild(store, false, None)?;
+        x.dirty_candles.clear(); // the read tables already have everything the journal produced
+        self.history = HistoryMarks::of(&x);
         self.x = x;
         self.seq = seq;
         self.snapshot();
