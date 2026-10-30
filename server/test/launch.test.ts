@@ -2,6 +2,7 @@
 // Rust server only (the TS server has no launches).
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { WebSocket } from "ws";
 import { type Venue, rustTargets, uid } from "./venue.js";
 
 describe.each(rustTargets())("creator-coin launch ($name)", ({ start }) => {
@@ -108,5 +109,35 @@ describe.each(rustTargets())("creator-coin launch ($name)", ({ start }) => {
     expect(byLabel["Start leverage"]).toMatchObject({ value: "3×" });
     expect(byLabel.ADL).toMatchObject({ value: "pro-rata on profit first, then principal", ours: true });
     expect(byLabel["Snipe window"]).toMatchObject({ value: "60 s" });
+  });
+
+  it("streams the new fields on the existing channels: markets, account and feed", async () => {
+    const s = uid();
+    const u = await v.user(`ws${s}`);
+    const coin = await v.ok(v.as(u, "POST", "/api/attention", { handle: `ws${s}` }));
+    await v.ok(v.as(u, "POST", "/api/snipe", { market: coin.id, usdc: "50" }));
+    const ws = new WebSocket(v.base.replace("http", "ws") + "/ws");
+    const got = new Map<string, any>(); // eslint-disable-line @typescript-eslint/no-explicit-any
+    await new Promise<void>((resolve, reject) => {
+      ws.on("open", () => {
+        ws.send(JSON.stringify({ op: "auth", key: u.key }));
+        for (const ch of ["markets", "feed", "account"]) ws.send(JSON.stringify({ op: "sub", ch }));
+      });
+      ws.on("message", (m) => {
+        const { ch, data } = JSON.parse(String(m));
+        got.set(ch, data);
+        if (got.has("markets") && got.has("feed") && got.get("account")?.id === u.id) resolve();
+      });
+      ws.on("error", reject);
+      setTimeout(() => reject(new Error(`timeout; got ${[...got.keys()]}`)), 3000);
+    });
+    ws.close();
+    const m = (got.get("markets") as { id: string }[]).find((x) => x.id === coin.id) as Record<string, unknown>;
+    expect(m.snipe).toMatchObject({ total: "50.00", snipers: 1 });
+    expect(m).toHaveProperty("launch", null);
+    expect(m).toHaveProperty("preipo", null);
+    expect(m.settings).toEqual(expect.any(Array));
+    expect(got.get("account").snipes).toEqual([{ market: coin.id, usdc: "50.00", time: expect.any(Number) }]);
+    expect(got.get("feed")[0]).toHaveProperty("price");
   });
 });
