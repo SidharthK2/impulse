@@ -111,9 +111,12 @@ export const useSession = create<Session>()((set) => ({
 
 type Modal = "signup" | null;
 
-export const useUi = create<{ modal: Modal; open: (m: Modal) => void }>()((set) => ({
+export const useUi = create<{ modal: Modal; open: (m: Modal) => void; search: boolean; setSearch: (open: boolean) => void }>()((set) => ({
   modal: null,
   open: (modal) => set({ modal }),
+  /** The ⌘K market search. */
+  search: false,
+  setSearch: (search) => set({ search }),
 }));
 
 /** Signed in, or running on fixtures (where the fixture account "you" trades fixture markets). */

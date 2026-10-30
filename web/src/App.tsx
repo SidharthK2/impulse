@@ -1,88 +1,69 @@
 import { useForm, useSelector } from "@tanstack/react-form";
-import { Link, Outlet, useRouterState } from "@tanstack/react-router";
+import { Outlet } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { FormError, Input, useServerError } from "./components/form";
-import { Roll } from "./components/Roll";
+import { Header } from "./components/Header";
+import { MarketSearch, useSearchShortcut } from "./components/MarketSearch";
 import { api } from "./api";
 import { Modal, useToast } from "./components/ui";
 import { useFixtureDriver } from "./fixtures";
-import { countdown, num, tone, usd } from "./format";
-import { useConnected, useNow } from "./hooks";
+import { useConnected } from "./hooks";
 import { useAccount, useMarkets } from "./queries";
 import { usePrefs, useSession, useUi } from "./store";
 import type { AccountView } from "./types";
 
-const NAV = [
-  { to: "/", label: "Markets" },
-  { to: "/trade", label: "Trade" },
-  { to: "/portfolio", label: "Portfolio" },
-  { to: "/leaderboard", label: "Leaderboard" },
-  { to: "/feed", label: "Who paid" },
-  { to: "/admin", label: "Admin" },
-] as const;
-
 export function Layout() {
   useFixtureDriver();
-  const theme = usePrefs((s) => s.theme);
-  const setTheme = usePrefs((s) => s.setTheme);
-  const fixtures = usePrefs((s) => s.fixtures);
-  const lastMarket = usePrefs((s) => s.lastMarket);
+  useSearchShortcut();
   const key = useSession((s) => s.key);
   const signIn = useSession((s) => s.signIn);
   const modal = useUi((s) => s.modal);
   const open = useUi((s) => s.open);
   const markets = useMarkets();
   const account = useAccount();
-  const connected = useConnected();
-  const path = useRouterState({ select: (s) => s.location.pathname });
 
-  useRiskToasts(account);
+  useRiskToasts(key ? account : undefined);
 
   return (
     <div className="app">
-      <header className="header">
-        <Link className="brand" to="/">
-          <svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true">
-            <rect width="32" height="32" rx="7" fill="var(--brand-tile)" />
-            <path d="M4 18h6l3-9 5 15 3-8h7" fill="none" stroke="var(--accent)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          IMPULSE <small>paper</small>
-        </Link>
-        <nav className="nav">
-          {NAV.map((n) => {
-            const active = n.to === "/" ? path === "/" : path.startsWith(n.to);
-            return n.to === "/trade" ? (
-              <Link key={n.to} to="/trade/$market" params={{ market: lastMarket ?? markets?.[0]?.id ?? "BTC-PERP" }} className={active ? "active" : ""}>
-                {n.label}
-              </Link>
-            ) : (
-              <Link key={n.to} to={n.to} className={active ? "active" : ""}>
-                {n.label}
-              </Link>
-            );
-          })}
-        </nav>
-        <span className="spacer" />
-        {import.meta.env.DEV && (
-          <label className="check dev-toggle" title="Dev only: merge typed fixtures (web/src/fixtures) for contract fields this server doesn't send yet">
-            <input type="checkbox" checked={fixtures} onChange={(e) => usePrefs.getState().setFixtures(e.target.checked)} /> <span className="hide-sm">fixtures</span>
-          </label>
-        )}
-        <button className="btn small ghost icon" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} title={`Switch to ${theme === "dark" ? "light" : "dark"} theme`} aria-label="Toggle theme">
-          {theme === "dark" ? "☀" : "☾"}
-        </button>
-        <span className="row muted live-dot" title={connected ? "Live" : "Reconnecting…"}>
-          <span className={`dot ${connected ? "on" : ""}`} /> <span className="hide-sm">{connected ? "live" : fixtures ? "fixtures" : "offline"}</span>
-        </span>
-        <AccountChip account={account} signedIn={!!key} onSignUp={() => open("signup")} onSignOut={() => signIn(null)} />
-      </header>
+      <Header />
 
       <main className="main">
-        {!markets ? <div className="empty">Connecting to the exchange…{import.meta.env.DEV && " (no server? tick “fixtures” in the header)"}</div> : <Outlet />}
+        {!markets ? <div className="empty">Connecting to the exchange…{import.meta.env.DEV && " (no server? switch on fixtures in the status bar)"}</div> : <Outlet />}
       </main>
 
+      <StatusBar />
+      <MarketSearch />
       {modal === "signup" && <SignUp onDone={(k) => (signIn(k), open(null))} onClose={() => open(null)} />}
     </div>
+  );
+}
+
+/** A slim bar along the bottom: connection state, what kind of money this is, the dev fixtures switch. */
+function StatusBar() {
+  const connected = useConnected();
+  const fixtures = usePrefs((s) => s.fixtures);
+  const markets = useMarkets();
+  const state = connected ? "live" : fixtures ? "fixtures" : "down";
+  return (
+    <footer className="statusbar">
+      <span className={`status-conn ${state}`} title={connected ? "Websocket connected: prices and fills stream live" : "Reconnecting to the exchange…"}>
+        <span className={`dot ${connected ? "on" : ""}`} /> {connected ? "Connected" : fixtures ? "Fixtures only, no server" : "Reconnecting…"}
+      </span>
+      <span className="faint hide-sm">{markets ? `${markets.length} markets` : ""}</span>
+      <span className="faint hide-sm">Paper money only</span>
+      <span className="spacer" />
+      {import.meta.env.DEV && (
+        <label className="dev-switch" title="Dev only: merge typed fixtures (web/src/fixtures) for contract fields a server doesn't send">
+          <input type="checkbox" role="switch" checked={fixtures} onChange={(e) => usePrefs.getState().setFixtures(e.target.checked)} />
+          <span className="switch" aria-hidden="true" />
+          fixtures
+        </label>
+      )}
+      <button className="status-link hide-sm" onClick={() => useUi.getState().setSearch(true)}>
+        <kbd>/</kbd> markets
+      </button>
+    </footer>
   );
 }
 
@@ -101,47 +82,6 @@ function useRiskToasts(account: AccountView | undefined) {
     seen.current = Math.max(seen.current, latest);
     for (const e of fresh.reverse()) toast(e.text, e.kind === "bankrupt" || e.kind === "haircut" ? "down" : e.kind === "settlement" ? "info" : "warn");
   }, [account, toast]);
-}
-
-function AccountChip({ account, signedIn, onSignUp, onSignOut }: { account: AccountView | undefined; signedIn: boolean; onSignUp: () => void; onSignOut: () => void }) {
-  const toast = useToast();
-  const now = useNow(1000);
-  if (!signedIn) {
-    return (
-      <button className="btn primary" onClick={onSignUp}>
-        Sign up<span className="hide-sm"> · get $10k</span>
-      </button>
-    );
-  }
-  if (!account) return <span className="muted">…</span>;
-  const wait = account.nextFaucet - now;
-  return (
-    <div className="acct">
-      <div className="who">
-        <span>
-          <b>{account.id}</b> <Roll className={`mono ${tone(num(account.pnl))}`} text={usd(account.pnl, { sign: true })} value={num(account.pnl)} />
-        </span>
-        <small>
-          equity <Roll text={usd(account.equity)} flash={false} /> · wallet {usd(account.wallet)}
-        </small>
-      </div>
-      <button
-        className="btn small"
-        disabled={wait > 0}
-        title="Paper USDC: $10,000 a minute, up to a $100k wallet"
-        onClick={() =>
-          api<{ amount: string }>("POST", "/api/faucet")
-            .then((r) => toast(`+${usd(r.amount)} paper USDC`, "up"))
-            .catch((e) => toast((e as Error).message, "down"))
-        }
-      >
-        {wait > 0 ? `faucet ${countdown(wait)}` : "+ $10k"}
-      </button>
-      <button className="btn small ghost" onClick={onSignOut} title="Forget the API key in this browser">
-        Sign out
-      </button>
-    </div>
-  );
 }
 
 function SignUp({ onDone, onClose }: { onDone: (key: string) => void; onClose: () => void }) {

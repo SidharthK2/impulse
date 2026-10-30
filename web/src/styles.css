@@ -18,6 +18,7 @@
   --info: #5b9cff;
   --info-bg: rgba(91, 156, 255, 0.12);
   --brand-tile: #151a23;
+  --header-h: 48px;
   --radius: 6px;
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
   --sans: "Inter Variable", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -134,57 +135,487 @@ textarea {
 
 .header {
   display: flex;
-  align-items: center;
-  gap: 18px;
-  height: 52px;
-  padding: 0 16px;
+  align-items: stretch;
+  gap: 6px;
+  height: var(--header-h);
+  padding: 0 12px 0 16px;
   border-bottom: 1px solid var(--line);
-  background: var(--panel);
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+  backdrop-filter: saturate(1.4) blur(10px);
+  -webkit-backdrop-filter: saturate(1.4) blur(10px);
   position: sticky;
   top: 0;
   z-index: 20;
+}
+.header > * {
+  align-self: center;
 }
 
 .brand {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  margin-right: 14px;
   color: var(--text);
 }
 .brand:hover {
   text-decoration: none;
 }
-.brand small {
-  font-weight: 500;
-  letter-spacing: 0;
-  color: var(--muted);
-  border: 1px solid var(--line-2);
-  border-radius: 4px;
-  padding: 0 5px;
+.brand-name {
+  font-weight: 650;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+}
+.brand-tag {
   font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-radius: 999px;
+  padding: 1px 7px;
 }
 
+/* Main nav: full-height links with an accent underline on the current page. */
 .nav {
   display: flex;
+  align-self: stretch;
   gap: 2px;
 }
-.nav a {
+.nav > a,
+.nav .nav-more {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 100%;
+  padding: 0 10px;
   white-space: nowrap;
   color: var(--muted);
-  padding: 6px 10px;
-  border-radius: var(--radius);
+  font-size: 13px;
+  font-weight: 500;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  transition: color 0.12s;
 }
-.nav a:hover {
+.nav > a:hover,
+.nav .nav-more:hover,
+.menu.open > .nav-more {
   color: var(--text);
+  text-decoration: none;
+}
+.nav > a.active,
+.nav .nav-more.active {
+  color: var(--text);
+}
+.nav > a.active::after,
+.nav .nav-more.active::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--accent);
+}
+.nav .menu {
+  display: flex;
+  height: 100%;
+}
+
+/* Popover menus (More, account). */
+.menu {
+  position: relative;
+}
+.menu-pop {
+  text-align: left;
+  position: absolute;
+  top: calc(100% + 6px);
+  min-width: 240px;
+  padding: 6px;
+  background: var(--panel);
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.35);
+  z-index: 40;
+  animation: pop-in 0.12s ease-out;
+}
+.menu-pop.left {
+  left: 0;
+}
+.menu-pop.right {
+  right: 0;
+}
+.nav .menu-pop {
+  top: calc(100% + 1px);
+}
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+.menu-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  font-size: 13px;
+}
+.menu-item small {
+  color: var(--faint);
+  font-size: 11px;
+}
+.menu-item:hover,
+.menu-item.on {
   background: var(--panel-2);
   text-decoration: none;
 }
-.nav a.active {
+.menu-item.row-item {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+}
+.menu-item.row-item:hover {
+  color: var(--text);
+}
+.menu-item.danger:hover {
+  color: var(--down);
+}
+.menu-sep {
+  height: 1px;
+  margin: 6px 4px;
+  background: var(--line);
+}
+
+/* Right side: search, theme, account. */
+.search-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 240px;
+  height: 32px;
+  padding: 0 6px 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--faint);
+  cursor: pointer;
+  transition:
+    border-color 0.12s,
+    color 0.12s;
+}
+.search-btn:hover {
+  border-color: var(--line-2);
+  color: var(--muted);
+}
+.search-label {
+  flex: 1;
+  text-align: left;
+  font-size: 13px;
+}
+kbd {
+  font-family: var(--sans);
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--muted);
+  background: var(--panel);
+  border: 1px solid var(--line-2);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 0 5px;
+  line-height: 16px;
+}
+.icon-btn {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.icon-btn:hover {
   color: var(--text);
   background: var(--panel-2);
+}
+.acct-out {
+  gap: 6px;
+  margin-left: 4px;
+}
+.acct-loading {
+  width: 120px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+.acct-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 8px 0 4px;
+  margin-left: 4px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel-2);
+  color: var(--muted);
+  cursor: pointer;
+}
+.acct-btn:hover,
+.menu.open > .acct-btn {
+  border-color: var(--line-2);
+  color: var(--text);
+}
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), var(--info));
+  color: var(--accent-ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+.avatar.lg {
+  width: 36px;
+  height: 36px;
+  font-size: 15px;
+}
+.acct-figs {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.15;
+}
+.acct-equity {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+.acct-pnl {
+  font-size: 11px;
+}
+.acct-pop {
+  width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px 4px 2px;
+}
+.acct-pop-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 6px;
+}
+.acct-pop-figs {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 12px;
+  margin: 4px 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--panel-2);
+  font-size: 12px;
+}
+.acct-pop-figs dt {
+  color: var(--muted);
+  text-align: left;
+}
+.acct-pop-figs dd {
+  margin: 0;
+  text-align: right;
+}
+.acct-pop .btn.block {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+/* Status bar along the bottom. */
+.statusbar {
+  position: sticky;
+  bottom: 0;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 26px;
+  padding: 0 16px;
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+  font-size: 11px;
+}
+.status-conn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+}
+.status-conn.live {
+  color: var(--up);
+}
+.status-conn.fixtures {
+  color: var(--warn);
+}
+.status-conn.down {
+  color: var(--down);
+}
+.status-conn .dot {
+  width: 6px;
+  height: 6px;
+}
+.status-conn.fixtures .dot {
+  background: var(--warn);
+}
+.status-link {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  background: none;
+  color: var(--faint);
+  font-size: 11px;
+  cursor: pointer;
+}
+.status-link:hover {
+  color: var(--text);
+}
+.dev-switch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--faint);
+  cursor: pointer;
+}
+.dev-switch input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.switch {
+  position: relative;
+  width: 24px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--line-2);
+  transition: background 0.15s;
+}
+.switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--panel);
+  transition: transform 0.15s;
+}
+.dev-switch input:checked + .switch {
+  background: var(--warn);
+}
+.dev-switch input:checked + .switch::after {
+  transform: translateX(10px);
+}
+.dev-switch input:focus-visible + .switch {
+  outline: 2px solid var(--info);
+  outline-offset: 2px;
+}
+
+/* ⌘K market search. */
+.overlay.palette-overlay {
+  place-items: start center;
+  padding-top: 12vh;
+}
+.palette {
+  width: min(600px, calc(100vw - 32px));
+  background: var(--panel);
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+  animation: pop-in 0.12s ease-out;
+}
+.palette-input {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+}
+.palette-input input {
+  flex: 1;
+  height: 50px;
+  border: 0;
+  outline: 0;
+  background: none;
+  font-size: 15px;
+}
+.palette-list {
+  max-height: min(420px, 60vh);
+  overflow: auto;
+  padding: 6px;
+  scrollbar-width: none;
+}
+.palette-list::-webkit-scrollbar {
+  display: none;
+}
+.palette-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 80px;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  font-size: 13px;
+}
+.palette-row.on {
+  background: var(--panel-2);
+}
+.palette-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.palette-name b {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.palette-ch {
+  text-align: right;
+}
+.palette-foot {
+  display: flex;
+  gap: 16px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--line);
 }
 
 .dot {
@@ -617,24 +1048,68 @@ table.grid tr.click:hover td {
   .mbar-stats {
     gap: 16px;
   }
-  .dev-toggle span,
-  .live-dot {
-    font-size: 11px;
-  }
+  /* Two rows on phones: brand and actions, then the nav, which scrolls sideways. Not sticky: screen space. */
   .header {
     height: auto;
     flex-wrap: wrap;
-    gap: 8px 10px;
-    padding: 8px 12px;
+    gap: 0 6px;
+    padding: 6px 10px 0;
     position: static;
+  }
+  .brand {
+    margin-right: auto;
+  }
+  .header > .spacer {
+    display: none;
   }
   .header .nav {
     order: 3;
-    width: 100%;
+    width: calc(100% + 20px);
+    margin: 4px -10px 0;
+    padding: 0 4px;
+    height: 40px;
     overflow-x: auto;
+    border-top: 1px solid var(--line);
   }
-  .acct .who small {
+  .search-btn {
+    width: 32px;
+    padding: 0;
+    justify-content: center;
+    border-color: transparent;
+    background: none;
+  }
+  .search-label,
+  .search-btn kbd {
     display: none;
+  }
+  .acct-figs .acct-pnl,
+  .brand-tag,
+  .acct-btn > svg {
+    display: none;
+  }
+  .brand {
+    margin-right: auto;
+    gap: 6px;
+  }
+  .acct-btn {
+    padding: 0 10px 0 4px;
+    margin-left: 0;
+  }
+  /* The nav scrolls sideways here, which would clip its More menu: anchor the menu to the header instead. */
+  .header {
+    position: relative;
+  }
+  .nav .menu {
+    position: static;
+  }
+  .nav .menu-pop {
+    left: 10px;
+    right: 10px;
+    top: 100%;
+    min-width: 0;
+  }
+  .statusbar {
+    padding: 0 10px;
   }
 }
 
@@ -976,21 +1451,6 @@ table.grid tr.click:hover td {
   border-left-color: var(--warn);
 }
 
-.acct {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.acct .who {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  line-height: 1.2;
-}
-.acct .who small {
-  color: var(--muted);
-  font-family: var(--mono);
-}
 
 /* ---------- home ---------- */
 
@@ -1815,7 +2275,7 @@ a.btn:hover {
   padding: 8px 0;
   border-bottom: 1px solid var(--line);
   position: sticky;
-  top: 52px; /* under the sticky header */
+  top: var(--header-h); /* under the sticky header */
   z-index: 5;
   background: var(--bg);
 }
