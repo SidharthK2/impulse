@@ -149,7 +149,8 @@ pub struct Opened {
     pub reserve: i128,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MarketSpec {
     pub id: String,
     pub kind: Kind,
@@ -276,13 +277,15 @@ pub struct Candle {
     pub v: i128, // traded notional, nano-USD
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum OrderType {
     Limit,
     Market,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct OrderInput {
     pub market: String,
     pub side: Side,
@@ -392,6 +395,13 @@ pub struct Exchange {
     /// The current step's time (wall-clock ms), set at intake. The core never reads a clock.
     #[serde(default)]
     pub now: i64,
+    /// Admin switch for the house bots (they only act while it's on).
+    #[serde(default = "yes")]
+    pub bots_enabled: bool,
+}
+
+fn yes() -> bool {
+    true
 }
 
 impl Exchange {
@@ -410,6 +420,7 @@ impl Exchange {
             order_market: BTreeMap::new(),
             version: 0,
             now: genesis,
+            bots_enabled: true,
         }
     }
 

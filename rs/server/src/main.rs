@@ -7,6 +7,7 @@
 mod api;
 mod book;
 mod bots;
+mod command;
 mod exchange;
 mod feeds;
 mod intake;
@@ -17,6 +18,7 @@ mod views;
 mod ws;
 
 use api::{log, App};
+use command::Command;
 use exchange::Exchange;
 use intake::{wall_ms, IntakeClock};
 use std::path::PathBuf;
@@ -38,6 +40,17 @@ fn every(app: &App, ms: u64, f: impl Fn(&mut api::Core) + Send + 'static) {
             f(&mut app.lock());
         }
     });
+}
+
+fn log_err<T>(what: &str, r: Result<T, exchange::ExError>) {
+    if let Err(e) = r {
+        log(&format!("{what}: {}", e.message()));
+    }
+}
+
+fn submit(app: &App, cmd: Command) {
+    let kind = cmd.kind();
+    log_err(kind, app.lock().submit(cmd));
 }
 
 fn save(app: &App, dir: &std::path::Path) -> Option<u64> {
@@ -82,62 +95,65 @@ async fn main() {
         }
     };
     let fresh = snap.is_none();
-    let x = match snap {
-        Some((mut x, saved_at)) => {
-            let down = saved_at.map_or(0, |t| wall_ms() - t);
-            x.resume_after(down);
-            log(&format!(
-                "restored snapshot: {} markets, {} accounts, engine t={}s; paused for {}s of downtime",
-                x.markets.len(),
-                x.accounts.len(),
-                x.state.time,
-                (down + 500) / 1000
-            ));
-            x
-        }
-        None => Exchange::new(clock.now()),
+    let (x, down) = match snap {
+        Some((x, saved_at)) => (x, saved_at.map_or(0, |t| wall_ms() - t)),
+        None => (Exchange::new(0), 0),
     };
     let app = App::new(api::new_core(x, bots, clock), admin_token.clone(), Some(web_dir), test_clock);
     if fresh {
+        submit(&app, Command::Genesis);
         log(&format!("fresh exchange; listing default markets{}…", if offline { " (offline)" } else { "" }));
         feeds::list_defaults(&app, offline).await;
         log(&format!("listed {}", app.lock().x.markets.keys().cloned().collect::<Vec<_>>().join(", ")));
+    } else {
+        submit(&app, Command::Resume { down_ms: down });
+        let core = app.lock();
+        log(&format!(
+            "restored snapshot: {} markets, {} accounts, engine t={}s; paused for {}s of downtime",
+            core.x.markets.len(),
+            core.x.accounts.len(),
+            core.x.state.time,
+            (down + 500) / 1000
+        ));
     }
-    {
-        let mut core = app.lock();
-        if let Err(e) = core.x.clock() {
-            log(&format!("clock: {}", e.message()));
-        }
-        let api::Core { x, bots, .. } = &mut *core;
-        if let Some(b) = bots {
-            b.ensure_accounts(x);
+    submit(&app, Command::Clock);
+    if bots {
+        let setup = bots::Bots::setup(&app.lock().x);
+        for cmd in setup {
+            submit(&app, cmd);
         }
     }
 
-    // The core's clocks: engine time, bots, the offline walk, websocket pushes, snapshots.
-    every(&app, 2000, |c| {
-        if let Err(e) = c.x.clock() {
-            log(&format!("clock: {}", e.message()));
-        }
-    });
+    // The clients that run on timers: the clock, the bots, the offline walk. Each submits commands.
+    every(&app, 2000, |c| log_err("clock", c.submit(Command::Clock)));
     if bots {
         every(&app, 1000, |c| {
-            let api::Core { x, bots, .. } = c;
-            if let Some(b) = bots.as_mut().filter(|b| b.enabled) {
-                b.requote_some(x, 3);
+            if !c.x.bots_enabled {
+                return;
+            }
+            let Some(b) = c.bots.as_mut() else { return };
+            for cmd in b.next_quotes(&c.x, 3) {
+                log_err("bots", c.submit(cmd));
             }
         });
         every(&app, 2500, |c| {
-            let api::Core { x, bots, .. } = c;
-            if let Some(b) = bots.as_mut().filter(|b| b.enabled) {
-                b.noise(x, log);
+            if !c.x.bots_enabled {
+                return;
+            }
+            let Some(b) = c.bots.as_mut() else { return };
+            let (cmds, note) = b.noise(&c.x);
+            if let Some(note) = note {
+                log(&note);
+            }
+            for cmd in cmds {
+                let _ = c.submit(cmd); // a refused bot order (balance, liquidity) is part of the noise
             }
         });
     }
     let warn = feeds::Warn::default();
     {
         let warn = warn.clone();
-        every(&app, 2000, move |c| feeds::step_sim(&mut c.x, &mut c.sim, &warn, offline));
+        every(&app, 2000, move |c| feeds::step_sim(c, &warn, offline));
     }
     if !offline {
         feeds::start(&app, &warn);
