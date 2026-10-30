@@ -2,7 +2,7 @@
 
 **A paper-trading exchange for MicroPerps: leveraged perps on anything, with no insurance fund behind them.**
 
-**Live demo: [impulse-sid.fly.dev](https://impulse-sid.fly.dev)** · play money only, sign up for $10k of paper USDC.
+**Live demo: [impulse.sidkap.xyz](https://impulse.sidkap.xyz)** · play money only, sign up for $10k of paper USDC.
 The first visit after a quiet spell takes a few seconds while the server wakes up.
 
 ![Impulse home page](docs/images/home.png)
