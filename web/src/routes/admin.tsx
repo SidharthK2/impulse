@@ -3,6 +3,7 @@ import { api, getAdminToken, setAdminToken } from "../api";
 import { useToast } from "../components/ui";
 import { num, price, toInput, usd } from "../format";
 import { act, useMarkets } from "../queries";
+import { useNavigate } from "@tanstack/react-router";
 import type { MarketView } from "../types";
 
 // ---------- admin ----------
@@ -25,6 +26,7 @@ export function AdminPage() {
     }
   };
   const refresh = async () => {
+    if (!getAdminToken()) return setStatus(null);
     try {
       setStatus(await api("GET", "/api/admin/status", undefined, { admin: true }));
     } catch {
@@ -60,6 +62,8 @@ export function AdminPage() {
         </button>
         <span className={status ? "up" : "muted"}>{status ? "authorized" : "not authorized"}</span>
       </div>
+
+      <DemoControls markets={markets} />
 
       <h2>Oracle overrides</h2>
       <p>
@@ -274,6 +278,185 @@ function Deposit({ onDeposit }: { onDeposit: (account: string, amount: string) =
           Deposit
         </button>
       </div>
+    </>
+  );
+}
+
+type Effects = { title: string; lines: string[]; time: number };
+
+/** The demo in a few clicks: launch a coin, pump or dump it, crash a market, list and IPO a pre-IPO, resolve a binary. */
+function DemoControls({ markets }: { markets: MarketView[] }) {
+  const toast = useToast();
+  const navigate = useNavigate();
+  const [last, setLast] = useState<Effects | null>(null);
+  const [handle, setHandle] = useState("");
+  const coins = markets.filter((m) => m.kind === "attention" && m.status === "open");
+  const live = coins.filter((m) => !m.snipe);
+  const [coin, setCoin] = useState("");
+  const [usdc, setUsdc] = useState("5000");
+  const crashable = markets.filter((m) => !m.curve && m.status === "open" && m.mark);
+  const [target, setTarget] = useState("");
+  const [pre, setPre] = useState({ id: "", name: "", price: "", description: "" });
+  const privates = markets.filter((m) => m.preipo?.status === "private");
+  const [ipoMarket, setIpoMarket] = useState("");
+  const [ipoPrice, setIpoPrice] = useState("");
+  const binaries = markets.filter((m) => m.kind === "binary" && m.status === "open");
+  const [binary, setBinary] = useState("");
+
+  const pick = (id: string, list: MarketView[]) => (list.some((m) => m.id === id) ? id : (list[0]?.id ?? ""));
+  const coinId = pick(coin, live);
+  const targetId = pick(target, crashable);
+  const ipoId = pick(ipoMarket, privates);
+  const binaryId = pick(binary, binaries);
+
+  async function run<T>(title: string, path: string, body: Record<string, unknown>, after?: (r: T) => void) {
+    try {
+      const r = await act<T>("POST", path, body, { admin: true });
+      const effects = (r as { effects?: string[] } | null)?.effects;
+      setLast({ title, lines: Array.isArray(effects) ? effects : [], time: Date.now() });
+      toast(title, "up");
+      after?.(r);
+    } catch (e) {
+      toast((e as Error).message, "down");
+    }
+  }
+
+  const crash = (factor: number) => {
+    const m = crashable.find((x) => x.id === targetId);
+    if (!m) return;
+    const p = num(m.mark) * factor;
+    const v = m.kind === "binary" ? Math.min(1, Math.max(0, p)) : p;
+    void run(`${m.id} → ${toInput(v, m.priceDecimals)}`, "/api/admin/price", { market: m.id, price: toInput(v, 9), holdSeconds: 60 });
+  };
+
+  return (
+    <>
+      <h2>Demo</h2>
+      <div className="demo-grid">
+        <div className="panel panel-body col">
+          <h3>Launch a demo coin</h3>
+          <p className="small">Lists a creator coin with a snipe window and a few house snipes.</p>
+          <div className="row">
+            <input className="input" placeholder="@handle (blank = random)" value={handle} onChange={(e) => setHandle(e.target.value.trim())} />
+            <button className="btn primary" onClick={() => run<MarketView>("Demo coin listed", "/api/admin/demo-coin", handle ? { handle } : {}, (m) => m?.id && navigate({ to: "/trade/$market", params: { market: m.id } }))}>
+              Launch
+            </button>
+          </div>
+        </div>
+
+        <div className="panel panel-body col">
+          <h3>Pump or dump a creator coin</h3>
+          <p className="small">A house account buys or sells spot on the curve.</p>
+          <div className="row">
+            <select className="input" value={coinId} onChange={(e) => setCoin(e.target.value)} disabled={!live.length}>
+              {live.length === 0 && <option>no live coins</option>}
+              {live.map((m) => (
+                <option key={m.id}>{m.id}</option>
+              ))}
+            </select>
+            <div className="adorn" style={{ width: 120 }}>
+              <span className="prefix">$</span>
+              <input className="input mono" value={usdc} onChange={(e) => setUsdc(e.target.value.trim())} aria-label="USDC" />
+            </div>
+          </div>
+          <div className="row">
+            <button className="btn buy grow" disabled={!coinId || !(num(usdc) > 0)} onClick={() => run(`Pumped ${coinId}`, "/api/admin/pump", { market: coinId, usdc })}>
+              Pump +${usdc}
+            </button>
+            <button className="btn sell grow" disabled={!coinId || !(num(usdc) > 0)} onClick={() => run(`Dumped ${coinId}`, "/api/admin/pump", { market: coinId, usdc: `-${usdc}` })}>
+              Dump −${usdc}
+            </button>
+          </div>
+        </div>
+
+        <div className="panel panel-body col">
+          <h3>Crash a market</h3>
+          <p className="small">Forces the oracle and holds it for 60 s. Longs past their bankruptcy price go bust and the shorts pay.</p>
+          <select className="input" value={targetId} onChange={(e) => setTarget(e.target.value)}>
+            {crashable.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.kind === "binary" ? `${m.id} · ${m.name}` : m.id}
+              </option>
+            ))}
+          </select>
+          <div className="row">
+            {[0.5, 0.7, 1.3, 1.6].map((f) => (
+              <button key={f} className={`btn small grow ${f < 1 ? "danger" : ""}`} disabled={!targetId} onClick={() => crash(f)}>
+                {f < 1 ? `−${Math.round((1 - f) * 100)}%` : `+${Math.round((f - 1) * 100)}%`}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="panel panel-body col">
+          <h3>List a pre-IPO market</h3>
+          <div className="row">
+            <input className="input mono" placeholder="ID-PRE" value={pre.id} onChange={(e) => setPre({ ...pre, id: e.target.value.trim().toUpperCase() })} />
+            <input className="input mono" placeholder="seed price" value={pre.price} onChange={(e) => setPre({ ...pre, price: e.target.value.trim() })} />
+          </div>
+          <input className="input" placeholder="Company name" value={pre.name} onChange={(e) => setPre({ ...pre, name: e.target.value })} />
+          <input className="input" placeholder="Description (optional)" value={pre.description} onChange={(e) => setPre({ ...pre, description: e.target.value })} />
+          <button
+            className="btn primary"
+            disabled={!pre.id || !(num(pre.price) > 0)}
+            onClick={() =>
+              run<MarketView>(`Listed ${pre.id}`, "/api/admin/preipo", { id: pre.id, name: pre.name || pre.id, price: pre.price, ...(pre.description && { description: pre.description }) }, () => setPre({ id: "", name: "", price: "", description: "" }))
+            }
+          >
+            List pre-IPO
+          </button>
+        </div>
+
+        <div className="panel panel-body col">
+          <h3>IPO a pre-IPO market</h3>
+          <p className="small">Reprices it in one step to the IPO price. Whoever is on the wrong side of the gap pays.</p>
+          <div className="row">
+            <select className="input" value={ipoId} onChange={(e) => setIpoMarket(e.target.value)} disabled={!privates.length}>
+              {privates.length === 0 && <option>no private markets</option>}
+              {privates.map((m) => (
+                <option key={m.id}>{m.id}</option>
+              ))}
+            </select>
+            <input className="input mono" style={{ width: 120 }} placeholder={privates.find((m) => m.id === ipoId)?.mark ?? "price"} value={ipoPrice} onChange={(e) => setIpoPrice(e.target.value.trim())} />
+          </div>
+          <button className="btn primary" disabled={!ipoId || !(num(ipoPrice) > 0)} onClick={() => run(`${ipoId} IPO at ${ipoPrice}`, "/api/admin/ipo", { market: ipoId, price: ipoPrice }, () => setIpoPrice(""))}>
+            IPO
+          </button>
+        </div>
+
+        <div className="panel panel-body col">
+          <h3>Resolve a binary</h3>
+          <select className="input" value={binaryId} onChange={(e) => setBinary(e.target.value)} disabled={!binaries.length}>
+            {binaries.length === 0 && <option>no open binaries</option>}
+            {binaries.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.id} · {m.name}
+              </option>
+            ))}
+          </select>
+          <div className="row">
+            {["0", "1"].map((p) => (
+              <button key={p} className="btn grow" disabled={!binaryId} onClick={() => confirm(`Resolve ${binaryId} at ${p}?`) && run(`${binaryId} resolved ${p}`, "/api/admin/resolve", { market: binaryId, price: p })}>
+                {p === "1" ? "YES → 1" : "NO → 0"}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+      {last && (
+        <div className="note effects">
+          <b>{last.title}</b>
+          {last.lines.length > 0 ? (
+            <ul>
+              {last.lines.map((l, i) => (
+                <li key={i}>{l}</li>
+              ))}
+            </ul>
+          ) : (
+            <span className="muted"> · done</span>
+          )}
+        </div>
+      )}
     </>
   );
 }

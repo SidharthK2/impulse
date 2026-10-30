@@ -1344,3 +1344,28 @@ tr.me {
   padding: 0;
   background: transparent;
 }
+
+/* ---------- admin ---------- */
+
+.demo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 10px;
+}
+.demo-grid h3 {
+  margin: 0;
+  font-size: 13px;
+}
+.demo-grid .col {
+  gap: 8px;
+}
+.page .demo-grid p {
+  margin: 0;
+}
+.effects {
+  margin-top: 10px;
+}
+.effects ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
