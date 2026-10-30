@@ -1,14 +1,13 @@
-# Deploy to Fly.io on every push to main (or by hand from the Actions tab).
+# Deploy to Fly.io on demand only: Actions tab → "Deploy to Fly" → Run workflow, or `gh workflow run fly-deploy.yml`.
+# It deploys the chosen branch (main by default). Pushes don't deploy.
 # Needs the repo secret FLY_API_TOKEN: `fly tokens create deploy -x 999999h`, then add it under
 # Settings → Secrets and variables → Actions. The image is built on Fly's remote builder, not on the runner.
 name: Deploy to Fly
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
-# One deploy at a time; a newer push waits rather than racing the running one.
+# One deploy at a time; a second run waits rather than racing the running one.
 concurrency:
   group: fly-deploy
   cancel-in-progress: false

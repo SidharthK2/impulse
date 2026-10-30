@@ -29,11 +29,13 @@ Optional: `fly secrets set OFFLINE=1` (or uncomment it in `fly.toml`) for simula
 
 ## Deploys from GitHub
 
-`.github/workflows/fly-deploy.yml` deploys on every push to `main`, and from the Actions tab by hand.
+`.github/workflows/fly-deploy.yml` deploys **on demand only**: GitHub → Actions → "Deploy to Fly" → Run workflow
+(pick the branch, default `main`), or from a terminal: `gh workflow run fly-deploy.yml --repo SidharthK2/impulse`.
+Pushes don't deploy.
 
 1. `fly tokens create deploy -x 999999h --app <your-app-name>`
 2. GitHub repo → Settings → Secrets and variables → Actions → New secret `FLY_API_TOKEN` with that token.
-3. Push `main`.
+3. Run the workflow when you want to ship.
 
 ## Day to day
 
