@@ -6,6 +6,7 @@ import { getKey, setKey } from "./api";
 
 export type Theme = "dark" | "light";
 export type Range = "5m" | "1h" | "1d";
+export type BookTab = "book" | "trades";
 
 export interface OrderDefaults {
   type: "market" | "limit";
@@ -19,12 +20,14 @@ interface Prefs {
   lastMarket: string | null;
   order: OrderDefaults;
   range: Range;
+  bookTab: BookTab;
   /** Dev only: merge typed fixtures (web/src/fixtures) into server data for contract fields the server lacks. */
   fixtures: boolean;
   setTheme: (t: Theme) => void;
   setLastMarket: (id: string) => void;
   setOrder: (o: Partial<OrderDefaults>) => void;
   setRange: (r: Range) => void;
+  setBookTab: (t: BookTab) => void;
   setFixtures: (on: boolean) => void;
 }
 
@@ -62,11 +65,13 @@ export const usePrefs = create<Prefs>()(
       lastMarket: null,
       order: { type: "market", unit: "usd", leverage: null },
       range: "1h",
+      bookTab: "book",
       fixtures: false,
       setTheme: (theme) => set({ theme }),
       setLastMarket: (lastMarket) => set({ lastMarket }),
       setOrder: (o) => set((s) => ({ order: { ...s.order, ...o } })),
       setRange: (range) => set({ range }),
+      setBookTab: (bookTab) => set({ bookTab }),
       setFixtures: (fixtures) => set({ fixtures: import.meta.env.DEV && fixtures }),
     }),
     {

@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AccountPanel } from "../components/AccountPanel";
 import { Chart } from "../components/Chart";
 import { InfoPanel, MarketBar, SpotPanel } from "../components/Market";
-import { OrderBook, Trades } from "../components/OrderBook";
+import { BookPanel } from "../components/OrderBook";
 import { OrderForm } from "../components/OrderForm";
 import { PreIpoPanel } from "../components/PreIpo";
 import { LaunchPanel, SnipePanel } from "../components/Snipe";
@@ -45,8 +45,7 @@ export function TradePage() {
           </div>
         ) : (
           <>
-            <OrderBook market={market} onPick={(p) => setPicked({ price: p, n: Date.now() })} />
-            <Trades market={market} />
+            <BookPanel market={market} onPick={(p) => setPicked({ price: p, n: Date.now() })} />
           </>
         )}
       </div>

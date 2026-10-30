@@ -798,10 +798,29 @@ table.grid tr.click:hover td {
   text-align: right;
 }
 
+.book-panel {
+  flex: 1;
+  min-height: 0;
+}
 .tape {
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
   font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.tape .hdr {
+  display: grid;
+  grid-template-columns: 1fr 1fr 64px;
+  padding: 4px 12px;
+  color: var(--faint);
+  font-family: var(--sans);
+  font-size: 11px;
+}
+.tape .hdr span:not(:first-child) {
+  text-align: right;
 }
 .tape .r {
   display: grid;
