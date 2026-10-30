@@ -6,6 +6,7 @@ import { useEffect, useMemo } from "react";
 import { ApiError, api, live } from "./api";
 import { fixtureCall, fixtureCandles, isFixtureMarket, setRealMarketIds, useFixtureWorld } from "./fixtures";
 import { normalizeAccount, normalizeEvents, normalizeMarkets } from "./normalize";
+import { paced } from "./pacing";
 import { useSession } from "./store";
 import type { AccountView, BookView, Candle, ConfigView, FillView, LeaderRow, MarketView, RiskEvent } from "./types";
 
@@ -19,7 +20,13 @@ function useLive<T>(key: QueryKey, ch: string | null, path: string | null, shape
   const hash = JSON.stringify(key);
   useEffect(() => {
     if (!ch) return;
-    return live.subscribe(ch, (raw) => qc.setQueryData(key, shape(raw)));
+    // Throttled per channel (pacing.ts); only the payloads that get through are normalized and cached.
+    const p = paced<unknown>(ch, (raw) => qc.setQueryData(key, shape(raw)));
+    const off = live.subscribe(ch, p.push);
+    return () => {
+      off();
+      p.cancel();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ch, hash]);
   // Channels without a REST route (book, trades) just wait for their first push.

@@ -1,4 +1,5 @@
 import { useForm, useSelector } from "@tanstack/react-form";
+import { useDebouncedValue } from "@tanstack/react-pacer";
 import { useEffect, useRef, useState } from "react";
 import { num, price as fmtPrice, size as fmtSize, toInput, usd } from "../format";
 import { act } from "../queries";
@@ -121,25 +122,31 @@ export function OrderForm({ market, account, signedIn, picked, onSignUp }: Props
   const v = useSelector(form.store, (s) => s.values);
   const submitting = useSelector(form.store, (s) => s.isSubmitting);
 
+  // The preview (size, notional, margin, liquidation) follows the inputs 150 ms behind, so typing stays smooth.
+  // Inputs, validation and submit always use the live values.
+  const [pv] = useDebouncedValue(v, { wait: 150 });
+
   const binary = market.kind === "binary";
-  const ref = refPrice(market, v);
-  const sizeCoins = coins(market, v);
-  const lev = v.leverage;
+  const ref = refPrice(market, pv);
+  const sizeCoins = coins(market, pv);
+  const lev = pv.leverage;
   const notional = sizeCoins * ref;
-  const maxLoss = binary ? sizeCoins * (v.side === "buy" ? ref : 1 - ref) : Infinity;
+  const maxLoss = binary ? sizeCoins * (pv.side === "buy" ? ref : 1 - ref) : Infinity;
   const capped = notional / lev >= maxLoss;
   const margin = capped ? maxLoss * 1.05 : notional / lev;
   const wallet = num(account?.wallet);
-  const reducing = position && ((position.side === "long" && v.side === "sell") || (position.side === "short" && v.side === "buy"));
+  const reducing = position && ((position.side === "long" && pv.side === "sell") || (position.side === "short" && pv.side === "buy"));
   const mmLev = market.maintenanceLeverage; // liquidation is at the market's maintenance margin whatever leverage you chose
   const liq = capped
     ? null
-    : v.side === "buy"
+    : pv.side === "buy"
       ? (ref * (1 - 1 / lev)) / (1 - 1 / Math.max(mmLev, 1.0001))
       : (ref * (1 + 1 / lev)) / (1 + 1 / Math.max(mmLev, 1.0001));
   const effOnMaxLoss = binary && Number.isFinite(maxLoss) && margin > 0 ? maxLoss / margin : null;
 
   const setPct = (p: number) => {
+    const ref = refPrice(market, v);
+    const lev = v.leverage;
     if (!Number.isFinite(wallet) || !Number.isFinite(ref) || ref <= 0) return;
     if (v.reduceOnly && position) {
       form.setFieldValue("unit", "coin");
@@ -371,15 +378,15 @@ export function OrderForm({ market, account, signedIn, picked, onSignUp }: Props
           <dd>{sizeCoins > 0 ? `${fmtSize(sizeCoins, market.szDecimals)} ${market.base.slice(0, 10)}` : "—"}</dd>
           <dt>Notional</dt>
           <dd>{notional > 0 ? usd(notional) : "—"}</dd>
-          <dt>{reducing || v.reduceOnly ? "Margin" : "Margin posted"}</dt>
-          <dd>{reducing || v.reduceOnly ? "none (reduces)" : margin > 0 ? usd(margin) : "—"}</dd>
+          <dt>{reducing || pv.reduceOnly ? "Margin" : "Margin posted"}</dt>
+          <dd>{reducing || pv.reduceOnly ? "none (reduces)" : margin > 0 ? usd(margin) : "—"}</dd>
           {binary && maxLoss > 0 && Number.isFinite(maxLoss) && (
             <>
               <dt>Max loss</dt>
               <dd>{usd(maxLoss)}</dd>
             </>
           )}
-          {!reducing && !v.reduceOnly && (
+          {!reducing && !pv.reduceOnly && (
             <>
               <dt title="Approximate: ignores funding, the max-loss cap and any taper">Est. liquidation</dt>
               <dd>{capped ? "none: fully collateralized" : liq && Number.isFinite(liq) && sizeCoins > 0 ? fmtPrice(liq, market.priceDecimals) : "—"}</dd>
@@ -389,7 +396,7 @@ export function OrderForm({ market, account, signedIn, picked, onSignUp }: Props
           <dd>{signedIn ? usd(wallet) : "—"}</dd>
         </dl>
 
-        {binary && v.side === "sell" && effOnMaxLoss !== null && effOnMaxLoss > lev * 1.5 && !v.reduceOnly && (
+        {binary && pv.side === "sell" && effOnMaxLoss !== null && effOnMaxLoss > lev * 1.5 && !pv.reduceOnly && (
           <div className="note warn">
             {lev}× on notional is <b>{effOnMaxLoss.toFixed(1)}×</b> on this short's max loss ({usd(maxLoss)} if {market.base} resolves YES). If it does, the shortfall is
             charged to the longs as ADL.
