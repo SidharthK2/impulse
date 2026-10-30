@@ -13,14 +13,15 @@ mod feeds;
 mod intake;
 mod persist;
 mod rng;
+mod sequencer;
+mod store;
 mod units;
 mod views;
 mod ws;
 
 use api::{log, App};
 use command::Command;
-use exchange::Exchange;
-use intake::{wall_ms, IntakeClock};
+use intake::IntakeClock;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -53,16 +54,39 @@ fn submit(app: &App, cmd: Command) {
     log_err(kind, app.lock().submit(cmd));
 }
 
-fn save(app: &App, dir: &std::path::Path) -> Option<u64> {
-    let (text, version) = {
-        let core = app.lock();
-        (persist::serialize(&core.x), core.x.version)
+/// `impulse-server export-json OUT_DIR`: write DATA_DIR's exchange (latest state, rebuilt read-only) as a legacy
+/// JSON snapshot, OUT_DIR/snapshot.json, the format before the database. Starting a server on a DATA_DIR holding
+/// only that file imports it.
+fn export_json(data_dir: &std::path::Path, args: &[String]) -> ! {
+    let Some(out) = args.first() else {
+        eprintln!("usage: impulse-server export-json OUT_DIR");
+        std::process::exit(2)
     };
-    match persist::save(dir, &text) {
-        Ok(()) => Some(version),
+    let result = store::Store::open_read_only(data_dir)
+        .and_then(|s| sequencer::rebuild(&s, false, None))
+        .and_then(|(x, _, _)| persist::save(std::path::Path::new(out), &persist::serialize(&x)).map_err(|e| e.to_string()));
+    match result {
+        Ok(()) => std::process::exit(0),
         Err(e) => {
-            log(&format!("snapshot failed: {e}"));
-            None
+            eprintln!("export-json: {e}");
+            std::process::exit(1)
+        }
+    }
+}
+
+/// `impulse-server replay [--full] [--until SEQ]`: rebuild DATA_DIR's exchange from its database (read-only) and
+/// print {seq, hash, replayed, ms}. From the latest snapshot by default; `--full` replays the whole journal.
+fn replay(data_dir: &std::path::Path, args: &[String]) -> ! {
+    let full = args.iter().any(|a| a == "--full");
+    let until = args.iter().position(|a| a == "--until").and_then(|i| args.get(i + 1)).and_then(|s| s.parse().ok());
+    match sequencer::replay_report(data_dir, full, until) {
+        Ok(report) => {
+            println!("{report}");
+            std::process::exit(0)
+        }
+        Err(e) => {
+            eprintln!("replay: {e}");
+            std::process::exit(1)
         }
     }
 }
@@ -71,6 +95,7 @@ fn save(app: &App, dir: &std::path::Path) -> Option<u64> {
 async fn main() {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let here = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let args: Vec<String> = std::env::args().skip(1).collect();
     let port: u16 = env("PORT").and_then(|p| p.parse().ok()).unwrap_or(8787);
     let data_dir = env("DATA_DIR").map(PathBuf::from).unwrap_or_else(|| here.join("../data"));
     let web_dir = env("WEB_DIR").map(PathBuf::from).unwrap_or_else(|| here.join("../../web/dist"));
@@ -79,6 +104,12 @@ async fn main() {
     let bots = env("BOTS").as_deref() != Some("0");
     let test_clock = env("TEST_CLOCK").as_deref() == Some("1");
     let clock = IntakeClock::new(test_clock);
+    let cli_data_dir = || env("DATA_DIR").map(PathBuf::from).unwrap_or_else(|| here.join("../data"));
+    match args.first().map(String::as_str) {
+        Some("replay") => replay(&cli_data_dir(), &args[1..]),
+        Some("export-json") => export_json(&cli_data_dir(), &args[1..]),
+        _ => {}
+    }
     if env("EXIT_WITH_STDIN").as_deref() == Some("1") {
         // Test harnesses: exit when the parent closes our stdin (or dies), so no server outlives its tests.
         std::thread::spawn(|| {
@@ -87,34 +118,50 @@ async fn main() {
         });
     }
 
-    let snap = match persist::load(&data_dir) {
+    let store = match store::Store::open(&data_dir) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("{e}");
+            eprintln!("cannot open the database in {}: {e}", data_dir.display());
             std::process::exit(1);
         }
     };
-    let fresh = snap.is_none();
-    let (x, down) = match snap {
-        Some((x, saved_at)) => (x, saved_at.map_or(0, |t| wall_ms() - t)),
-        None => (Exchange::new(0), 0),
+    log(&format!("database {}", store.path.display()));
+    let mut core = sequencer::Core::new(bots, clock, Some(store));
+    let recovery = match core.recover(&data_dir) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("recovery failed: {e}");
+            std::process::exit(1);
+        }
     };
-    let app = App::new(api::new_core(x, bots, clock), admin_token.clone(), Some(web_dir), test_clock);
-    if fresh {
-        submit(&app, Command::Genesis);
-        log(&format!("fresh exchange; listing default markets{}…", if offline { " (offline)" } else { "" }));
-        feeds::list_defaults(&app, offline).await;
-        log(&format!("listed {}", app.lock().x.markets.keys().cloned().collect::<Vec<_>>().join(", ")));
-    } else {
-        submit(&app, Command::Resume { down_ms: down });
-        let core = app.lock();
-        log(&format!(
-            "restored snapshot: {} markets, {} accounts, engine t={}s; paused for {}s of downtime",
-            core.x.markets.len(),
-            core.x.accounts.len(),
-            core.x.state.time,
-            (down + 500) / 1000
-        ));
+    if let (IntakeClock::Manual(t), sequencer::Recovery::Restored { .. }) = (&mut core.clock, &recovery) {
+        *t = (*t).max(core.x.now); // the test clock never runs behind the journal
+    }
+    let last_ts = core.x.now;
+    let app = App::new(core, admin_token.clone(), Some(web_dir), test_clock);
+    match recovery {
+        sequencer::Recovery::Fresh => {
+            submit(&app, Command::Genesis);
+            log(&format!("fresh exchange; listing default markets{}…", if offline { " (offline)" } else { "" }));
+            feeds::list_defaults(&app, offline).await;
+            log(&format!("listed {}", app.lock().x.markets.keys().cloned().collect::<Vec<_>>().join(", ")));
+        }
+        sequencer::Recovery::Restored { replayed, imported } => {
+            let down = app.lock().clock.now() - last_ts;
+            if down > 0 {
+                submit(&app, Command::Resume { down_ms: down });
+            }
+            let core = app.lock();
+            log(&format!(
+                "recovered {}: seq {}, {replayed} commands replayed; {} markets, {} accounts, engine t={}s; paused for {}s of downtime",
+                if imported { "from the legacy JSON snapshot" } else { "from the database" },
+                core.seq,
+                core.x.markets.len(),
+                core.x.accounts.len(),
+                core.x.state.time,
+                (down.max(0) + 500) / 1000
+            ));
+        }
     }
     submit(&app, Command::Clock);
     if bots {
@@ -159,22 +206,6 @@ async fn main() {
         feeds::start(&app, &warn);
     }
     every(&app, 500, ws::Hub::tick);
-    {
-        let app = app.clone();
-        let dir = data_dir.clone();
-        tokio::spawn(async move {
-            let mut saved: Option<u64> = None;
-            let mut iv = tokio::time::interval(Duration::from_secs(15));
-            iv.tick().await;
-            loop {
-                iv.tick().await;
-                if saved != Some(app.lock().x.version) {
-                    saved = save(&app, &dir).or(saved);
-                }
-            }
-        });
-    }
-
     let listener = match tokio::net::TcpListener::bind(("0.0.0.0", port)).await {
         Ok(l) => l,
         Err(e) => {
@@ -204,8 +235,8 @@ async fn main() {
                 _ = ctrl_c => {}
                 _ = term => {}
             }
-            log("shutting down, saving snapshot");
-            save(&app, &data_dir);
+            log("shutting down, saving a snapshot");
+            app.lock().snapshot();
             std::process::exit(0);
         }
     };

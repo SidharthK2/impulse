@@ -5,14 +5,14 @@
 
 use crate::book::{Side, Tif};
 use crate::bots::Bots;
-use crate::command::{self, Command, Reply, Tick};
-use crate::exchange::{ExError, Exchange, Kind, MarketSpec, OrderInput, OrderType, Source, XResult};
-use crate::intake::{api_key, wall_ms, IntakeClock};
+use crate::command::{Command, Reply, Tick};
+pub use crate::sequencer::Core;
+use crate::exchange::{ExError, Exchange, Kind, MarketSpec, OrderInput, OrderType, Source};
+use crate::intake::{api_key, wall_ms};
 use crate::feeds;
 use crate::rng::Rng;
 use crate::units::usd;
 use crate::views;
-use crate::ws::Hub;
 use axum::extract::{FromRequest, FromRequestParts, Path, Query, Request, State};
 use axum::http::{header, request::Parts, HeaderValue, Method, StatusCode, Uri};
 use axum::middleware::Next;
@@ -31,35 +31,6 @@ pub fn log(s: &str) {
     use std::io::Write;
     let t = crate::feeds::iso_utc(wall_ms());
     let _ = writeln!(std::io::stdout(), "[{}] {s}", &t[11..19]);
-}
-
-/// Everything the single-threaded core owns. One lock, held for one synchronous step at a time.
-pub struct Core {
-    pub x: Exchange,
-    pub bots: Option<Bots>,
-    pub hub: Hub,
-    pub sim: Rng,
-    pub clock: IntakeClock,
-    /// Steps taken: commands that changed the exchange.
-    pub seq: u64,
-}
-
-impl Core {
-    /// The sequencer. Every state change enters here as a command, which runs at the intake clock's time. If it
-    /// changed the exchange it's a step and gets the next sequence number; if not (refused before any change, or
-    /// nothing to do) it leaves no trace, not even in the exchange's clock.
-    pub fn submit(&mut self, cmd: Command) -> XResult<Reply> {
-        let prev = self.x.now;
-        let version = self.x.version;
-        self.x.now = self.clock.now().max(prev);
-        let r = command::apply(&mut self.x, &cmd);
-        if self.x.version == version {
-            self.x.now = prev;
-        } else {
-            self.seq += 1;
-        }
-        r
-    }
 }
 
 pub struct Inner {
@@ -632,7 +603,8 @@ async fn test_invariants(State(app): State<App>, _: Admin) -> ApiResult {
 }
 
 async fn test_hash(State(app): State<App>, _: Admin) -> ApiResult {
-    ok(json!({ "hash": app.lock().x.state_hash() }))
+    let core = app.lock();
+    ok(json!({ "hash": core.x.state_hash(), "seq": core.seq }))
 }
 
 /// Round-trip the whole exchange through a snapshot in place, then treat `downMs` as downtime.
@@ -777,6 +749,3 @@ pub fn router(app: App) -> Router {
     r.method_not_allowed_fallback(not_found).fallback(fallback).layer(axum::middleware::from_fn(cors)).with_state(app)
 }
 
-pub fn new_core(x: Exchange, bots: bool, clock: IntakeClock) -> Core {
-    Core { x, bots: bots.then(Bots::new), hub: Hub::default(), sim: Rng::new(42), clock, seq: 0 }
-}
