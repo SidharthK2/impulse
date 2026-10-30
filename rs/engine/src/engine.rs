@@ -158,6 +158,9 @@ pub struct Market {
     pub volume: i128,
     #[serde(with = "big_opt")]
     pub last_trade: Option<i128>,
+    /// order-book mid from the exchange (`book` events): the funding premium's perp price
+    #[serde(with = "big_opt")]
+    pub mid: Option<i128>,
     #[serde(with = "big")]
     pub funding_rate: i128,
     pub status: Status,
@@ -255,6 +258,8 @@ pub enum Event {
     Snipe { account: String, market: String, amount: Num },
     /// end a launch's snipe window: fill every bid at one price
     Open { market: String },
+    /// the exchange's order-book mid (None: a side is empty)
+    Book { market: String, mid: Option<Num> },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -719,6 +724,7 @@ fn on_market(s: &mut State, e: &MarketEvent) -> R<()> {
         tier: 0,
         volume: 0,
         last_trade: None,
+        mid: None,
         funding_rate: 0,
         status: Status::Open,
         vault: 0,
@@ -865,9 +871,11 @@ fn update_funding_rate(m: &mut Market) {
         }
     };
     let base = FUNDING_BASE_PPB[m.tier];
-    let premium = match m.last_trade {
+    // The perp price is the book mid, else the last trade. A last trade goes stale when the oracle gaps; the
+    // book is re-quoted around the new mark.
+    let premium = match m.mid.or(m.last_trade) {
         None => 0,
-        Some(lt) => ((lt - mark) * PPB) / mark / 8,
+        Some(perp) => ((perp - mark) * PPB) / mark / 8,
     };
     m.funding_rate = base + premium.clamp(-FUNDING_PREMIUM_CAP_PPB, FUNDING_PREMIUM_CAP_PPB);
 }
@@ -1037,6 +1045,19 @@ fn resolve_distress(m: &mut Market) -> R<Vec<Effect>> {
             }
         }
     }
+}
+
+fn on_book(s: &mut State, market: &str, mid: &Option<Num>) -> R<()> {
+    let m = get_market(&mut s.markets, market)?;
+    if m.status != Status::Open {
+        return rej(format!("{} is resolved", m.id));
+    }
+    m.mid = match mid {
+        None => None,
+        Some(p) => Some(parse_price(m, &p.0)?),
+    };
+    update_funding_rate(m);
+    Ok(())
 }
 
 fn on_tick(s: &mut State, market: &str, price: &str) -> R<Vec<Effect>> {
@@ -1406,6 +1427,7 @@ pub fn apply(state: &State, event: &Event) -> Result<(State, Vec<Effect>), Apply
         Event::Advance { seconds } => on_advance(&mut s, seconds),
         Event::Snipe { account, market, amount } => on_snipe(&mut s, account, market, amount).map(|_| vec![]),
         Event::Open { market } => on_open(&mut s, market),
+        Event::Book { market, mid } => on_book(&mut s, market, mid).map(|_| vec![]),
     }?;
     let errs = check_invariants(&s);
     if !errs.is_empty() {

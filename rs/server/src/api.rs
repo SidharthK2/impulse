@@ -434,8 +434,21 @@ async fn snipe(State(app): State<App>, User(id): User, b: Body) -> ApiResult {
 
 // ---------- admin ----------
 
+/// After a gap the book is still quoted around the old price; have the bot maker re-quote that market now
+/// (rather than on its next turn), so the book, and the funding premium read from it, follow the new mark.
+fn requote(core: &mut Core, market: &str) {
+    let Core { x, bots, .. } = core;
+    if let Some(b) = bots.as_mut().filter(|b| b.enabled) {
+        b.quote(x, market);
+    }
+    x.sync_books();
+}
+
 async fn admin_price(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
-    let effects = app.lock().x.admin_price(&b.str("market")?, &b.str("price")?, b.num("holdSeconds").unwrap_or(60.0))?;
+    let market = b.str("market")?;
+    let mut core = app.lock();
+    let effects = core.x.admin_price(&market, &b.str("price")?, b.num("holdSeconds").unwrap_or(60.0))?;
+    requote(&mut core, &market);
     ok(json!({ "effects": kinds(&effects) }))
 }
 
@@ -535,7 +548,10 @@ async fn admin_preipo(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
 }
 
 async fn admin_ipo(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
-    let effects = app.lock().x.ipo(&b.str("market")?, &b.str("price")?)?;
+    let market = b.str("market")?;
+    let mut core = app.lock();
+    let effects = core.x.ipo(&market, &b.str("price")?)?;
+    requote(&mut core, &market);
     ok(json!({ "effects": kinds(&effects) }))
 }
 

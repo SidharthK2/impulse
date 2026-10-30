@@ -108,7 +108,8 @@ export interface Market {
   time: bigint; // market's view of the clock (kept in sync with State.time)
   tier: number; // graduation tier, 0 = launch
   volume: bigint; // cumulative traded notional
-  lastTrade: bigint | null; // last trade price, for the funding premium
+  lastTrade: bigint | null; // last trade price: the funding premium's perp price when there's no book mid
+  mid: bigint | null; // order-book mid from the exchange (`book` events): the funding premium's perp price
   fundingRate: bigint; // ppb per hour, positive = longs pay shorts
   status: "open" | "resolved";
   vault: bigint; // collateral held for this market = Σ allocated
@@ -165,7 +166,8 @@ export type Event =
   | { type: "advance"; seconds: number } // move the clock; curve oracles refresh and risk runs
   | { type: "resolve"; market: string; price: string }
   | { type: "snipe"; account: string; market: string; amount: Amount } // bid USDC into a launch; "all" allowed
-  | { type: "open"; market: string }; // end a launch's snipe window: fill every bid at one price
+  | { type: "open"; market: string } // end a launch's snipe window: fill every bid at one price
+  | { type: "book"; market: string; mid: string | null }; // the exchange's order-book mid (null: a side is empty)
 
 export interface ForcedClose {
   account: string;
@@ -407,6 +409,7 @@ function onMarket(s: State, e: Extract<Event, { type: "market" }>) {
     tier: 0,
     volume: 0n,
     lastTrade: null,
+    mid: null,
     fundingRate: 0n,
     status: "open",
     vault: 0n,
@@ -519,7 +522,10 @@ function updateFundingRate(m: Market) {
     return;
   }
   const base = FUNDING_BASE_PPB[m.tier]!;
-  let premium = m.lastTrade === null ? 0n : ((m.lastTrade - m.mark) * PPB) / m.mark / 8n;
+  // The perp price is the book mid, else the last trade. A last trade goes stale when the oracle gaps; the
+  // book is re-quoted around the new mark.
+  const perp = m.mid ?? m.lastTrade;
+  let premium = perp === null ? 0n : ((perp - m.mark) * PPB) / m.mark / 8n;
   if (premium > FUNDING_PREMIUM_CAP_PPB) premium = FUNDING_PREMIUM_CAP_PPB;
   if (premium < -FUNDING_PREMIUM_CAP_PPB) premium = -FUNDING_PREMIUM_CAP_PPB;
   m.fundingRate = base + premium;
@@ -636,6 +642,13 @@ function resolveDistress(m: Market): Effect[] {
       }
     }
   }
+}
+
+function onBook(s: State, e: Extract<Event, { type: "book" }>) {
+  const m = getMarket(s, e.market);
+  if (m.status !== "open") throw new Rejected(`${m.id} is resolved`);
+  m.mid = e.mid === null ? null : parsePrice(m, e.mid);
+  updateFundingRate(m);
 }
 
 function onTick(s: State, e: { market: string; price: string }): Effect[] {
@@ -927,6 +940,9 @@ export function apply(state: State, event: Event): Result {
         break;
       case "open":
         effects = onOpen(s, event);
+        break;
+      case "book":
+        onBook(s, event);
         break;
       default:
         throw new Rejected(`unknown event ${JSON.stringify(event)}`);

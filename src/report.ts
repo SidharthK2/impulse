@@ -54,6 +54,8 @@ export function describeEvent(e: Event, before: State): string {
       return `snipe     ${e.market}: ${e.account} bids ${amt(e.amount)}`;
     case "open":
       return `OPEN      ${e.market}`;
+    case "book":
+      return `book      ${e.market}: mid ${e.mid ?? "—"}`;
   }
 }
 

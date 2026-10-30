@@ -973,8 +973,10 @@ impl Exchange {
     }
 
     /// Move the engine clock to wall time: funding accrues, curve TWAPs refresh, tapers tighten, risk runs.
-    /// Then open every launch whose snipe window has ended.
+    /// Then open every launch whose snipe window has ended. Book mids go to the engine first, so funding accrues at
+    /// a rate from the current book.
     pub fn clock(&mut self) -> XResult<Vec<Effect>> {
+        self.sync_books();
         let t = self.engine_time(self.now());
         let mut effects = vec![];
         if t > self.state.time {
@@ -991,6 +993,35 @@ impl Exchange {
             effects.extend(self.reprice(&id)?);
         }
         Ok(effects)
+    }
+
+    /// Tell the engine each open market's book mid (both sides quoted, else none) where it changed: the funding
+    /// premium's perp price. A refused update (it shouldn't be) is logged and skipped.
+    pub fn sync_books(&mut self) {
+        let events: Vec<Event> = self
+            .markets
+            .keys()
+            .filter_map(|id| {
+                let m = &self.state.markets[id];
+                if m.status != Status::Open || m.mark.is_none() {
+                    return None;
+                }
+                let book = &self.books[id];
+                let mid = match (book.best(Side::Buy), book.best(Side::Sell)) {
+                    (Some(bid), Some(ask)) => Some((bid.price + ask.price) / 2),
+                    _ => None,
+                };
+                (mid != m.mid).then(|| Event::Book { market: id.clone(), mid: mid.map(|v| dec(v).into()) })
+            })
+            .collect();
+        if events.is_empty() || self.exec(&events).is_ok() {
+            return;
+        }
+        for e in events {
+            if let Err(err) = self.exec(std::slice::from_ref(&e)) {
+                eprintln!("book mid refused: {}", err.message());
+            }
+        }
     }
 
     /// A pre-IPO mark from the market's own book: the median of best bid, best ask and last trade; the last trade

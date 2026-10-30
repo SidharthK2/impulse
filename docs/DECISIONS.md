@@ -56,6 +56,7 @@ Newest last. Each entry: the decision, why, and what it rules out.
 | 2026-10-25 | House bots are ordinary accounts | Their liquidations and haircuts are real data |
 | 2026-10-25 | Bearer API keys instead of Mirror-style signed requests | Paper money; signing is a later step |
 | 2026-10-25 | Default ADL rule `pnl` for MVP markets | Brief recommendation (finding 5) |
+| 2026-10-31 | **Deliberate change:** the funding premium's perp price is the order book's mid when both sides are quoted, else the last trade, else the mark (premium 0). The exchange sends the mid to the engine as a `book` event on every 2 s clock step, ahead of the `advance`, and the bot maker re-quotes a market right after an admin gap or IPO | After a gap (crash, IPO) the last trade is stale, so the premium sat at its ±4%/h cap until someone traded (finding J), which reads as a bug. The book is re-quoted around the new mark within seconds. Supersedes "the last trade stands in for the book price" (2026-10-05). Both engines; the differential histories include `book` events |
 
 ## Deliberately not done (yet)
 

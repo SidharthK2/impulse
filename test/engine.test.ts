@@ -602,3 +602,27 @@ describe("creator-coin launch", () => {
     ]);
   });
 });
+
+describe("funding premium", () => {
+  const rate = (s: State) => s.markets[M]!.fundingRate;
+  const base = 500_000n; // 0.05%/h at tier 0
+
+  it("reads the book mid, so a gap with a stale last trade doesn't pin funding at its cap", () => {
+    const { state, results } = run([perp(), ...fund("a", "1000"), ...fund("b", "1000"), K("100"), T("a", "b", 1, "100"), K("50")]);
+    expect(results.every((r) => r.ok)).toBe(true);
+    expect(rate(state)).toBe(base + 40_000_000n); // last trade 100 vs mark 50: the premium caps at 4%/h
+
+    const requoted = apply(state, { type: "book", market: M, mid: "50.2" });
+    expect(requoted.ok).toBe(true);
+    expect(rate(requoted.state)).toBe(base + 500_000n); // (50.2 − 50) / 50 / 8 = 0.05%/h
+    expect(requoted.state.markets[M]!.mid).toBe(usd("50.2"));
+
+    const emptied = apply(requoted.state, { type: "book", market: M, mid: null }); // a side of the book is empty
+    expect(rate(emptied.state)).toBe(base + 40_000_000n); // back to the last trade
+  });
+
+  it("refuses a mid outside the market's bounds or on a resolved market", () => {
+    const { results } = run([binary(), { type: "book", market: M, mid: "1.5" }, K("0.5"), R("1"), { type: "book", market: M, mid: null }]);
+    expect(results.map((r) => (r.ok ? "ok" : r.reason))).toEqual(["ok", "price 1.5 outside [0.0000, 1.0000] for X", "ok", "ok", "X is resolved"]);
+  });
+});

@@ -73,8 +73,8 @@ synchronous step against it. Money is `i128` nano-USD everywhere; the engine has
    graduations, settlements, opens) into the risk feed, each with the mark at that moment. It also cancels the resting
    orders of anyone liquidated, and returns the collateral of any flat position to its wallet.
 
-Oracle ticks, curve trades and the clock (`advance` every 2 s: funding, TWAP refresh, taper, launch opens, pre-IPO marks)
-are engine transitions too. So "solvent after every transition" holds for the live venue exactly as it does in replay.
+Oracle ticks, curve trades and the clock (`advance` every 2 s: book mids for the funding premium, funding, TWAP
+refresh, taper, launch opens, pre-IPO marks) are engine transitions too. So "solvent after every transition" holds for the live venue exactly as it does in replay.
 
 ## Creator coins
 
@@ -250,7 +250,7 @@ Each market reports these in `settings`, with `ours: true` where the number is o
 | Spot fee | 1%, also charged on snipes |
 | Snipe window | 60 s |
 | ADL | pro-rata on profit first, then principal |
-| Funding | base 0.05%/h at launch, falling with each tier; premium (last trade − mark) / mark / 8 |
+| Funding | base 0.05%/h at launch, falling with each tier; premium (book mid − mark) / mark / 8, capped at ±4%/h (the last trade if a side of the book is empty) |
 | Pre-IPO mark | median(best bid, best ask, last trade); shares for the implied valuation: 1,000,000,000 |
 
 ## Decisions made for the MVP
@@ -279,8 +279,9 @@ Each market reports these in `settings`, with `ours: true` where the number is o
 - The launch reserve is held, not distributed: nothing pays it out to the creator or back to snipers.
 - A pre-IPO mark is only as good as its book. The median resists one quote, but a thin book can be walked, and every
   move is an engine tick that can liquidate. The bot maker is the only liquidity a fresh exchange has.
-- Funding's premium uses the **last trade** as the perp price, so after a gap a stale print drives funding until
-  someone trades (finding J).
+- Funding's premium uses the book mid, sent to the engine every 2 s. Until the book is re-quoted after a gap (at once
+  for the bot maker after an admin gap or IPO, within seconds otherwise), the old quotes still drive it; with a side
+  of the book empty it falls back to the last trade, which can be stale (finding J).
 - Polymarket mirrors have no taper, because Polymarket's end dates aren't reliable resolution times. Admin binaries can taper.
 - One process, in memory, snapshotted every 15 s; a crash loses at most 15 s. Each engine transition clones the state,
   which is fine at this size and would need rethinking at real scale.

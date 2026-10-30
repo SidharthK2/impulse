@@ -57,6 +57,7 @@ describe.skipIf(!existsSync(bin))("differential: Rust engine = TS engine", () =>
     let haircuts = 0;
     let opens = 0;
     let snipes = 0;
+    let books = 0;
     histories.forEach((h, i) => {
       compare(`seed ${i + 1}`, h, rust[i]);
       const steps = (rust[i] as { steps: { ok: boolean; effects?: { kind: string }[] }[] }).steps;
@@ -64,11 +65,13 @@ describe.skipIf(!existsSync(bin))("differential: Rust engine = TS engine", () =>
       haircuts += steps.filter((s) => s.effects?.some((e) => e.kind === "haircut")).length;
       opens += steps.filter((s) => s.effects?.some((e) => e.kind === "open")).length;
       snipes += h.filter((e, j) => e.type === "snipe" && steps[j]!.ok).length;
+      books += h.filter((e, j) => e.type === "book" && e.mid !== null && steps[j]!.ok).length;
     });
     // The histories must actually exercise refusals and ADL, or the comparison proves little.
     expect(rejected).toBeGreaterThan(300);
     expect(haircuts).toBeGreaterThan(30);
     expect(opens).toBe(300); // every history launches its creator coin
     expect(snipes).toBeGreaterThan(600);
+    expect(books).toBeGreaterThan(300); // book mids set, so funding premiums come from them
   }, 120_000);
 });

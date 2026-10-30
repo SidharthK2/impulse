@@ -90,6 +90,8 @@ export function randomHistory(seed: number): Event[] {
           { type: "snipe", account: pick(names), market: "COIN", amount: "5" },
           { type: "snipe", account: "nobody", market: "COIN", amount: "5" },
           { type: "market", id: "BADL", preset: "perp", launch: true },
+          { type: "book", market: "BIN", mid: "1.5" },
+          { type: "book", market: "NOPE", mid: null },
         ]),
       );
       continue;
@@ -122,14 +124,19 @@ export function randomHistory(seed: number): Event[] {
       step({ type: "trade", market: m.id, buyer, seller, size, price: Math.max(px, 1e-9).toFixed(9) });
     } else if (roll < 0.72) step({ type: "tick", market: m.id, price: m.move(mark) });
     else if (roll < 0.82) step({ type: "release", account: pick(names), market: m.id, amount: r() < 0.5 ? "all" : String(1 + Math.floor(r() * 50)) });
-    else if (roll < 0.92) step({ type: "allocate", account: pick(names), market: m.id, amount: r() < 0.5 ? "all" : String(1 + Math.floor(r() * 50)) });
-    else step({ type: "advance", seconds: 1 + Math.floor(r() * 900) });
+    else if (roll < 0.9) step({ type: "allocate", account: pick(names), market: m.id, amount: r() < 0.5 ? "all" : String(1 + Math.floor(r() * 50)) });
+    else if (roll < 0.95) {
+      // the exchange's book mid: near the mark, or gone (a side empty)
+      const mid = m.id === "BIN" ? Math.min(1, Math.max(0, mark + (r() - 0.5) * 0.04)) : mark * (0.97 + r() * 0.06);
+      step({ type: "book", market: m.id, mid: r() < 0.2 ? null : Math.max(mid, 1e-9).toFixed(9) });
+    } else step({ type: "advance", seconds: 1 + Math.floor(r() * 900) });
   }
   step({ type: "advance", seconds: 25_000 });
   for (const m of priced) {
     const mk = s.markets[m.id]!.mark;
     const mark = mk === null ? 1 : Number(mk) / 1e9;
     step({ type: "resolve", market: m.id, price: m.id === "BIN" ? (r() < 0.5 ? "0" : "1") : m.move(mark) });
+    step({ type: "book", market: m.id, mid: null }); // refused: resolved
     for (const n of names) step({ type: "release", account: n, market: m.id, amount: "all" });
   }
   for (const n of names) {
