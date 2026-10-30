@@ -148,4 +148,35 @@ mod tests {
         assert_eq!(cents(1_234_567_890_000), "1,234.57");
         assert_eq!(group("12"), "12");
     }
+
+    // Ported from the TypeScript units.test.ts (archive/tests/http/).
+
+    #[test]
+    fn round_trips_scaled_decimals() {
+        assert_eq!(parse_scaled("1.25", 2).unwrap(), 125);
+        assert_eq!(parse_scaled("3", 0).unwrap(), 3);
+        assert!(parse_scaled("1.234", 2).is_err());
+        assert_eq!(fmt_scaled(125, 2), "1.25");
+        assert_eq!(fmt_scaled(-5, 3), "-0.005");
+    }
+
+    #[test]
+    fn converts_coins_to_lots_and_prices_per_coin_to_per_lot() {
+        assert_eq!(lots_from_coins(5, "0.01").unwrap(), 1000);
+        assert_eq!(coins_from_lots(5, 1000), "0.01");
+        assert_eq!(lot_price(5, parse_fixed("80000").unwrap()), parse_fixed("0.8").unwrap());
+    }
+
+    #[test]
+    fn picks_a_five_significant_figure_tick() {
+        assert_eq!(auto_tick(parse_fixed("80711.5").unwrap(), 5), parse_fixed("1").unwrap());
+        assert_eq!(auto_tick(parse_fixed("0.004397").unwrap(), 0), 100);
+        assert_eq!(auto_tick(parse_fixed("0.000005").unwrap(), 0), 1);
+    }
+
+    #[test]
+    fn reads_feed_floats_and_strings() {
+        assert_eq!(nano_from_feed("0.7975").unwrap(), 797_500_000);
+        assert_eq!(nano_from_f64(1.5).unwrap(), 1_500_000_000);
+    }
 }

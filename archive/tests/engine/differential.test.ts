@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import { type Event, apply, initialState } from "../../reference/engine/engine.js";
 import { randomHistory } from "./histories.js";
 
-const root = new URL("../..", import.meta.url).pathname;
+const root = new URL("../../..", import.meta.url).pathname;
 const bin = `${root}rs/target/debug/impulse-replay`;
 
 /** JSON with bigints as decimal strings, the Rust side's encoding. */

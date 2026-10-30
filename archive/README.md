@@ -1,8 +1,38 @@
-> **Archived.** This was the repo's README during the research phase (2026-10-03 to 2026-10-26). The working app
-> is described in the [top-level README](../README.md). Paths below are from that time:
-> `src/engine.ts`, `alloc.ts`, `fixed.ts`, `report.ts` → `reference/engine/`; `src/attack.ts`, `cli.ts`, `compare.ts` →
-> `archive/sims/`; `scenarios/` → `tests/scenarios/`; `test/` → `tests/engine/`; `server/` → `reference/server/`;
-> research docs → `archive/docs/`. Scripts are prefixed `archive:` (e.g. `pnpm archive:demo`).
+> **Archived.** Nothing here is used by the app or its tests (`make test` is all Rust). What's here:
+>
+> | Path | What it is |
+> |---|---|
+> | `reference/` | The TypeScript engine and server the Rust code was ported from (2026-10-31: retired from the app) |
+> | `tests/` | Their Vitest suite: engine, differential (TS vs Rust) and HTTP tests, ported to Rust in `rs/*/tests` |
+> | `golden/generate.ts` | Writes `tests/golden/` (the TS engine's results) that the Rust parity tests compare against |
+> | `tooling/` | The old root Node tooling: `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `tsconfig.json`, `vitest.config.ts` |
+> | `sims/`, `docs/` | The research phase: simulations, findings, Mirror sources |
+>
+> **Running it.** It isn't runnable as checked in: the tooling used to sit at the repo root, and Node resolves
+> packages from a parent `node_modules`. To run it (tested 2026-10-31), install the tooling and link it one level up:
+>
+> ```bash
+> pnpm install --dir archive/tooling --ignore-workspace   # warns that esbuild's build script was skipped; tsx still runs
+> ln -s tooling/node_modules archive/node_modules          # gitignored
+> cargo build --manifest-path rs/Cargo.toml --bins          # the archived tests start these binaries
+> cd archive/tooling
+> pnpm test        # the old Vitest suite (104 tests) against the TS reference and the Rust binaries
+> pnpm typecheck   # reference engine, server, tests, sims
+> pnpm golden      # regenerate tests/golden/ from the TS engine
+> pnpm demo        # replay the scenarios with the TS engine; also replay, attack, compare, sims:test, server:ts
+> ```
+>
+> pnpm 11 also rewrites the `allowBuilds` line of `archive/tooling/pnpm-workspace.yaml` during that install;
+> `git checkout archive/tooling/pnpm-workspace.yaml` puts it back.
+>
+> The old HTTP tests could also target a running server: start one with `TEST_CLOCK=1 ADMIN_TOKEN=t OFFLINE=1 BOTS=0`,
+> then `BASE_URL=http://localhost:8790 pnpm test` from `archive/tooling`.
+
+> Below: the repo's README during the research phase (2026-10-03 to 2026-10-26). The working app is described in the
+> [top-level README](../README.md). Paths below are from that time: `src/engine.ts`, `alloc.ts`, `fixed.ts`, `report.ts`
+> → `archive/reference/engine/`; `src/attack.ts`, `cli.ts`, `compare.ts` → `archive/sims/`; `scenarios/` →
+> `tests/scenarios/`; `test/` → `archive/tests/engine/`; `server/` → `archive/reference/server/`; research docs →
+> `archive/docs/`. Their commands are now run from `archive/tooling` as above (`pnpm demo`, not `pnpm archive:demo`).
 
 # Impulse
 

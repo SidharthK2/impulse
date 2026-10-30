@@ -1,4 +1,5 @@
-// Replays event streams through the Rust engine and prints what happened as JSON, for the differential test.
+// Replays event streams through the Rust engine and prints what happened as JSON (the archived TS differential
+// test, archive/tests/engine/differential.test.ts, compares it with the TS engine).
 //
 //   impulse-replay scenario.json [...]     each file: {"events": [...]}
 //   impulse-replay < histories.json        stdin: one {"events"} object, or an array of them

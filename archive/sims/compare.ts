@@ -2,8 +2,8 @@
 // Usage: tsx archive/sims/compare.ts [scenario.json ...]   (defaults to every scenario in tests/scenarios/)
 
 import { readdirSync, readFileSync } from "node:fs";
-import { type AdlPolicy, type Event, type State, accountIds, equity, marketIds, replay, spotPrice } from "../../reference/engine/engine.js";
-import { fmtUsd } from "../../reference/engine/fixed.js";
+import { type AdlPolicy, type Event, type State, accountIds, equity, marketIds, replay, spotPrice } from "../reference/engine/engine.js";
+import { fmtUsd } from "../reference/engine/fixed.js";
 
 const POLICIES: AdlPolicy[] = ["size", "pnl"];
 

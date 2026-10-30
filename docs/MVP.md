@@ -3,7 +3,7 @@
 *Built 2026-10-25/26 on the `mvp` branch (TypeScript); the backend moved to Rust on 2026-10-30/31. It takes the risk
 engine from simulation to a live venue with play money.*
 
-The research engine (`reference/engine/engine.ts`, ported to `rs/engine`) answers *what happens when a price gaps, and who pays?* on
+The research engine (TypeScript, now `archive/reference/engine/engine.ts`, ported to `rs/engine`) answers *what happens when a price gaps, and who pays?* on
 scripted scenarios. The MVP puts that same engine behind a real exchange: order books, live oracles, accounts, bots and a
 trading UI. Gaps, liquidations and ADL happen live, and you can watch who pays.
 
@@ -18,16 +18,19 @@ Three products sit on it:
 
 ## Run it
 
+You need cargo, and pnpm for the web app (the only Node code outside `archive/`).
+
 ```bash
-pnpm install
-pnpm start          # builds the web app, then the Rust server (release) serves app + API on http://localhost:8787
-pnpm dev            # development: Rust server (debug) on :8787 + Vite on http://localhost:5173 (proxied)
-pnpm test           # builds the Rust binaries, then engine, differential, exchange and API tests (vitest)
-pnpm test:rust      # cargo test: engine and server unit tests
-pnpm typecheck      # engine, TS server and web
+make start          # builds the web app (pnpm in web/), then the Rust server (release) serves app + API on http://localhost:8787
+make dev            # development: Rust server (debug) on :8787 + Vite on http://localhost:5173 (proxied); Ctrl+C stops both
+make test           # cargo test: engine, golden-file parity, server unit tests, HTTP and websocket tests
+make web            # install and build the web app
+make typecheck      # the web app
+make clean-data     # how to start from an empty exchange (prints; deletes nothing)
 ```
 
-The TypeScript server is still there as the reference implementation: `pnpm server:ts`, `pnpm dev:ts`.
+The TypeScript engine and server that the Rust code was ported from are in `archive/reference/`, no longer used by
+the app or its tests; see [archive/README.md](../archive/README.md) to run them.
 
 | Env var | Default | |
 |---|---|---|
@@ -45,7 +48,7 @@ To start fresh, point `DATA_DIR` at a new directory. Nothing deletes old snapsho
 
 | Piece | Where | What it does |
 |---|---|---|
-| Risk engine | `rs/engine` (port of `reference/engine/engine.ts`) | Positions, margin, liquidation, ADL, funding, graduation, taper, curves, launches, invariants |
+| Risk engine | `rs/engine` (port of `archive/reference/engine/engine.ts`) | Positions, margin, liquidation, ADL, funding, graduation, taper, curves, launches, invariants |
 | Exchange | `rs/server/src/exchange.rs` | Order books, matching, auto-margin, accounts, launches, pre-IPO marks, history; every change is an engine transition |
 | Order book | `rs/server/src/book.rs` | Price-time priority CLOB per market |
 | Units | `rs/server/src/units.rs` | Coins ↔ integer lots (Hyperliquid `szDecimals`), coin price ↔ lot price, ticks |
@@ -155,19 +158,20 @@ carries snipes, and `feed` carries the `open` and `ipo` kinds and each event's m
 
 ## Tests
 
-- `tests/engine/differential.test.ts`: every scenario and 300 random histories (each now launches a creator coin: snipes,
-  refused pre-open trades, the open at a random step) through both engines; identical state and effects.
-- `tests/engine/engine.test.ts`: engine behaviour, including P_open for $100,000 and the launch reserve in conservation.
-- `tests/http/api.test.ts`, `exchange.test.ts`: the HTTP and websocket API, run against an in-process TS server and
-  against the Rust binary (started by the vitest global setup with `TEST_CLOCK=1 OFFLINE=1 BOTS=0`).
-- `tests/http/launch.test.ts`, `preipo.test.ts`: creator coins and pre-IPO, Rust server only.
+All Rust, all in `make test` (`cargo test --manifest-path rs/Cargo.toml`):
 
-Against a server you started yourself:
+- `rs/engine/tests/golden.rs`: parity with the TypeScript reference engine, with no TypeScript at runtime. Its
+  results for every scenario in `tests/scenarios/` and for 600 random histories (300 that launch a creator coin and
+  set book mids, 300 fuzz histories under both ADL policies) are frozen in `tests/golden/`; the Rust engine replays
+  the stored event lists and must match every step's effects or rejection reason, and the final state.
+- `rs/engine/tests/engine.rs`, `alloc.rs`: engine behaviour (scenarios' exact numbers, ADL policies, graduation,
+  taper, funding, validation, rounding, curves, launches, the funding premium) and largest-remainder apportionment.
+- `rs/server/tests/*.rs`: the HTTP and websocket API. Each test binary starts the server binary it was built with
+  (`TEST_CLOCK=1 OFFLINE=1 BOTS=0`, a temp `DATA_DIR`) and drives it with reqwest and tokio-tungstenite: `api`,
+  `exchange` (matching, risk, snapshot), `launch`, `preipo`, `funding`, `endpoints`.
+- Unit tests in `rs/engine/src` and `rs/server/src` (fixed point, units, book, rng).
 
-```bash
-TEST_CLOCK=1 OFFLINE=1 BOTS=0 ADMIN_TOKEN=t PORT=8790 DATA_DIR=$(mktemp -d) cargo run --manifest-path rs/Cargo.toml -p impulse-server
-BASE_URL=http://localhost:8790 pnpm vitest run tests/http
-```
+`tests/golden/` is regenerated only from the archived TypeScript engine (`archive/golden/generate.ts`).
 
 ## Demo script (5 minutes)
 
@@ -175,7 +179,7 @@ Start the exchange offline (bots on), and drive it from a second terminal with `
 in the web app at http://localhost:8787 (risk feed, **Who paid**, leaderboard).
 
 ```bash
-OFFLINE=1 pnpm start                      # terminal 1
+OFFLINE=1 make start                      # terminal 1
 
 B=http://localhost:8787; J='content-type: application/json'; A='x-admin-token: impulse-admin'
 KEY=$(curl -s -XPOST $B/api/accounts -H "$J" -d '{"name":"you"}' | jq -r .apiKey); U="authorization: Bearer $KEY"
@@ -258,7 +262,7 @@ Each market reports these in `settings`, with `ours: true` where the number is o
 | Decision | Why |
 |---|---|
 | The engine is reused unchanged except for launches; the exchange wraps it | The research guarantees (invariants, proofs, fuzz) carry over to the live venue; launches are in both engines so the differential test covers them |
-| Backend in Rust, same JSON as the TS server | The TS tests prove parity: the API tests run against both servers |
+| Backend in Rust, same JSON as the TS server | Parity was proven by running the API tests against both servers; the engine's parity is now pinned by golden files |
 | Auto-margin per fill, isolated per market; flat positions sweep back to the wallet | Mirror is isolated by default. Users never manage buckets by hand, but can add or remove margin |
 | No margin reserved for resting orders; a fill that can't be afforded cancels the maker | Simplest correct behaviour: the engine re-checks every fill anyway |
 | 5% buffer when margin hits the max-loss cap | At the cap, IM = MM, so the first funding payment would liquidate a fully collateralized binary position |
@@ -286,4 +290,4 @@ Each market reports these in `settings`, with `ours: true` where the number is o
 - One process, in memory, snapshotted every 15 s; a crash loses at most 15 s. Each engine transition clones the state,
   which is fine at this size and would need rethinking at real scale.
 - Snapshots are not shared between the servers: the Rust server reads and writes its own format in `rs/data`, the TS
-  server its own in `reference/server/data`.
+  server its own in `archive/reference/server/data`.

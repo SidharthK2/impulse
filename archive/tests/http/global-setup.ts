@@ -14,7 +14,7 @@ declare module "vitest" {
   }
 }
 
-const root = new URL("../..", import.meta.url).pathname;
+const root = new URL("../../..", import.meta.url).pathname;
 const bin = `${root}rs/target/debug/impulse-server`;
 
 export default async function setup(project: TestProject) {

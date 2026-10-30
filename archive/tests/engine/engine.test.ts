@@ -19,7 +19,7 @@ import { parseFixed as usd } from "../../reference/engine/fixed.js";
 import { stateHash } from "../../reference/engine/report.js";
 
 const scenario = (name: string) =>
-  (JSON.parse(readFileSync(new URL(`../scenarios/${name}.json`, import.meta.url), "utf8")) as { events: Event[] }).events;
+  (JSON.parse(readFileSync(new URL(`../../../tests/scenarios/${name}.json`, import.meta.url), "utf8")) as { events: Event[] }).events;
 
 const M = "X";
 const binary = (id = M): Event => ({ type: "market", id, preset: "binary" });

@@ -2,7 +2,7 @@
 // `pnpm archive:test`.
 
 import { describe, expect, it } from "vitest";
-import { parseFixed as usd } from "../../reference/engine/fixed.js";
+import { parseFixed as usd } from "../reference/engine/fixed.js";
 
 describe("pump attack sweep", async () => {
   const { runAttack } = await import("./attack.js");

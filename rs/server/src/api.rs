@@ -682,7 +682,7 @@ fn content_type(path: &std::path::Path) -> &'static str {
 
 async fn serve_static(web_dir: Option<&std::path::Path>, path: &str) -> Response {
     let Some(root) = web_dir.filter(|d| d.is_dir()) else {
-        return ([(header::CONTENT_TYPE, "text/plain")], "Impulse API is running. The web app isn't built: run `pnpm --filter impulse-web dev` (or `pnpm web:build`).")
+        return ([(header::CONTENT_TYPE, "text/plain")], "Impulse API is running. The web app isn't built: run `make web` (or `make dev` for the Vite dev server).")
             .into_response();
     };
     let Some(decoded) = percent_decode(path) else {

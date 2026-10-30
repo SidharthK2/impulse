@@ -2,6 +2,7 @@
 //
 //   PORT=8787  DATA_DIR=rs/data  WEB_DIR=web/dist  ADMIN_TOKEN=impulse-admin
 //   OFFLINE=1 (no network feeds)  BOTS=0 (no house bots)  TEST_CLOCK=1 (a clock only /api/test/* moves)
+//   EXIT_WITH_STDIN=1 (exit when stdin closes: for test harnesses)
 
 mod api;
 mod book;
@@ -63,6 +64,13 @@ async fn main() {
     let bots = env("BOTS").as_deref() != Some("0");
     let test_clock = env("TEST_CLOCK").as_deref() == Some("1");
     let clock = api::test_clock(test_clock);
+    if env("EXIT_WITH_STDIN").as_deref() == Some("1") {
+        // Test harnesses: exit when the parent closes our stdin (or dies), so no server outlives its tests.
+        std::thread::spawn(|| {
+            let _ = std::io::copy(&mut std::io::stdin(), &mut std::io::sink());
+            std::process::exit(0);
+        });
+    }
 
     let snap = match persist::load(&data_dir, clock) {
         Ok(s) => s,
