@@ -2,6 +2,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { change24h } from "../components/Market";
 import { StatusChip, displayName, headline } from "../components/status";
+import { Roll } from "../components/Roll";
 import { useToast } from "../components/ui";
 import { compact, num, pct, price, tone, usd } from "../format";
 import { useNow } from "../hooks";
@@ -79,7 +80,7 @@ function MarketCard({ market: m, now }: { market: MarketView; now: number }) {
         <StatusChip market={m} now={now} />
       </div>
       <div className="mcard-price">
-        <span className="mono big">{price(px, m.priceDecimals)}</span>
+        <Roll className="mono big" text={price(px, Math.max(m.priceDecimals, m.mark ? 0 : 6))} value={num(px)} />
         {sniping ? <span className="faint small">projected open</span> : <span className={`mono ${tone(ch)}`}>{pct(ch)}</span>}
       </div>
       <dl className="mcard-stats">

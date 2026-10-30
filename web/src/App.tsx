@@ -1,5 +1,6 @@
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
+import { Roll } from "./components/Roll";
 import { api } from "./api";
 import { Modal, useToast } from "./components/ui";
 import { useFixtureDriver } from "./fixtures";
@@ -34,9 +35,6 @@ export function Layout() {
   const path = useRouterState({ select: (s) => s.location.pathname });
 
   useRiskToasts(account);
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-  }, [theme]);
 
   return (
     <div className="app">
@@ -65,14 +63,14 @@ export function Layout() {
         <span className="spacer" />
         {import.meta.env.DEV && (
           <label className="check dev-toggle" title="Dev only: merge typed fixtures (web/src/fixtures) for contract fields this server doesn't send yet">
-            <input type="checkbox" checked={fixtures} onChange={(e) => usePrefs.getState().setFixtures(e.target.checked)} /> fixtures
+            <input type="checkbox" checked={fixtures} onChange={(e) => usePrefs.getState().setFixtures(e.target.checked)} /> <span className="hide-sm">fixtures</span>
           </label>
         )}
         <button className="btn small ghost icon" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} title={`Switch to ${theme === "dark" ? "light" : "dark"} theme`} aria-label="Toggle theme">
           {theme === "dark" ? "☀" : "☾"}
         </button>
         <span className="row muted live-dot" title={connected ? "Live" : "Reconnecting…"}>
-          <span className={`dot ${connected ? "on" : ""}`} /> {connected ? "live" : fixtures ? "fixtures" : "offline"}
+          <span className={`dot ${connected ? "on" : ""}`} /> <span className="hide-sm">{connected ? "live" : fixtures ? "fixtures" : "offline"}</span>
         </span>
         <AccountChip account={account} signedIn={!!key} onSignUp={() => open("signup")} onSignOut={() => signIn(null)} />
       </header>
@@ -109,7 +107,7 @@ function AccountChip({ account, signedIn, onSignUp, onSignOut }: { account: Acco
   if (!signedIn) {
     return (
       <button className="btn primary" onClick={onSignUp}>
-        Sign up · get $10k
+        Sign up<span className="hide-sm"> · get $10k</span>
       </button>
     );
   }
@@ -119,10 +117,10 @@ function AccountChip({ account, signedIn, onSignUp, onSignOut }: { account: Acco
     <div className="acct">
       <div className="who">
         <span>
-          <b>{account.id}</b> <span className={`mono ${tone(num(account.pnl))}`}>{usd(account.pnl, { sign: true })}</span>
+          <b>{account.id}</b> <Roll className={`mono ${tone(num(account.pnl))}`} text={usd(account.pnl, { sign: true })} value={num(account.pnl)} />
         </span>
         <small>
-          equity {usd(account.equity)} · wallet {usd(account.wallet)}
+          equity <Roll text={usd(account.equity)} flash={false} /> · wallet {usd(account.wallet)}
         </small>
       </div>
       <button

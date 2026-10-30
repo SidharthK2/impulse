@@ -6,6 +6,13 @@
     <meta name="description" content="Impulse: a paper-trading MicroPerps exchange where auto-deleveraging is the only backstop." />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2311151c'/%3E%3Cpath d='M4 18h6l3-9 5 15 3-8h7' fill='none' stroke='%2342e0a6' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
     <title>Impulse</title>
+    <script>
+      // Apply the saved theme before first paint (store.ts keeps it in sync after that).
+      try {
+        var p = JSON.parse(localStorage.getItem("impulse.prefs") || "{}").state || {};
+        document.documentElement.dataset.theme = p.theme || (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

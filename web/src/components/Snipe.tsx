@@ -5,6 +5,7 @@ import { ago, compact, countdown, num, price, usd } from "../format";
 import { useNow } from "../hooks";
 import { act } from "../queries";
 import type { AccountView, MarketView } from "../types";
+import { Roll } from "./Roll";
 import { useToast } from "./ui";
 
 const QUICK = [50, 250, 1000];
@@ -61,7 +62,7 @@ export function SnipePanel({ market, account, canTrade, onSignUp }: { market: Ma
         <div className="snipe-stats">
           <div className="stat-tile">
             <span className="label">Total bid</span>
-            <span className="v mono">{usd(s.total)}</span>
+            <Roll className="v mono" text={usd(s.total)} value={num(s.total)} />
           </div>
           <div className="stat-tile">
             <span className="label">Snipers</span>
@@ -71,7 +72,7 @@ export function SnipePanel({ market, account, canTrade, onSignUp }: { market: Ma
             <span className="label" title="Where the curve opens once the whole pool buys">
               Projected open
             </span>
-            <span className="v mono">{price(s.projectedOpenPrice, d)}</span>
+            <Roll className="v mono" text={price(s.projectedOpenPrice, d)} value={num(s.projectedOpenPrice)} />
           </div>
           <div className="stat-tile">
             <span className="label">Your bid</span>

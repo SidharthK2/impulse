@@ -81,6 +81,13 @@ export const usePrefs = create<Prefs>()(
   ),
 );
 
+// Apply the theme to <html> as soon as it changes, before any component reads its colours (the chart does).
+const applyTheme = (t: Theme) => {
+  if (typeof document !== "undefined") document.documentElement.dataset.theme = t;
+};
+applyTheme(usePrefs.getState().theme);
+usePrefs.subscribe((s) => applyTheme(s.theme));
+
 /** Whether fixtures are merged in right now. */
 export const useFixturesOn = () => usePrefs((s) => s.fixtures);
 

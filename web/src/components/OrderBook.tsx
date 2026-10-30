@@ -1,5 +1,6 @@
 import { price, size } from "../format";
 import { useBook, useTrades } from "../queries";
+import { Roll } from "./Roll";
 import type { Level, MarketView } from "../types";
 
 const DEPTH = 11;
@@ -54,7 +55,7 @@ export function OrderBook({ market, onPick }: { market: MarketView; onPick: (p: 
         </div>
         <div className="mid">
           <span>
-            mark <b>{price(book?.mark ?? market.mark, market.priceDecimals)}</b>
+            mark <Roll className="b" text={price(book?.mark ?? market.mark, market.priceDecimals)} />
           </span>
           <span className="muted">
             spread {Number.isFinite(spread) ? `${market.priceDecimals < 6 ? `${price(spread, market.priceDecimals)} ` : ""}(${((spread / mid) * 10_000).toFixed(1)} bps)` : "—"}

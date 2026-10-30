@@ -6,6 +6,7 @@ import { clock, num, price, size, tone, usd } from "../format";
 import { act, useFeed } from "../queries";
 import type { AccountView, MarketView, PositionView } from "../types";
 import { useToast } from "./ui";
+import { Roll } from "./Roll";
 import { WhoPaid } from "./WhoPaid";
 
 type Tab = "positions" | "orders" | "fills" | "whopaid" | "holders";
@@ -136,10 +137,14 @@ function Positions({ account, markets }: { account: AccountView; markets: Record
                 <td className="right mono">{price(p.mark, d)}</td>
                 <td className="right mono warn">{p.liquidationPrice ? price(p.liquidationPrice, d) : "—"}</td>
                 <td className="right mono">{usd(p.collateral)}</td>
-                <td className={`right mono ${tone(num(p.unrealized))}`}>{usd(p.unrealized, { sign: true })}</td>
+                <td className={`right mono ${tone(num(p.unrealized))}`}>
+                  <Roll text={usd(p.unrealized, { sign: true })} value={num(p.unrealized)} />
+                </td>
                 <td className={`right mono ${tone(num(p.funding))}`}>{usd(p.funding, { sign: true })}</td>
                 <td className={`right mono ${tone(num(p.adl))}`}>{num(p.adl) === 0 ? "—" : usd(p.adl, { sign: true })}</td>
-                <td className={`right mono ${tone(num(p.pnl))}`}>{usd(p.pnl, { sign: true })}</td>
+                <td className={`right mono ${tone(num(p.pnl))}`}>
+                  <Roll text={usd(p.pnl, { sign: true })} value={num(p.pnl)} />
+                </td>
                 <td className="right mono">{p.leverage ? `${p.leverage.toFixed(1)}×` : "—"}</td>
                 <td className="right">
                   <div className="row" style={{ justifyContent: "flex-end", gap: 4 }}>

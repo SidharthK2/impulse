@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { ToastProvider } from "./components/ui";
 import { queryClient } from "./queries";
 import { router } from "./router";
+import "@fontsource-variable/inter";
 import "./styles.css";
 
 createRoot(document.getElementById("root")!).render(

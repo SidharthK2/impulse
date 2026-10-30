@@ -1,10 +1,11 @@
 import { Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { act } from "../queries";
 import { compact, countdown, num, pct, price, tone, usd } from "../format";
 import { useNow } from "../hooks";
 import type { AccountView, MarketView } from "../types";
 import { BookPricedBadge } from "./PreIpo";
+import { Roll } from "./Roll";
 import { headline } from "./status";
 import { Stat, useToast } from "./ui";
 
@@ -83,7 +84,7 @@ export function MarketBar({ market, markets, onPick }: { market: MarketView; mar
     <div className="mbar">
       <MarketPicker markets={markets} current={market} onPick={onPick} />
       <div className="col" style={{ gap: 0 }}>
-        <span className="big">{price(headline(market), Math.max(market.priceDecimals, market.mark ? 0 : 6))}</span>
+        <Roll className="big" text={price(headline(market), Math.max(market.priceDecimals, market.mark ? 0 : 6))} value={num(headline(market))} />
         {!market.mark && market.snipe && <span className="faint small">projected open</span>}
       </div>
       <div className="mbar-stats">
@@ -174,6 +175,30 @@ export function InfoPanel({ market }: { market: MarketView }) {
             </>
           )}
         </dl>
+        {market.settings.length > 0 && (
+          <div className="col" style={{ gap: 6 }}>
+            <div className="label">Settings</div>
+            <dl className="kv settings">
+              {market.settings.map((s) => (
+                <Fragment key={s.label}>
+                  <dt>{s.label}</dt>
+                  <dd>
+                    {s.value}{" "}
+                    {s.ours ? (
+                      <span className="badge ours" title="A parameter we chose; Mirror publishes none for this">
+                        our setting
+                      </span>
+                    ) : (
+                      <span className="badge" title="Published by Mirror; we use the same value">
+                        published
+                      </span>
+                    )}
+                  </dd>
+                </Fragment>
+              ))}
+            </dl>
+          </div>
+        )}
         {Math.abs(market.funding.ratePerHour - market.funding.baseRatePerHour) >= 0.005 && (
           <div className="note warn" style={{ fontSize: 11 }}>
             Funding is {(market.funding.ratePerHour * 100).toFixed(2)}%/h because the last trade ({price(market.last, market.priceDecimals)}) is far from the oracle. The premium uses the last trade as the perp price,
