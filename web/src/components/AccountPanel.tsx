@@ -5,10 +5,10 @@ import { isFixtureMarket } from "../fixtures";
 import { clock, num, price, size, tone, usd } from "../format";
 import { act, useFeed } from "../queries";
 import type { AccountView, MarketView, PositionView } from "../types";
-import { RiskList } from "./RiskFeed";
 import { useToast } from "./ui";
+import { WhoPaid } from "./WhoPaid";
 
-type Tab = "positions" | "orders" | "fills" | "risk" | "market";
+type Tab = "positions" | "orders" | "fills" | "whopaid" | "holders";
 
 interface Props {
   account: AccountView | undefined;
@@ -19,13 +19,15 @@ interface Props {
 
 export function AccountPanel({ account, markets, current, signedIn }: Props) {
   const [tab, setTab] = useState<Tab>("positions");
+  const feed = useFeed();
   const open = account?.positions.filter((p) => p.side !== "flat") ?? [];
+  const incidents = feed.filter((e) => e.market === current.id && (e.kind === "bankrupt" || e.kind === "liquidation")).length;
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: "positions", label: "Positions", count: open.length + (account?.spot.length ?? 0) },
     { id: "orders", label: "Open orders", count: account?.orders.length },
     { id: "fills", label: "Fills" },
-    { id: "risk", label: "Who paid", count: account?.risk.length },
-    { id: "market", label: `${current.id} risk` },
+    { id: "whopaid", label: "Who paid", count: incidents },
+    { id: "holders", label: "Holders" },
   ];
   return (
     <div className="panel account-panel" style={{ minHeight: 260 }}>
@@ -41,9 +43,11 @@ export function AccountPanel({ account, markets, current, signedIn }: Props) {
         <span className="spacer" />
         {tab === "orders" && account && account.orders.length > 0 && <CancelAll />}
       </div>
-      <div className="scroll" style={{ flex: 1, maxHeight: 360 }}>
-        {tab === "market" ? (
-          <MarketRisk market={current} />
+      <div className="scroll" style={{ flex: 1, maxHeight: 420 }}>
+        {tab === "whopaid" ? (
+          <WhoPaid market={current} feed={feed} account={account} />
+        ) : tab === "holders" ? (
+          <Holders market={current} />
         ) : !signedIn ? (
           <div className="empty">Sign up to get $10,000 of paper USDC and start trading.</div>
         ) : !account ? (
@@ -52,10 +56,8 @@ export function AccountPanel({ account, markets, current, signedIn }: Props) {
           <Positions account={account} markets={markets} />
         ) : tab === "orders" ? (
           <Orders account={account} markets={markets} />
-        ) : tab === "fills" ? (
-          <Fills account={account} markets={markets} />
         ) : (
-          <WhoPaid account={account} />
+          <Fills account={account} markets={markets} />
         )}
       </div>
     </div>
@@ -276,29 +278,6 @@ function Fills({ account, markets }: { account: AccountView; markets: Record<str
   );
 }
 
-function WhoPaid({ account }: { account: AccountView }) {
-  const l = account.ledger;
-  return (
-    <div>
-      <div className="row" style={{ padding: "10px 12px", gap: 24, borderBottom: "1px solid var(--line)", flexWrap: "wrap" }}>
-        <span className="muted" title="ADL haircuts: your profit (or principal) used to cover someone else's negative equity">
-          Haircuts you paid: <b className="mono down">{usd(l.adlPaid)}</b>
-        </span>
-        <span className="muted">
-          Your shortfalls others covered: <b className="mono up">{usd(l.adlCovered)}</b>
-        </span>
-        <span className="muted">
-          Net funding: <b className={`mono ${tone(num(l.funding))}`}>{usd(l.funding, { sign: true })}</b>
-        </span>
-        <span className="muted">
-          Realized trading PnL: <b className={`mono ${tone(num(l.realized))}`}>{usd(l.realized, { sign: true })}</b>
-        </span>
-      </div>
-      <RiskList events={account.risk} />
-    </div>
-  );
-}
-
 interface PublicPosition {
   account: string;
   size: string;
@@ -306,9 +285,8 @@ interface PublicPosition {
   adl: string;
 }
 
-/** The whole market is public: who holds what, so who would absorb a shortfall, and what has happened here. */
-function MarketRisk({ market }: { market: MarketView }) {
-  const feed = useFeed();
+/** The whole market is public: who holds what, so who would absorb the next shortfall. */
+function Holders({ market }: { market: MarketView }) {
   const [positions, setPositions] = useState<PublicPosition[]>([]);
   useEffect(() => {
     let alive = true;
@@ -329,8 +307,8 @@ function MarketRisk({ market }: { market: MarketView }) {
   }, [market.id]);
   const sorted = [...positions].sort((a, b) => Math.abs(num(b.size)) - Math.abs(num(a.size)));
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.4fr)" }}>
-      <div style={{ borderRight: "1px solid var(--line)" }}>
+    <div>
+      <div>
         <table className="grid">
           <thead>
             <tr>
@@ -353,7 +331,6 @@ function MarketRisk({ market }: { market: MarketView }) {
         </table>
         {sorted.length === 0 && <div className="empty">No open positions in {market.id}.</div>}
       </div>
-      <RiskList events={feed.filter((e) => e.market === market.id)} showMarket={false} />
     </div>
   );
 }

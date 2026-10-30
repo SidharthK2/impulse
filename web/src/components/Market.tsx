@@ -4,6 +4,7 @@ import { act } from "../queries";
 import { compact, countdown, num, pct, price, tone, usd } from "../format";
 import { useNow } from "../hooks";
 import type { AccountView, MarketView } from "../types";
+import { headline } from "./status";
 import { Stat, useToast } from "./ui";
 
 const KIND_LABEL: Record<string, string> = { attention: "Creator coins", preipo: "Pre-IPO", perp: "Crypto and equities", binary: "Prediction markets" };
@@ -57,7 +58,7 @@ export function MarketPicker({ markets, current, onPick }: { markets: MarketView
                           <b>{m.kind === "binary" ? m.name : m.id}</b>
                           {m.status === "resolved" && <span className="badge info" style={{ marginLeft: 6 }}>resolved</span>}
                         </td>
-                        <td className="right mono">{price(m.mark, m.priceDecimals)}</td>
+                        <td className="right mono">{price(headline(m), m.priceDecimals)}</td>
                         <td className={`right mono ${tone(ch)}`}>{pct(ch)}</td>
                         <td className="right mono muted">{m.maxLeverage}×</td>
                       </tr>
@@ -83,6 +84,7 @@ export function MarketBar({ market, markets, onPick }: { market: MarketView; mar
       <div className="col" style={{ gap: 0 }}>
         <span className="big">{price(market.mark, market.priceDecimals)}</span>
       </div>
+      <div className="mbar-stats">
       <Stat label="24h">
         <span className={tone(ch)}>{pct(ch)}</span>
       </Stat>
@@ -106,6 +108,7 @@ export function MarketBar({ market, markets, onPick }: { market: MarketView; mar
         </span>
       )}
       {market.status === "resolved" && <span className="badge info">resolved</span>}
+      </div>
     </div>
   );
 }
