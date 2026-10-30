@@ -230,7 +230,8 @@ fn parse_kind(s: &str) -> Result<Kind, ExError> {
         "perp" => Ok(Kind::Perp),
         "binary" => Ok(Kind::Binary),
         "attention" => Ok(Kind::Attention),
-        _ => Err(ExError::bad("kind must be perp, binary or attention")),
+        "preipo" => Ok(Kind::Preipo),
+        _ => Err(ExError::bad("kind must be perp, binary, attention or preipo")),
     }
 }
 
@@ -357,7 +358,7 @@ async fn cancel_all(State(app): State<App>, User(id): User, b: Body) -> ApiResul
         Some(Value::String(m)) => Some(m.clone()),
         _ => None,
     };
-    ok(json!({ "cancelled": app.lock().x.cancel_all(&id, market.as_deref()) }))
+    ok(json!({ "cancelled": app.lock().x.cancel_all(&id, market.as_deref())? }))
 }
 
 async fn close_position(State(app): State<App>, User(id): User, b: Body) -> ApiResult {
@@ -515,6 +516,29 @@ async fn admin_pump(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
     ok(json!({ "effects": kinds(&effects) }))
 }
 
+/// A pre-IPO perp: no outside price, the mark is the market's own book until the admin IPO.
+async fn admin_preipo(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
+    let id = b.str("id")?;
+    let price = b.str("price")?;
+    let seed: f64 = price.parse().unwrap_or(0.0);
+    let spec = MarketSpec {
+        name: Some(b.opt_str("name").unwrap_or_else(|| id.clone())),
+        price: Some(price),
+        sz_decimals: Some(if seed > 1000.0 { 4 } else if seed > 10.0 { 2 } else { 0 }),
+        description: b.opt_str("description"),
+        creator: Some("admin".into()),
+        ..MarketSpec::new(id, Kind::Preipo, Source::Book)
+    };
+    let mut core = app.lock();
+    let mid = core.x.create_market(spec)?.id.clone();
+    ok(views::market_view(&core.x, &mid))
+}
+
+async fn admin_ipo(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
+    let effects = app.lock().x.ipo(&b.str("market")?, &b.str("price")?)?;
+    ok(json!({ "effects": kinds(&effects) }))
+}
+
 async fn admin_deposit(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
     app.lock().x.deposit(&b.str("account")?, &b.str("amount")?)?;
     ok(json!({ "ok": true }))
@@ -530,7 +554,7 @@ async fn admin_bots(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
     if !bots.enabled {
         for id in Bots::ids() {
             if x.accounts.contains_key(id) {
-                x.cancel_all(id, None);
+                x.cancel_all(id, None)?;
             }
         }
     }
@@ -712,6 +736,8 @@ pub fn router(app: App) -> Router {
         .route("/api/admin/deposit", post(admin_deposit))
         .route("/api/admin/demo-coin", post(admin_demo_coin))
         .route("/api/admin/pump", post(admin_pump))
+        .route("/api/admin/preipo", post(admin_preipo))
+        .route("/api/admin/ipo", post(admin_ipo))
         .route("/api/admin/bots", post(admin_bots))
         .route("/api/admin/status", get(admin_status))
         .route("/ws", get(crate::ws::upgrade));

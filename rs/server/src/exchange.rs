@@ -57,6 +57,8 @@ pub enum Source {
     Sim { vol_bps: f64 },
     /// admin ticks only
     Manual,
+    /// pre-IPO: the mark comes from the market's own order book
+    Book,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -65,12 +67,14 @@ pub enum Kind {
     Perp,
     Binary,
     Attention,
+    /// perp on a private company: no outside price until the admin IPO
+    Preipo,
 }
 
 impl Kind {
     pub fn preset(self) -> &'static str {
         match self {
-            Kind::Perp => "perp",
+            Kind::Perp | Kind::Preipo => "perp",
             Kind::Binary => "binary",
             Kind::Attention => "attention",
         }
@@ -96,7 +100,22 @@ pub struct MarketMeta {
     pub held_until: Option<i64>, // admin price override: feed ticks are ignored until then
     #[serde(default)]
     pub launch: Option<LaunchMeta>,
+    #[serde(default)]
+    pub preipo: Option<PreipoMeta>,
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreipoMeta {
+    #[serde(with = "big")]
+    pub seed: i128, // nano-USD per share: the mark until the book has a trade
+    pub ipo_at: Option<i64>,
+    #[serde(default, with = "impulse_engine::ser::big_opt")]
+    pub ipo_price: Option<i128>, // nano-USD per share
+}
+
+/// Shares behind a pre-IPO valuation: implied valuation = mark × this.
+pub const PREIPO_SHARES: i128 = 1_000_000_000;
 
 /// A creator coin's snipe window, as the exchange sees it: when it opens and every bid, for the views. The
 /// engine holds the money (net bids per account) and does the open.
@@ -595,7 +614,7 @@ impl Exchange {
                 Effect::Liquidation { market, account, size, equity, .. } => {
                     let text = format!("{account} liquidated: {} closed at {}, kept ${}", self.side_size(market, *size), self.mark_str(market), cents(*equity));
                     self.record(market, RiskKind::Liquidation, vec![account.clone()], text, Some(*equity));
-                    self.cancel_all(account, Some(market));
+                    self.drop_orders(account, Some(market));
                 }
                 Effect::Bankrupt { market, account, size, shortfall } => {
                     let text = format!(
@@ -605,7 +624,7 @@ impl Exchange {
                         cents(*shortfall)
                     );
                     self.record(market, RiskKind::Bankrupt, vec![account.clone()], text, Some(*shortfall));
-                    self.cancel_all(account, Some(market));
+                    self.drop_orders(account, Some(market));
                 }
                 Effect::Haircut { market, account, amount, from_principal } => {
                     let from = if *from_principal > 0 { format!(" (${} of it from principal)", cents(*from_principal)) } else { " (from profit)".into() };
@@ -817,9 +836,10 @@ impl Exchange {
             return Err(ExError::status(409, format!("market {} exists", spec.id)));
         }
         let kind = spec.kind;
-        let sz = if kind == Kind::Perp { spec.sz_decimals.unwrap_or(0) } else { 0 };
+        let sz = if matches!(kind, Kind::Perp | Kind::Preipo) { spec.sz_decimals.unwrap_or(0) } else { 0 };
+        let source = if kind == Kind::Preipo { Source::Book } else { spec.source };
         let start = spec.price.as_deref().map(parse).transpose()?;
-        if kind != Kind::Attention && spec.source != Source::Manual && start.is_none() {
+        if kind != Kind::Attention && source != Source::Manual && start.is_none() {
             return Err(ExError::bad("externally priced markets need a starting price"));
         }
         let tick = match (&spec.tick, kind) {
@@ -852,7 +872,7 @@ impl Exchange {
             base: spec.base.unwrap_or_else(|| if kind == Kind::Binary { "YES".into() } else { spec.id.clone() }),
             sz_decimals: sz,
             tick,
-            source: spec.source,
+            source,
             description: spec.description.unwrap_or_default(),
             url: spec.url,
             created_at: self.now(),
@@ -860,6 +880,7 @@ impl Exchange {
             resolves_at_ms: spec.resolves_at_ms,
             held_until: None,
             launch: spec.snipe_seconds.map(|secs| LaunchMeta { opens_at: self.now() + secs * 1000, bids: vec![], opened: None }),
+            preipo: (kind == Kind::Preipo).then(|| PreipoMeta { seed: start.unwrap_or(0), ipo_at: None, ipo_price: None }),
         };
         let mut events = vec![event];
         if let (Some(start), false) = (start, kind == Kind::Attention) {
@@ -885,6 +906,9 @@ impl Exchange {
         let meta = self.market(market)?;
         if meta.source == Source::Curve {
             return Err(ExError::bad(format!("{market} is priced by its own curve")));
+        }
+        if meta.source == Source::Book {
+            return Err(ExError::bad(format!("{market} is priced by its own order book")));
         }
         let m = &self.state.markets[market];
         if m.status != Status::Open {
@@ -915,6 +939,9 @@ impl Exchange {
         let meta = self.market(market)?;
         if meta.source == Source::Curve {
             return Err(ExError::bad(format!("{market} is priced by its own curve; move it with spot trades")));
+        }
+        if meta.source == Source::Book {
+            return Err(ExError::bad(format!("{market} is priced by its own order book until its IPO: use /api/admin/ipo")));
         }
         let sz = meta.sz_decimals;
         let before = self.state.markets[market].mark;
@@ -959,6 +986,104 @@ impl Exchange {
         for id in due {
             effects.extend(self.commit(&[Event::Open { market: id }])?);
         }
+        let books: Vec<String> = self.markets.values().filter(|m| m.source == Source::Book).map(|m| m.id.clone()).collect();
+        for id in books {
+            effects.extend(self.reprice(&id)?);
+        }
+        Ok(effects)
+    }
+
+    /// A pre-IPO mark from the market's own book: the median of best bid, best ask and last trade; the last trade
+    /// if a side of the book is empty; the seed price before the first trade. Lot price.
+    pub fn book_mark(&self, market: &str) -> Option<i128> {
+        let meta = self.markets.get(market)?;
+        let seed = lot_price(meta.sz_decimals, meta.preipo.as_ref()?.seed);
+        let last = self.state.markets.get(market)?.last_trade.unwrap_or(seed);
+        let book = self.books.get(market)?;
+        Some(match (book.best(Side::Buy), book.best(Side::Sell)) {
+            (Some(bid), Some(ask)) => {
+                let mut v = [bid.price, ask.price, last];
+                v.sort();
+                v[1]
+            }
+            _ => last,
+        })
+    }
+
+    /// Move a book-priced market's mark to its book (liquidation and ADL run in that transaction). Liquidations
+    /// cancel orders, which can move the book again, so repeat until it settles.
+    fn reprice(&mut self, market: &str) -> XResult<Vec<Effect>> {
+        let mut effects = vec![];
+        for _ in 0..4 {
+            if self.markets.get(market).is_none_or(|m| m.source != Source::Book) || self.state.markets[market].status != Status::Open {
+                break;
+            }
+            let Some(lot) = self.book_mark(market) else { break };
+            if Some(lot.max(1)) == self.state.markets[market].mark {
+                break;
+            }
+            effects.extend(self.commit(&[Event::Tick { market: market.into(), price: dec(lot.max(1)).into() }])?);
+            self.candle(market, lot.max(1), 0, None);
+        }
+        Ok(effects)
+    }
+
+    /// Admin IPO: the market leaves its book for an admin-set public price. The mark gaps to it, and liquidation
+    /// and ADL run in that transaction.
+    pub fn ipo(&mut self, market: &str, price: &str) -> XResult<Vec<Effect>> {
+        let meta = self.market(market)?;
+        if meta.preipo.is_none() {
+            return Err(ExError::bad(format!("{market} is not a pre-IPO market")));
+        }
+        if meta.source != Source::Book {
+            return Err(ExError::bad(format!("{market} has already had its IPO")));
+        }
+        let sz = meta.sz_decimals;
+        let coin = parse(price)?;
+        if coin <= 0 {
+            return Err(ExError::bad("price must be positive"));
+        }
+        let before = self.mark_str(market);
+        let lot = lot_price(sz, coin).max(1);
+        let effects = if Some(lot) == self.state.markets[market].mark {
+            vec![]
+        } else {
+            self.commit(&[Event::Tick { market: market.into(), price: dec(lot).into() }])?
+        };
+        self.candle(market, lot, 0, None);
+        let now = self.now();
+        let m = self.market_mut(market)?;
+        m.source = Source::Manual;
+        if let Some(p) = m.preipo.as_mut() {
+            p.ipo_at = Some(now);
+            p.ipo_price = Some(coin);
+        }
+        let mut hit: Vec<String> = vec![];
+        let (mut busts, mut shortfall) = (0, 0);
+        for e in &effects {
+            match e {
+                Effect::Liquidation { account, .. } => {
+                    busts += 1;
+                    hit.push(account.clone());
+                }
+                Effect::Bankrupt { account, shortfall: s, .. } => {
+                    busts += 1;
+                    shortfall += s;
+                    hit.push(account.clone());
+                }
+                Effect::Haircut { account, .. } => hit.push(account.clone()),
+                _ => {}
+            }
+        }
+        hit.dedup();
+        let paid = if shortfall > 0 { format!("; ${} shortfall charged to the other side", cents(shortfall)) } else { String::new() };
+        let text = format!(
+            "{market} IPO at {}: mark gapped {before} → {}, {busts} position{} liquidated or bankrupt{paid}",
+            fmt(coin, 0),
+            self.mark_str(market),
+            if busts == 1 { "" } else { "s" }
+        );
+        self.record(market, RiskKind::Ipo, hit, text, (shortfall > 0).then_some(shortfall));
         Ok(effects)
     }
 
@@ -1148,6 +1273,7 @@ impl Exchange {
             OrderStatus::Cancelled
         };
         self.version += 1;
+        self.reprice(&meta.id)?;
         let reason = stop.or_else(|| (status == OrderStatus::Cancelled).then(|| "no liquidity at or inside the limit price".into()));
         Ok(OrderResult { order, fills, status, reason })
     }
@@ -1278,6 +1404,7 @@ impl Exchange {
         self.push_fill(fill.clone());
         let mark = self.state.markets[&market].mark.expect("mark");
         self.candle(&market, mark, qty * price, None);
+        self.reprice(&market)?;
         Ok(Ok(fill))
     }
 
@@ -1326,19 +1453,32 @@ impl Exchange {
         let owned = order_id.parse::<u64>().ok().filter(|id| self.orders_of(account, None).any(|o| o.id == *id));
         match owned {
             Some(id) => {
-                self.remove_order(id);
+                if let Some(o) = self.remove_order(id) {
+                    self.reprice(&o.market)?;
+                }
                 Ok(())
             }
             None => Err(ExError::status(404, format!("no open order {order_id}"))),
         }
     }
 
-    pub fn cancel_all(&mut self, account: &str, market: Option<&str>) -> usize {
-        let ids: Vec<u64> = self.orders_of(account, market).map(|o| o.id).collect();
-        for id in &ids {
-            self.remove_order(*id);
+    /// Cancel an account's orders (in one market or all), then reprice the book-priced markets that changed.
+    pub fn cancel_all(&mut self, account: &str, market: Option<&str>) -> XResult<usize> {
+        let removed = self.drop_orders(account, market);
+        let mut touched: Vec<String> = removed.into_iter().map(|o| o.market).collect();
+        let n = touched.len();
+        touched.sort();
+        touched.dedup();
+        for m in touched {
+            self.reprice(&m)?;
         }
-        ids.len()
+        Ok(n)
+    }
+
+    /// Cancel without repricing: for risk processing, which is already inside a transaction's aftermath.
+    fn drop_orders(&mut self, account: &str, market: Option<&str>) -> Vec<Order> {
+        let ids: Vec<u64> = self.orders_of(account, market).map(|o| o.id).collect();
+        ids.into_iter().filter_map(|id| self.remove_order(id)).collect()
     }
 
     /// Prepend history older than the market's first candle, merged into 1m buckets (chart backfill).

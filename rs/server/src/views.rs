@@ -2,7 +2,7 @@
 // (USD, USD per coin) and sizes in coins; the engine's lots and nano units never leave the server.
 
 use crate::book::{Order, Side, Tif};
-use crate::exchange::{Exchange, Fill, FillKind, Kind, MarketMeta, RiskEvent, Source};
+use crate::exchange::{Exchange, Fill, FillKind, Kind, MarketMeta, RiskEvent, Source, PREIPO_SHARES};
 use crate::units::{coin_price, coins_from_lots, fmt, pow10, tick_decimals, usd};
 use impulse_engine::{
     depth, equity, initial_margin, leverage_now, maintenance_margin, open_curve, open_interest, releasable, spot_price, taper_progress, unrealized, AdlPolicy, Market,
@@ -31,7 +31,9 @@ pub fn source_label(meta: &MarketMeta) -> String {
         Source::Polymarket { outcome, .. } => format!("Polymarket midpoint ({outcome})"),
         Source::Curve => "own xy=k spot curve".into(),
         Source::Sim { .. } => "simulated random walk".into(),
+        Source::Manual if meta.preipo.is_some() => "admin-set public price".into(),
         Source::Manual => "admin-set".into(),
+        Source::Book => "own order book".into(),
     }
 }
 
@@ -122,7 +124,18 @@ pub struct MarketView<'a> {
     positions: usize,
     snipe: Option<SnipeView<'a>>,
     launch: Option<LaunchView>,
+    preipo: Option<PreipoView>,
     settings: Vec<Setting>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreipoView {
+    seed_price: String,
+    implied_valuation: String, // mark × 1,000,000,000 shares
+    status: &'static str,      // "private" until the IPO, then "public"
+    ipo_at: Option<i64>,
+    ipo_price: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -186,7 +199,15 @@ fn settings(meta: &MarketMeta, m: &Market) -> Vec<Setting> {
                 out.push(setting("Open price", "x1 = (x0 + √(x0·(x0 + 4B))) / 2, P = x1 / y1; one price for every bid", false));
             }
         }
-        _ => out.push(setting("Oracle", source_label(meta), true)),
+        Source::Book => {
+            out.push(setting("Mark", "median of best bid, best ask and last trade; the last trade if a side is empty; the seed price before any trade", true));
+            if let Some(p) = &meta.preipo {
+                out.push(setting("Seed price", fmt(p.seed, 2), true));
+            }
+            out.push(setting("Implied valuation", "mark × 1,000,000,000 shares", true));
+            out.push(setting("IPO", "admin sets the public price; the mark gaps to it and liquidation and ADL run in that transaction", true));
+        }
+        _ => out.push(setting("Oracle", source_label(meta), meta.preipo.is_some())),
     }
     out.push(setting("Start leverage", format!("{}×", m.config.initial_leverage), false));
     if m.config.graduation {
@@ -298,6 +319,13 @@ pub fn market_view<'a>(x: &'a Exchange, id: &str) -> MarketView<'a> {
             sniped: usd(o.sniped),
             tokens_sold: o.tokens_sold.to_string(),
             reserve: usd(o.reserve),
+        }),
+        preipo: meta.preipo.as_ref().map(|p| PreipoView {
+            seed_price: fmt(p.seed, 0),
+            implied_valuation: usd(m.mark.map_or(0, |mk| coin_price(meta.sz_decimals, mk)) * PREIPO_SHARES),
+            status: if meta.source == Source::Book { "private" } else { "public" },
+            ipo_at: p.ipo_at,
+            ipo_price: p.ipo_price.map(|v| fmt(v, 0)),
         }),
         settings: settings(meta, m),
     }

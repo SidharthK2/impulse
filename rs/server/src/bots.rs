@@ -39,6 +39,8 @@ fn ladder(kind: Kind) -> Ladder {
         Kind::Perp => Ladder { offsets: [0.0005, 0.0012, 0.0025, 0.005, 0.01, 0.02], usd: [1500., 2500., 4000., 7000., 12000., 20000.], max_inventory_usd: 250_000. },
         Kind::Binary => Ladder { offsets: [0.005, 0.01, 0.02, 0.035, 0.055, 0.08], usd: [300., 500., 900., 1500., 2500., 4000.], max_inventory_usd: 40_000. },
         Kind::Attention => Ladder { offsets: [0.004, 0.01, 0.02, 0.04, 0.07, 0.12], usd: [60., 120., 250., 500., 900., 1500.], max_inventory_usd: 6_000. },
+        // No outside price to lean on: quote wider, so the book (which is the oracle) moves on real flow.
+        Kind::Preipo => Ladder { offsets: [0.004, 0.01, 0.02, 0.035, 0.06, 0.1], usd: [1000., 1500., 2500., 4000., 6000., 10000.], max_inventory_usd: 80_000. },
     }
 }
 
@@ -88,7 +90,7 @@ impl Bots {
 
     /// Replace the market maker's ladder in one market.
     pub fn quote(&mut self, x: &mut Exchange, id: &str) {
-        x.cancel_all(MM, Some(id));
+        let _ = x.cancel_all(MM, Some(id));
         let meta = x.markets[id].clone();
         let m = &x.state.markets[id];
         let Some(mark_lot) = m.mark else { return };

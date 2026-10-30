@@ -265,6 +265,17 @@ pub async fn list_defaults(app: &App, offline: bool) {
             ..MarketSpec::new("SIM-ELECTION", Kind::Binary, Source::Sim { vol_bps: 40.0 })
         });
     }
+    specs.push(MarketSpec {
+        name: Some("Stripe (pre-IPO)".into()),
+        base: Some("STRIPE".into()),
+        sz_decimals: Some(2),
+        price: Some("91.50".into()),
+        description: Some(
+            "Pre-IPO perp on Stripe. There is no outside price: the mark is the median of this market's own best bid, best ask and last trade. Seeded at $91.50 a share, about a $91.5B valuation at 1B shares. At the IPO the admin sets the public price and the mark gaps to it."
+                .into(),
+        ),
+        ..MarketSpec::new("STRIPE-PRE", Kind::Preipo, Source::Book)
+    });
     for (handle, description) in ATTENTION {
         specs.push(MarketSpec {
             name: Some(format!("{handle} attention token")),
