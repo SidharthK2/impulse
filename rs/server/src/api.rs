@@ -595,7 +595,7 @@ async fn test_advance(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
     let mut core = app.lock();
     core.clock.advance(b.num("ms").unwrap_or(0.0) as i64);
     let r = core.submit(Command::Clock)?;
-    ok(json!({ "effects": effects_of(r), "now": core.clock.now() }))
+    ok(json!({ "effects": effects_of(r), "now": core.clock.now(), "seq": core.seq }))
 }
 
 async fn test_market(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
@@ -623,6 +623,16 @@ async fn test_tick(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
 
 async fn test_invariants(State(app): State<App>, _: Admin) -> ApiResult {
     ok(check_invariants(&app.lock().x.state))
+}
+
+/// The journal's position and the time each journaled command took (apply + journal commit), since the start.
+async fn admin_stats(State(app): State<App>, _: Admin) -> ApiResult {
+    let core = app.lock();
+    let mut us: Vec<u64> = core.timings.iter().map(|d| d.as_micros() as u64).collect();
+    us.sort_unstable();
+    let at = |q: f64| us.get(((us.len() as f64 - 1.0) * q).round() as usize).copied().unwrap_or(0);
+    let mean = if us.is_empty() { 0 } else { us.iter().sum::<u64>() / us.len() as u64 };
+    ok(json!({ "seq": core.seq, "n": us.len(), "p50_us": at(0.5), "p99_us": at(0.99), "max_us": us.last().copied().unwrap_or(0), "mean_us": mean }))
 }
 
 async fn test_hash(State(app): State<App>, _: Admin) -> ApiResult {
@@ -760,6 +770,7 @@ pub fn router(app: App) -> Router {
         .route("/api/admin/ipo", post(admin_ipo))
         .route("/api/admin/bots", post(admin_bots))
         .route("/api/admin/status", get(admin_status))
+        .route("/api/admin/stats", get(admin_stats))
         .route("/ws", get(crate::ws::upgrade));
     if app.test_hooks {
         r = r

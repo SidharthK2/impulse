@@ -2,7 +2,7 @@
 //
 //   PORT=8787  DATA_DIR=rs/data  WEB_DIR=web/dist  ADMIN_TOKEN=impulse-admin
 //   OFFLINE=1 (no network feeds)  BOTS=0 (no house bots)  TEST_CLOCK=1 (a clock only /api/test/* moves)
-//   EXIT_WITH_STDIN=1 (exit when stdin closes: for test harnesses)
+//   EXIT_WITH_STDIN=1 (exit when stdin closes: for test harnesses)  TIMER_SPEEDUP=N (clock, bots and walk N× faster: tests)
 
 mod api;
 mod book;
@@ -29,8 +29,10 @@ fn env(name: &str) -> Option<String> {
     std::env::var(name).ok().filter(|v| !v.is_empty())
 }
 
-/// Run `f` against the core every `ms`, starting after one period.
+/// Run `f` against the core every `ms` (divided by TIMER_SPEEDUP, a test knob), starting after one period.
 fn every(app: &App, ms: u64, f: impl Fn(&mut api::Core) + Send + 'static) {
+    let speedup: u64 = env("TIMER_SPEEDUP").and_then(|s| s.parse().ok()).filter(|&n| n >= 1).unwrap_or(1);
+    let ms = (ms / speedup).max(1);
     let app = app.clone();
     tokio::spawn(async move {
         let mut iv = tokio::time::interval(Duration::from_millis(ms));

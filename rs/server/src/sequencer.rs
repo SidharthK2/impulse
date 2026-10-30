@@ -179,16 +179,28 @@ impl Core {
     }
 }
 
+/// What a rebuild replayed: commands, and the fills and risk events they produced.
+#[derive(Default)]
+pub struct Replayed {
+    pub commands: u64,
+    pub fills: u64,
+    pub risk: u64,
+}
+
 /// Rebuild the exchange from a store: from the latest snapshot (or, with `full`, from the start of the journal:
 /// an empty exchange before its Genesis command, or a legacy import's snapshot 0), replaying every command after
 /// it, up to `until`. Returns the exchange, its sequence number, and how many commands were replayed.
 pub fn rebuild(store: &Store, full: bool, until: Option<u64>) -> Result<(Exchange, u64, u64), String> {
+    rebuild_counting(store, full, until).map(|(x, seq, r)| (x, seq, r.commands))
+}
+
+pub fn rebuild_counting(store: &Store, full: bool, until: Option<u64>) -> Result<(Exchange, u64, Replayed), String> {
     let start = if full { store.first_snapshot()?.filter(|s| s.seq == 0) } else { store.latest_snapshot(until)? };
     let (mut x, mut seq) = match start {
         Some(s) => (decode(&s.state)?, s.seq),
         None => (Exchange::new(0), 0),
     };
-    let mut replayed = 0;
+    let mut replayed = Replayed::default();
     for c in store.commands_after(seq, until)? {
         let cmd: Command = serde_json::from_str(&c.payload).map_err(|e| format!("journal seq {}: {e}", c.seq))?;
         if c.seq != seq + 1 {
@@ -196,13 +208,16 @@ pub fn rebuild(store: &Store, full: bool, until: Option<u64>) -> Result<(Exchang
         }
         x.now = c.ts;
         let version = x.version;
+        let (fill, risk) = (x.fills.back().map_or(0, |f| f.id), x.risk.back().map_or(0, |r| r.id));
         // A journaled command changed the exchange when it ran; its reply (success or refusal) doesn't matter here.
         let _ = command::apply(&mut x, &cmd);
+        replayed.fills += x.fills.iter().rev().take_while(|f| f.id > fill).count() as u64;
+        replayed.risk += x.risk.iter().rev().take_while(|r| r.id > risk).count() as u64;
         if x.version == version {
             return Err(format!("journal seq {} ({}) changed nothing on replay", c.seq, cmd.kind()));
         }
         seq = c.seq;
-        replayed += 1;
+        replayed.commands += 1;
     }
     Ok((x, seq, replayed))
 }
@@ -211,8 +226,8 @@ pub fn rebuild(store: &Store, full: bool, until: Option<u64>) -> Result<(Exchang
 pub fn replay_report(data_dir: &Path, full: bool, until: Option<u64>) -> Result<serde_json::Value, String> {
     let store = Store::open_read_only(data_dir)?;
     let started = Instant::now();
-    let (x, seq, replayed) = rebuild(&store, full, until)?;
-    Ok(serde_json::json!({ "seq": seq, "hash": x.state_hash(), "replayed": replayed, "ms": started.elapsed().as_millis() as u64 }))
+    let (x, seq, r) = rebuild_counting(&store, full, until)?;
+    Ok(serde_json::json!({ "seq": seq, "hash": x.state_hash(), "replayed": r.commands, "fills": r.fills, "risk": r.risk, "ms": started.elapsed().as_millis() as u64 }))
 }
 
 impl From<String> for ExError {
