@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useForm, useSelector } from "@tanstack/react-form";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { change24h } from "../components/Market";
 import { Sparkline } from "../components/Sparkline";
 import { StatusChip, displayName, headline } from "../components/status";
@@ -42,6 +42,25 @@ export function HomePage() {
   }, []);
 
   const q = query.trim().toLowerCase();
+
+  // Switching category, sort or search swaps the list under the sticky toolbar. If you'd scrolled past the
+  // toolbar, keep it pinned and start the new list right under it, instead of letting a shorter page clamp the
+  // scroll and jump. Runs before paint; .home-results is at least a viewport tall, so the target is reachable.
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const resultsRef = useRef<HTMLDivElement>(null);
+  const firstRender = useRef(true);
+  useLayoutEffect(() => {
+    if (firstRender.current) {
+      firstRender.current = false;
+      return;
+    }
+    const bar = toolbarRef.current;
+    const results = resultsRef.current;
+    if (!bar || !results) return;
+    const stuckAt = Number.parseFloat(getComputedStyle(bar).top) || 0;
+    const target = results.getBoundingClientRect().top + window.scrollY - bar.offsetHeight - stuckAt - 12; // a little air under the toolbar
+    if (window.scrollY > target) window.scrollTo({ top: target });
+  }, [category, sort, q]);
   const matches = (m: MarketView) => !q || `${m.id} ${m.name} ${m.base}`.toLowerCase().includes(q);
   const sorted = (xs: MarketView[]) => xs.filter(matches).sort(order(now, sort));
   const sections =
@@ -55,7 +74,7 @@ export function HomePage() {
       <Hero markets={markets} />
       <Spotlight markets={markets} now={now} />
 
-      <div className="home-toolbar" role="search">
+      <div ref={toolbarRef} className="home-toolbar" role="search">
         <div className="tabs cat-tabs" role="tablist" aria-label="Market category">
           {CATEGORIES.map((c) => {
             const n = c.id === "all" ? markets.length : markets.filter((m) => c.kinds.includes(m.kind)).length;
@@ -76,27 +95,29 @@ export function HomePage() {
         </select>
       </div>
 
-      {shown === 0 && q ? <div className="empty panel">No markets match “{query}”.</div> : null}
-      {sections.map((s) =>
-        s.items.length === 0 && (q || category !== "all") ? null : (
-          <section key={s.id} className="market-section">
-            <div className="section-head">
-              <h2>{s.title}</h2>
-              <span className="faint">{s.items.length}</span>
-            </div>
-            {s.lead && <p className="muted section-lead">{s.lead}</p>}
-            {s.items.length === 0 ? (
-              <div className="empty panel">{s.id === "coins" ? "No creator coins yet. Launch one above." : "None listed yet."}</div>
-            ) : (
-              <div className="cards-grid">
-                {s.items.map((m) => (
-                  <MarketCard key={m.id} market={m} now={now} />
-                ))}
+      <div ref={resultsRef} className="home-results">
+        {shown === 0 && q ? <div className="empty panel">No markets match “{query}”.</div> : null}
+        {sections.map((s) =>
+          s.items.length === 0 && (q || category !== "all") ? null : (
+            <section key={s.id} className="market-section">
+              <div className="section-head">
+                <h2>{s.title}</h2>
+                <span className="faint">{s.items.length}</span>
               </div>
-            )}
-          </section>
-        ),
-      )}
+              {s.lead && <p className="muted section-lead">{s.lead}</p>}
+              {s.items.length === 0 ? (
+                <div className="empty panel">{s.id === "coins" ? "No creator coins yet. Launch one above." : "None listed yet."}</div>
+              ) : (
+                <div className="cards-grid">
+                  {s.items.map((m) => (
+                    <MarketCard key={m.id} market={m} now={now} />
+                  ))}
+                </div>
+              )}
+            </section>
+          ),
+        )}
+      </div>
     </div>
   );
 }

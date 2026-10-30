@@ -1815,9 +1815,12 @@ a.btn:hover {
   padding: 8px 0;
   border-bottom: 1px solid var(--line);
   position: sticky;
-  top: 0;
+  top: 52px; /* under the sticky header */
   z-index: 5;
   background: var(--bg);
+}
+.home-results {
+  min-height: 100vh;
 }
 .cat-tabs {
   overflow-x: auto;
@@ -1908,6 +1911,7 @@ a.btn:hover {
   }
   .home-toolbar {
     flex-wrap: wrap;
+    top: 0; /* the header isn't sticky on phones */
   }
   .home-toolbar .spacer {
     display: none;
