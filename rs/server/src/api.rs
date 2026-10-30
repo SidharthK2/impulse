@@ -5,7 +5,8 @@
 
 use crate::book::{Side, Tif};
 use crate::bots::Bots;
-use crate::exchange::{wall_ms, Clock, ExError, Exchange, Kind, MarketSpec, OrderInput, OrderType, Source};
+use crate::exchange::{ExError, Exchange, Kind, MarketSpec, OrderInput, OrderType, Source};
+use crate::intake::{api_key, wall_ms, IntakeClock};
 use crate::feeds;
 use crate::rng::Rng;
 use crate::units::{coins_from_lots, usd};
@@ -37,6 +38,7 @@ pub struct Core {
     pub bots: Option<Bots>,
     pub hub: Hub,
     pub sim: Rng,
+    pub clock: IntakeClock,
 }
 
 pub struct Inner {
@@ -62,9 +64,13 @@ impl App {
         App(Arc::new(Inner { core: Mutex::new(core), admin_token, web_dir, http: feeds::client(), test_hooks }))
     }
 
+    /// The core, stamped with the intake clock's time: every step the core takes runs at that time.
     pub fn lock(&self) -> MutexGuard<'_, Core> {
         // A panicking handler poisons the lock; the core is still consistent at engine-commit granularity.
-        self.core.lock().unwrap_or_else(|e| e.into_inner())
+        let mut core = self.core.lock().unwrap_or_else(|e| e.into_inner());
+        let now = core.clock.now();
+        core.x.now = core.x.now.max(now);
+        core
     }
 }
 
@@ -283,7 +289,7 @@ async fn leaderboard(State(app): State<App>) -> ApiResult {
 
 async fn signup(State(app): State<App>, b: Body) -> ApiResult {
     let mut core = app.lock();
-    let meta = core.x.create_account(&b.str("name")?, false)?;
+    let meta = core.x.create_account(&b.str("name")?, false, &api_key())?;
     core.x.faucet(&meta.id)?;
     log(&format!("new account {}", meta.id));
     ok(json!({ "id": meta.id, "apiKey": meta.api_key }))
@@ -525,7 +531,7 @@ async fn admin_demo_coin(State(app): State<App>, _: Admin, b: Body) -> ApiResult
 }
 
 async fn admin_pump(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
-    let effects = app.lock().x.pump(&b.str("market")?, &b.str("usdc")?)?;
+    let effects = app.lock().x.pump(&b.str("market")?, &b.str("usdc")?, &api_key())?;
     ok(json!({ "effects": kinds(&effects) }))
 }
 
@@ -587,7 +593,8 @@ async fn admin_status(State(app): State<App>, _: Admin) -> ApiResult {
 
 async fn test_advance(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
     let mut core = app.lock();
-    core.x.advance_clock(b.num("ms").unwrap_or(0.0) as i64);
+    core.clock.advance(b.num("ms").unwrap_or(0.0) as i64);
+    core.x.now = core.clock.now();
     let effects = core.x.clock()?;
     ok(json!({ "effects": kinds(&effects), "now": core.x.now() }))
 }
@@ -621,15 +628,20 @@ async fn test_invariants(State(app): State<App>, _: Admin) -> ApiResult {
     ok(check_invariants(&app.lock().x.state))
 }
 
+async fn test_hash(State(app): State<App>, _: Admin) -> ApiResult {
+    ok(json!({ "hash": app.lock().x.state_hash() }))
+}
+
 /// Round-trip the whole exchange through a snapshot in place, then treat `downMs` as downtime.
 async fn test_reload(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
     let mut core = app.lock();
     let before = crate::persist::serialize(&core.x);
-    let (mut y, _) = crate::persist::deserialize(&before, core.x.clock).map_err(ExError::Internal)?;
+    let (mut y, _) = crate::persist::deserialize(&before).map_err(ExError::Internal)?;
     y.version = core.x.version + 1;
     let identical = crate::persist::serialize(&y) == before;
     let down = b.num("downMs").unwrap_or(0.0) as i64;
-    y.advance_clock(down);
+    core.clock.advance(down);
+    y.now = core.clock.now();
     y.resume_after(down);
     let effects = y.clock()?;
     core.x = y;
@@ -763,19 +775,12 @@ pub fn router(app: App) -> Router {
             .route("/api/test/market", post(test_market))
             .route("/api/test/tick", post(test_tick))
             .route("/api/test/invariants", get(test_invariants))
+            .route("/api/test/hash", get(test_hash))
             .route("/api/test/reload", post(test_reload));
     }
     r.method_not_allowed_fallback(not_found).fallback(fallback).layer(axum::middleware::from_fn(cors)).with_state(app)
 }
 
-pub fn new_core(x: Exchange, bots: bool) -> Core {
-    Core { x, bots: bots.then(Bots::new), hub: Hub::default(), sim: Rng::new(42) }
-}
-
-pub fn test_clock(enabled: bool) -> Clock {
-    if enabled {
-        Clock::Manual(wall_ms())
-    } else {
-        Clock::Wall
-    }
+pub fn new_core(x: Exchange, bots: bool, clock: IntakeClock) -> Core {
+    Core { x, bots: bots.then(Bots::new), hub: Hub::default(), sim: Rng::new(42), clock }
 }

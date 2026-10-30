@@ -3,7 +3,8 @@
 // every price change runs liquidation and ADL atomically, and an admin hold makes the feed stand aside.
 
 use crate::api::{log, App};
-use crate::exchange::{wall_ms, Exchange, ExError, Kind, MarketSpec, Source};
+use crate::exchange::{Exchange, ExError, Kind, MarketSpec, Source};
+use crate::intake::wall_ms;
 use crate::units::{nano_from_f64, nano_from_feed};
 use impulse_engine::Status;
 use serde_json::{json, Value};

@@ -71,7 +71,7 @@ impl Bots {
             if x.accounts.contains_key(id) {
                 continue;
             }
-            if x.create_account(id, true).is_ok() {
+            if x.create_account(id, true, &crate::intake::api_key()).is_ok() {
                 let _ = x.deposit(id, deposit);
             }
         }

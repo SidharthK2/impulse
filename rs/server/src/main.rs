@@ -9,6 +9,7 @@ mod book;
 mod bots;
 mod exchange;
 mod feeds;
+mod intake;
 mod persist;
 mod rng;
 mod units;
@@ -16,7 +17,8 @@ mod views;
 mod ws;
 
 use api::{log, App};
-use exchange::{wall_ms, Exchange};
+use exchange::Exchange;
+use intake::{wall_ms, IntakeClock};
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -63,7 +65,7 @@ async fn main() {
     let offline = env("OFFLINE").as_deref() == Some("1");
     let bots = env("BOTS").as_deref() != Some("0");
     let test_clock = env("TEST_CLOCK").as_deref() == Some("1");
-    let clock = api::test_clock(test_clock);
+    let clock = IntakeClock::new(test_clock);
     if env("EXIT_WITH_STDIN").as_deref() == Some("1") {
         // Test harnesses: exit when the parent closes our stdin (or dies), so no server outlives its tests.
         std::thread::spawn(|| {
@@ -72,7 +74,7 @@ async fn main() {
         });
     }
 
-    let snap = match persist::load(&data_dir, clock) {
+    let snap = match persist::load(&data_dir) {
         Ok(s) => s,
         Err(e) => {
             eprintln!("{e}");
@@ -93,9 +95,9 @@ async fn main() {
             ));
             x
         }
-        None => Exchange::new(clock),
+        None => Exchange::new(clock.now()),
     };
-    let app = App::new(api::new_core(x, bots), admin_token.clone(), Some(web_dir), test_clock);
+    let app = App::new(api::new_core(x, bots, clock), admin_token.clone(), Some(web_dir), test_clock);
     if fresh {
         log(&format!("fresh exchange; listing default markets{}…", if offline { " (offline)" } else { "" }));
         feeds::list_defaults(&app, offline).await;
