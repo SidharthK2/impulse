@@ -468,11 +468,21 @@ async fn check_resolutions(app: &App) -> Result<(), String> {
     Ok(())
 }
 
-/// Offline markets: a log-normal walk for perps, a walk in log-odds for binaries.
-pub fn step_sim(x: &mut Exchange, rng: &mut crate::rng::Rng, warn: &Warn) {
-    let sims = open_markets(x, |s| matches!(s, Source::Sim { .. }));
-    for (id, source) in sims {
-        let Source::Sim { vol_bps } = source else { continue };
+/// Offline markets: a log-normal walk for perps, a walk in log-odds for binaries. When the server runs offline,
+/// markets that mirror Hyperliquid or Polymarket (say, restored from a snapshot taken online) walk too, so their
+/// prices don't freeze.
+pub fn step_sim(x: &mut Exchange, rng: &mut crate::rng::Rng, warn: &Warn, offline: bool) {
+    let walking = open_markets(x, |s| match s {
+        Source::Sim { .. } => true,
+        Source::Hyperliquid { .. } | Source::Polymarket { .. } => offline,
+        _ => false,
+    });
+    for (id, source) in walking {
+        let vol_bps = match source {
+            Source::Sim { vol_bps } => vol_bps,
+            Source::Polymarket { .. } => 40.0, // what a fresh offline exchange gives its simulated binary
+            _ => 15.0,                          // and its simulated perps
+        };
         let meta = &x.markets[&id];
         let Some(mark) = x.state.markets[&id].mark else { continue };
         let cur = mark as f64 * 10f64.powi(meta.sz_decimals as i32) / 1e9; // coin price

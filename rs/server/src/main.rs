@@ -127,7 +127,7 @@ async fn main() {
     let warn = feeds::Warn::default();
     {
         let warn = warn.clone();
-        every(&app, 2000, move |c| feeds::step_sim(&mut c.x, &mut c.sim, &warn));
+        every(&app, 2000, move |c| feeds::step_sim(&mut c.x, &mut c.sim, &warn, offline));
     }
     if !offline {
         feeds::start(&app, &warn);
