@@ -11,18 +11,48 @@ export function usd(s: string | number | null | undefined, opts: { sign?: boolea
   return `${sign}$${body}`;
 }
 
-/** Price with the market's tick precision; tiny prices keep their significant digits. */
+/** Significant figures shown for a price, as on Hyperliquid (its ticks allow five). */
+export const SIG_FIGS = 5;
+
+/** Decimal places that show `sig` significant figures of `v`. The integer part is never cut: 80,238 stays whole. */
+export function sigDecimals(v: number, sig = SIG_FIGS): number {
+  if (!Number.isFinite(v) || v === 0) return 0;
+  return Math.max(0, sig - 1 - Math.floor(Math.log10(Math.abs(v))));
+}
+
+const SUBSCRIPT = "₀₁₂₃₄₅₆₇₈₉";
+
+/**
+ * Four or more zeros after the decimal point collapse to a subscript count, as memecoin venues show them:
+ * 0.000007031 reads 0.0₅7031 (five zeros, then the significant digits).
+ */
+export function compressZeros(text: string): string {
+  const m = /^(-?)0\.(0{4,})(\d+)$/.exec(text);
+  if (!m) return text;
+  const count = [...String(m[2]!.length)].map((d) => SUBSCRIPT[Number(d)]).join("");
+  return `${m[1]}0.0${count}${m[3]}`;
+}
+
+/**
+ * A price: at most five significant figures and never more decimals than the market's tick, with the whole integer
+ * part always shown, and long runs of leading zeros compressed (0.0₅7031).
+ */
 export function price(s: string | number | null | undefined, decimals: number): string {
   const v = num(s);
   if (!Number.isFinite(v)) return "—";
-  return v.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  const d = Math.min(decimals, sigDecimals(v));
+  return compressZeros(v.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d }));
 }
 
+/** A size in coins, to the market's lot. From 100,000 up it goes compact with two decimals: 213.34M, 9.52M. */
 export function size(s: string | number | null | undefined, decimals: number): string {
   const v = num(s);
   if (!Number.isFinite(v)) return "—";
+  if (Math.abs(v) >= 100_000) return sizeCompactFmt.format(v);
   return v.toLocaleString("en-US", { maximumFractionDigits: decimals });
 }
+
+const sizeCompactFmt = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 2 });
 
 export function pct(v: number, digits = 2): string {
   if (!Number.isFinite(v)) return "—";
