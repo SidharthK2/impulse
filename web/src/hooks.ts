@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { live } from "./api";
+import { paced } from "./pacing";
 
 /** Latest payload on a websocket channel (null channel = not subscribed). */
 export function useChannel<T>(ch: string | null): T | undefined {
@@ -7,7 +8,12 @@ export function useChannel<T>(ch: string | null): T | undefined {
   useEffect(() => {
     setData(undefined);
     if (!ch) return;
-    return live.subscribe(ch, (d) => setData(d as T));
+    const p = paced<T>(ch, setData);
+    const off = live.subscribe(ch, (d) => p.push(d as T));
+    return () => {
+      off();
+      p.cancel();
+    };
   }, [ch]);
   return data;
 }

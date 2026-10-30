@@ -1,30 +1,38 @@
+import { Link } from "@tanstack/react-router";
+import { useForm, useSelector } from "@tanstack/react-form";
 import { Fragment, useEffect, useState } from "react";
 import { api } from "../api";
+import { isFixtureMarket } from "../fixtures";
 import { clock, num, price, size, tone, usd } from "../format";
-import { useChannel } from "../hooks";
-import type { AccountView, MarketView, PositionView, RiskEvent } from "../types";
-import { RiskList } from "./RiskFeed";
+import { act, useFeed } from "../queries";
+import type { AccountView, MarketView, PositionView } from "../types";
 import { useToast } from "./ui";
+import { FieldError, FormError, invalid, positive, useServerError } from "./form";
+import { RiskList } from "./RiskFeed";
+import { Roll } from "./Roll";
+import { WhoPaid } from "./WhoPaid";
 
-type Tab = "positions" | "orders" | "fills" | "risk" | "market";
+type Tab = "positions" | "orders" | "fills" | "whopaid" | "holders";
 
 interface Props {
   account: AccountView | undefined;
   markets: Record<string, MarketView>;
-  current: MarketView;
+  /** The market on screen. Without one (the portfolio), Who paid is the account's own risk history. */
+  current?: MarketView;
   signedIn: boolean;
-  onPick: (id: string) => void;
 }
 
-export function AccountPanel({ account, markets, current, signedIn, onPick }: Props) {
+export function AccountPanel({ account, markets, current, signedIn }: Props) {
   const [tab, setTab] = useState<Tab>("positions");
+  const feed = useFeed();
   const open = account?.positions.filter((p) => p.side !== "flat") ?? [];
+  const incidents = current ? feed.filter((e) => e.market === current.id && (e.kind === "bankrupt" || e.kind === "liquidation")).length : (account?.risk.length ?? 0);
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: "positions", label: "Positions", count: open.length + (account?.spot.length ?? 0) },
     { id: "orders", label: "Open orders", count: account?.orders.length },
     { id: "fills", label: "Fills" },
-    { id: "risk", label: "Who paid", count: account?.risk.length },
-    { id: "market", label: `${current.id} risk` },
+    { id: "whopaid", label: "Who paid", count: incidents },
+    ...(current ? [{ id: "holders" as const, label: "Holders" }] : []),
   ];
   return (
     <div className="panel account-panel" style={{ minHeight: 260 }}>
@@ -40,21 +48,23 @@ export function AccountPanel({ account, markets, current, signedIn, onPick }: Pr
         <span className="spacer" />
         {tab === "orders" && account && account.orders.length > 0 && <CancelAll />}
       </div>
-      <div className="scroll" style={{ flex: 1, maxHeight: 360 }}>
-        {tab === "market" ? (
-          <MarketRisk market={current} />
+      <div className="scroll" style={{ flex: 1, maxHeight: 420 }}>
+        {tab === "whopaid" && current ? (
+          <WhoPaid market={current} feed={feed} account={account} />
+        ) : tab === "holders" && current ? (
+          <Holders market={current} />
         ) : !signedIn ? (
           <div className="empty">Sign up to get $10,000 of paper USDC and start trading.</div>
         ) : !account ? (
           <div className="empty">Loading…</div>
         ) : tab === "positions" ? (
-          <Positions account={account} markets={markets} onPick={onPick} />
+          <Positions account={account} markets={markets} />
+        ) : tab === "whopaid" ? (
+          <AccountRisk account={account} />
         ) : tab === "orders" ? (
           <Orders account={account} markets={markets} />
-        ) : tab === "fills" ? (
-          <Fills account={account} markets={markets} />
         ) : (
-          <WhoPaid account={account} />
+          <Fills account={account} markets={markets} />
         )}
       </div>
     </div>
@@ -77,24 +87,15 @@ function CancelAll() {
   );
 }
 
-function Positions({ account, markets, onPick }: { account: AccountView; markets: Record<string, MarketView>; onPick: (id: string) => void }) {
+function Positions({ account, markets }: { account: AccountView; markets: Record<string, MarketView> }) {
   const toast = useToast();
   const [marginFor, setMarginFor] = useState<string | null>(null);
-  const [amount, setAmount] = useState("");
   const open = account.positions.filter((p) => p.side !== "flat");
   if (open.length === 0 && account.spot.length === 0) return <div className="empty">No open positions.</div>;
 
   const close = (p: PositionView) =>
-    api<{ status: string; reason: string | null }>("POST", "/api/positions/close", { market: p.market })
+    act<{ status: string; reason: string | null }>("POST", "/api/positions/close", { market: p.market })
       .then((r) => toast(r.status === "filled" ? `Closed ${p.market}` : `Close ${r.status}: ${r.reason ?? ""}`, r.status === "filled" ? "up" : "warn"))
-      .catch((e) => toast((e as Error).message, "down"));
-  const margin = (p: PositionView, sign: 1 | -1) =>
-    api("POST", "/api/margin", { market: p.market, amount: `${sign < 0 ? "-" : ""}${amount}` })
-      .then(() => {
-        toast(`${sign > 0 ? "Added" : "Removed"} $${amount} margin on ${p.market}`, "up");
-        setAmount("");
-        setMarginFor(null);
-      })
       .catch((e) => toast((e as Error).message, "down"));
 
   return (
@@ -123,9 +124,9 @@ function Positions({ account, markets, onPick }: { account: AccountView; markets
             <Fragment key={p.market}>
               <tr>
                 <td>
-                  <a href={`#/trade/${encodeURIComponent(p.market)}`} onClick={() => onPick(p.market)}>
+                  <Link to="/trade/$market" params={{ market: p.market }}>
                     {p.market}
-                  </a>{" "}
+                  </Link>{" "}
                   <span className={`badge ${p.side === "long" ? "up" : "down"}`}>{p.side}</span>
                 </td>
                 <td className="right mono">{size(p.size, m?.szDecimals ?? 4)}</td>
@@ -133,10 +134,14 @@ function Positions({ account, markets, onPick }: { account: AccountView; markets
                 <td className="right mono">{price(p.mark, d)}</td>
                 <td className="right mono warn">{p.liquidationPrice ? price(p.liquidationPrice, d) : "—"}</td>
                 <td className="right mono">{usd(p.collateral)}</td>
-                <td className={`right mono ${tone(num(p.unrealized))}`}>{usd(p.unrealized, { sign: true })}</td>
+                <td className={`right mono ${tone(num(p.unrealized))}`}>
+                  <Roll text={usd(p.unrealized, { sign: true })} value={num(p.unrealized)} />
+                </td>
                 <td className={`right mono ${tone(num(p.funding))}`}>{usd(p.funding, { sign: true })}</td>
                 <td className={`right mono ${tone(num(p.adl))}`}>{num(p.adl) === 0 ? "—" : usd(p.adl, { sign: true })}</td>
-                <td className={`right mono ${tone(num(p.pnl))}`}>{usd(p.pnl, { sign: true })}</td>
+                <td className={`right mono ${tone(num(p.pnl))}`}>
+                  <Roll text={usd(p.pnl, { sign: true })} value={num(p.pnl)} />
+                </td>
                 <td className="right mono">{p.leverage ? `${p.leverage.toFixed(1)}×` : "—"}</td>
                 <td className="right">
                   <div className="row" style={{ justifyContent: "flex-end", gap: 4 }}>
@@ -152,16 +157,7 @@ function Positions({ account, markets, onPick }: { account: AccountView; markets
               {marginFor === p.market && (
                 <tr>
                   <td colSpan={12}>
-                    <div className="row" style={{ maxWidth: 520 }}>
-                      <span className="muted">Isolated margin: {usd(p.collateral)}, removable {usd(p.releasable)}</span>
-                      <input className="input mono" style={{ width: 120 }} placeholder="USD" value={amount} onChange={(e) => setAmount(e.target.value.trim())} />
-                      <button className="btn small" disabled={!(num(amount) > 0)} onClick={() => margin(p, 1)}>
-                        Add
-                      </button>
-                      <button className="btn small" disabled={!(num(amount) > 0)} onClick={() => margin(p, -1)}>
-                        Remove
-                      </button>
-                    </div>
+                    <MarginForm position={p} wallet={account.wallet} onDone={() => setMarginFor(null)} />
                   </td>
                 </tr>
               )}
@@ -171,9 +167,9 @@ function Positions({ account, markets, onPick }: { account: AccountView; markets
         {account.spot.map((s) => (
           <tr key={`spot-${s.market}`}>
             <td>
-              <a href={`#/trade/${encodeURIComponent(s.market)}`} onClick={() => onPick(s.market)}>
+              <Link to="/trade/$market" params={{ market: s.market }}>
                 {s.market}
-              </a>{" "}
+              </Link>{" "}
               <span className="badge info">spot</span>
             </td>
             <td className="right mono">{size(s.tokens, 0)}</td>
@@ -186,6 +182,101 @@ function Positions({ account, markets, onPick }: { account: AccountView; markets
         ))}
       </tbody>
     </table>
+  );
+}
+
+/** The account's own side of ADL: what it paid for others, what others covered for it, and its risk events. */
+function AccountRisk({ account }: { account: AccountView }) {
+  const l = account.ledger;
+  return (
+    <div>
+      <div className="whopaid-summary">
+        <span title="ADL haircuts: your profit (or principal) used to cover someone else's negative equity">
+          Haircuts you paid: <b className="mono down">{usd(l.adlPaid)}</b>
+        </span>
+        <span>
+          Your shortfalls others covered: <b className="mono up">{usd(l.adlCovered)}</b>
+        </span>
+        <span>
+          Net funding: <b className={`mono ${tone(num(l.funding))}`}>{usd(l.funding, { sign: true })}</b>
+        </span>
+        <span>
+          Realized trading PnL: <b className={`mono ${tone(num(l.realized))}`}>{usd(l.realized, { sign: true })}</b>
+        </span>
+      </div>
+      <RiskList events={account.risk} />
+    </div>
+  );
+}
+
+/** Add or remove isolated margin. The button pressed sets `dir`, which the amount is checked against. */
+function MarginForm({ position: p, wallet, onDone }: { position: PositionView; wallet: string; onDone: () => void }) {
+  const toast = useToast();
+  const server = useServerError();
+  const form = useForm({
+    defaultValues: { amount: "", dir: "add" as "add" | "remove" },
+    onSubmit: async ({ value }) => {
+      server.clear();
+      try {
+        await act("POST", "/api/margin", { market: p.market, amount: `${value.dir === "remove" ? "-" : ""}${value.amount}` });
+        toast(`${value.dir === "add" ? "Added" : "Removed"} $${value.amount} margin on ${p.market}`, "up");
+        onDone();
+      } catch (e) {
+        server.fail(e);
+      }
+    },
+  });
+  const pending = useSelector(form.store, (s) => s.isSubmitting);
+  return (
+    <form
+      className="margin-form"
+      noValidate
+      onSubmit={(e) => {
+        e.preventDefault();
+        void form.handleSubmit();
+      }}
+    >
+      <span className="muted">
+        Isolated margin: {usd(p.collateral)}, removable {usd(p.releasable)}
+      </span>
+      <form.Field
+        name="amount"
+        validators={{
+          onChangeListenTo: ["dir"],
+          onChange: ({ value, fieldApi }) => {
+            const bad = positive(value, "Amount");
+            if (bad) return bad;
+            if (fieldApi.form.getFieldValue("dir") === "remove" && num(value) > num(p.releasable)) return `At most ${usd(p.releasable)} can be removed`;
+            if (fieldApi.form.getFieldValue("dir") === "add" && num(value) > num(wallet)) return `More than your wallet (${usd(wallet)})`;
+            return undefined;
+          },
+        }}
+      >
+        {(f) => (
+          <div className="col" style={{ gap: 2 }}>
+            <input
+              className={`input mono ${invalid(f) ? "bad" : ""}`}
+              style={{ width: 120 }}
+              placeholder="USD"
+              inputMode="decimal"
+              value={f.state.value}
+              onChange={(e) => f.handleChange(e.target.value.trim())}
+              onBlur={f.handleBlur}
+              aria-label="Margin amount in USD"
+              aria-invalid={invalid(f)}
+            />
+            <FieldError field={f} />
+          </div>
+        )}
+      </form.Field>
+      <button type="submit" className="btn small" disabled={pending} onClick={() => form.setFieldValue("dir", "add")}>
+        Add
+      </button>
+      <button type="submit" className="btn small" disabled={pending} onClick={() => form.setFieldValue("dir", "remove")}>
+        Remove
+      </button>
+      <FormError error={server.error} />
+    </form>
   );
 }
 
@@ -275,29 +366,6 @@ function Fills({ account, markets }: { account: AccountView; markets: Record<str
   );
 }
 
-function WhoPaid({ account }: { account: AccountView }) {
-  const l = account.ledger;
-  return (
-    <div>
-      <div className="row" style={{ padding: "10px 12px", gap: 24, borderBottom: "1px solid var(--line)", flexWrap: "wrap" }}>
-        <span className="muted" title="ADL haircuts: your profit (or principal) used to cover someone else's negative equity">
-          Haircuts you paid: <b className="mono down">{usd(l.adlPaid)}</b>
-        </span>
-        <span className="muted">
-          Your shortfalls others covered: <b className="mono up">{usd(l.adlCovered)}</b>
-        </span>
-        <span className="muted">
-          Net funding: <b className={`mono ${tone(num(l.funding))}`}>{usd(l.funding, { sign: true })}</b>
-        </span>
-        <span className="muted">
-          Realized trading PnL: <b className={`mono ${tone(num(l.realized))}`}>{usd(l.realized, { sign: true })}</b>
-        </span>
-      </div>
-      <RiskList events={account.risk} />
-    </div>
-  );
-}
-
 interface PublicPosition {
   account: string;
   size: string;
@@ -305,12 +373,15 @@ interface PublicPosition {
   adl: string;
 }
 
-/** The whole market is public: who holds what, so who would absorb a shortfall, and what has happened here. */
-function MarketRisk({ market }: { market: MarketView }) {
-  const feed = useChannel<RiskEvent[]>("feed") ?? [];
+/** The whole market is public: who holds what, so who would absorb the next shortfall. */
+function Holders({ market }: { market: MarketView }) {
   const [positions, setPositions] = useState<PublicPosition[]>([]);
   useEffect(() => {
     let alive = true;
+    if (isFixtureMarket(market.id)) {
+      setPositions([]);
+      return;
+    }
     const load = () =>
       api<PublicPosition[]>("GET", `/api/markets/${encodeURIComponent(market.id)}/positions`)
         .then((p) => alive && setPositions(p))
@@ -324,8 +395,8 @@ function MarketRisk({ market }: { market: MarketView }) {
   }, [market.id]);
   const sorted = [...positions].sort((a, b) => Math.abs(num(b.size)) - Math.abs(num(a.size)));
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.4fr)" }}>
-      <div style={{ borderRight: "1px solid var(--line)" }}>
+    <div>
+      <div>
         <table className="grid">
           <thead>
             <tr>
@@ -348,7 +419,6 @@ function MarketRisk({ market }: { market: MarketView }) {
         </table>
         {sorted.length === 0 && <div className="empty">No open positions in {market.id}.</div>}
       </div>
-      <RiskList events={feed.filter((e) => e.market === market.id)} showMarket={false} />
     </div>
   );
 }

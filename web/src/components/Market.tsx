@@ -1,15 +1,21 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { api } from "../api";
+import { Link } from "@tanstack/react-router";
+import { useForm, useSelector } from "@tanstack/react-form";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { act } from "../queries";
 import { compact, countdown, num, pct, price, tone, usd } from "../format";
 import { useNow } from "../hooks";
 import type { AccountView, MarketView } from "../types";
+import { FormError, Input, positive, useServerError } from "./form";
+import { BookPricedBadge } from "./PreIpo";
+import { Roll } from "./Roll";
+import { headline } from "./status";
 import { Stat, useToast } from "./ui";
 
-const KIND_LABEL: Record<string, string> = { perp: "Perps", binary: "Prediction markets", attention: "Attention markets" };
+const KIND_LABEL: Record<string, string> = { attention: "Creator coins", preipo: "Pre-IPO", perp: "Crypto and equities", binary: "Prediction markets" };
 
 export const change24h = (m: MarketView) => (m.open24h && m.mark ? num(m.mark) / num(m.open24h) - 1 : NaN);
 
-export function MarketPicker({ markets, current, onPick, onList }: { markets: MarketView[]; current: MarketView; onPick: (id: string) => void; onList: () => void }) {
+export function MarketPicker({ markets, current, onPick }: { markets: MarketView[]; current: MarketView; onPick: (id: string) => void }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const ref = useRef<HTMLDivElement>(null);
@@ -20,7 +26,7 @@ export function MarketPicker({ markets, current, onPick, onList }: { markets: Ma
   }, []);
   const groups = useMemo(() => {
     const f = markets.filter((m) => (m.id + m.name).toLowerCase().includes(q.toLowerCase()));
-    return (["perp", "binary", "attention"] as const).map((k) => ({ kind: k, items: f.filter((m) => m.kind === k) })).filter((g) => g.items.length);
+    return (["attention", "preipo", "perp", "binary"] as const).map((k) => ({ kind: k, items: f.filter((m) => m.kind === k) })).filter((g) => g.items.length);
   }, [markets, q]);
   return (
     <div className="picker" ref={ref}>
@@ -32,15 +38,9 @@ export function MarketPicker({ markets, current, onPick, onList }: { markets: Ma
         <div className="picker-menu">
           <div style={{ padding: 10, display: "flex", gap: 8 }}>
             <input className="input" autoFocus placeholder="Search markets" value={q} onChange={(e) => setQ(e.target.value)} />
-            <button
-              className="btn"
-              onClick={() => {
-                setOpen(false);
-                onList();
-              }}
-            >
-              + List
-            </button>
+            <Link className="btn" to="/" hash="launch" onClick={() => setOpen(false)}>
+              + Launch
+            </Link>
           </div>
           {groups.map((g) => (
             <div key={g.kind}>
@@ -62,7 +62,7 @@ export function MarketPicker({ markets, current, onPick, onList }: { markets: Ma
                           <b>{m.kind === "binary" ? m.name : m.id}</b>
                           {m.status === "resolved" && <span className="badge info" style={{ marginLeft: 6 }}>resolved</span>}
                         </td>
-                        <td className="right mono">{price(m.mark, m.priceDecimals)}</td>
+                        <td className="right mono">{price(headline(m), m.priceDecimals)}</td>
                         <td className={`right mono ${tone(ch)}`}>{pct(ch)}</td>
                         <td className="right mono muted">{m.maxLeverage}×</td>
                       </tr>
@@ -78,16 +78,44 @@ export function MarketPicker({ markets, current, onPick, onList }: { markets: Ma
   );
 }
 
-export function MarketBar({ market, markets, onPick, onList }: { market: MarketView; markets: MarketView[]; onPick: (id: string) => void; onList: () => void }) {
+export function MarketBar({ market, markets, onPick }: { market: MarketView; markets: MarketView[]; onPick: (id: string) => void }) {
   const now = useNow(1000);
   const ch = change24h(market);
   const f = market.funding.ratePerHour;
   return (
     <div className="mbar">
-      <MarketPicker markets={markets} current={market} onPick={onPick} onList={onList} />
+      <MarketPicker markets={markets} current={market} onPick={onPick} />
       <div className="col" style={{ gap: 0 }}>
-        <span className="big">{price(market.mark, market.priceDecimals)}</span>
+        <Roll className="big" text={price(headline(market), Math.max(market.priceDecimals, market.snipe ? 6 : 0))} value={num(headline(market))} />
+        {market.snipe && <span className="faint small">projected open</span>}
       </div>
+      <div className="mbar-stats">
+        <BookPricedBadge market={market} />
+        {market.preipo && (
+          <>
+            <Stat label="Implied valuation" title="Mark × 1,000,000,000 shares">
+              {usd(market.preipo.impliedValuation, { compact: true })}
+            </Stat>
+            <Stat label="Seed">{price(market.preipo.seedPrice, market.priceDecimals)}</Stat>
+            <Stat label="Status">
+              {market.preipo.status === "public" ? (
+                <span className="info-text">public · IPO {price(market.preipo.ipoPrice, market.priceDecimals)}</span>
+              ) : (
+                "private"
+              )}
+            </Stat>
+          </>
+        )}
+      {market.launch && (
+        <>
+          <Stat label="Open price" title={`Opened ${new Date(market.launch.openedAt).toLocaleString()}`}>
+            {price(market.launch.openPrice, market.priceDecimals)}
+          </Stat>
+          <Stat label="Launch reserve" title="USDC the snipe pool left in the curve">
+            {usd(market.launch.reserve, { compact: true })}
+          </Stat>
+        </>
+      )}
       <Stat label="24h">
         <span className={tone(ch)}>{pct(ch)}</span>
       </Stat>
@@ -111,6 +139,7 @@ export function MarketBar({ market, markets, onPick, onList }: { market: MarketV
         </span>
       )}
       {market.status === "resolved" && <span className="badge info">resolved</span>}
+      </div>
     </div>
   );
 }
@@ -148,6 +177,30 @@ export function InfoPanel({ market }: { market: MarketView }) {
             </>
           )}
         </dl>
+        {market.settings.length > 0 && (
+          <div className="col" style={{ gap: 6 }}>
+            <div className="label">Settings</div>
+            <dl className="kv settings">
+              {market.settings.map((s) => (
+                <Fragment key={s.label}>
+                  <dt>{s.label}</dt>
+                  <dd>
+                    {s.value}{" "}
+                    {s.ours ? (
+                      <span className="badge ours" title="A parameter we chose; Mirror publishes none for this">
+                        our setting
+                      </span>
+                    ) : (
+                      <span className="badge" title="Published by Mirror; we use the same value">
+                        published
+                      </span>
+                    )}
+                  </dd>
+                </Fragment>
+              ))}
+            </dl>
+          </div>
+        )}
         {Math.abs(market.funding.ratePerHour - market.funding.baseRatePerHour) >= 0.005 && (
           <div className="note warn" style={{ fontSize: 11 }}>
             Funding is {(market.funding.ratePerHour * 100).toFixed(2)}%/h because the last trade ({price(market.last, market.priceDecimals)}) is far from the oracle. The premium uses the last trade as the perp price,
@@ -209,26 +262,43 @@ export function InfoPanel({ market }: { market: MarketView }) {
 
 export function SpotPanel({ market, account, signedIn }: { market: MarketView; account: AccountView | undefined; signedIn: boolean }) {
   const toast = useToast();
-  const [usdc, setUsdc] = useState("");
-  const [busy, setBusy] = useState(false);
+  const server = useServerError();
+  const [selling, setSelling] = useState(false);
   const c = market.curve!;
   const held = account?.spot.find((s) => s.market === market.id);
-  async function run(path: string, body: object, done: string) {
-    setBusy(true);
+  const wallet = account?.wallet ?? null;
+  const buy = useForm({
+    defaultValues: { usdc: "" },
+    onSubmit: async ({ value, formApi }) => {
+      server.clear();
+      try {
+        await act("POST", "/api/spot/buy", { market: market.id, usdc: value.usdc });
+        toast(`Bought ${market.id} with $${value.usdc}`, "up");
+        formApi.reset();
+      } catch (err) {
+        server.fail(err);
+      }
+    },
+  });
+  const buying = useSelector(buy.store, (s) => s.isSubmitting);
+  const busy = buying || selling;
+  // Sells are one-click buttons, not a form: they report through the same form-level error.
+  async function sell(tokens: string, done: string) {
+    setSelling(true);
+    server.clear();
     try {
-      await api("POST", path, { market: market.id, ...body });
+      await act("POST", "/api/spot/sell", { market: market.id, tokens });
       toast(done, "up");
-      setUsdc("");
     } catch (err) {
-      toast((err as Error).message, "down");
+      server.fail(err);
     } finally {
-      setBusy(false);
+      setSelling(false);
     }
   }
   return (
     <div className="panel">
       <div className="panel-head">
-        <h3>Spot curve</h3>
+        <h3>Spot · buy on the curve</h3>
         <span className="spacer" />
         <span className={`badge ${c.oracleWindow === 0 ? "down" : "info"}`}>{c.oracleWindow === 0 ? "instant oracle" : `${c.oracleWindow / 60}m TWAP oracle`}</span>
       </div>
@@ -245,15 +315,48 @@ export function SpotPanel({ market, account, signedIn }: { market: MarketView; a
           <dt>You hold</dt>
           <dd>{held ? `${compact(held.tokens)} (${usd(held.value)})` : "—"}</dd>
         </dl>
-        <div className="row">
-          <input className="input mono" inputMode="decimal" placeholder="USDC" value={usdc} onChange={(e) => setUsdc(e.target.value.trim())} />
-          <button className="btn buy" disabled={!signedIn || busy || !(num(usdc) > 0)} onClick={() => run("/api/spot/buy", { usdc }, `Bought ${market.id} with $${usdc}`)}>
-            Buy
+        <form
+          className="row top"
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault();
+            void buy.handleSubmit();
+          }}
+        >
+          <buy.Field
+            name="usdc"
+            validators={{
+              onChange: ({ value }) => {
+                const bad = positive(value, "Amount");
+                if (bad) return bad;
+                if (wallet !== null && num(value) > num(wallet)) return `More than your wallet (${usd(wallet)})`;
+                return undefined;
+              },
+            }}
+          >
+            {(f) => <Input field={f} className="mono" inputMode="decimal" placeholder="USDC" aria-label="USDC to spend" transform={(v) => v.trim()} wrap={{ flex: 1 }} />}
+          </buy.Field>
+          <button type="submit" className="btn buy" disabled={!signedIn || busy}>
+            {buying ? "Buying…" : "Buy"}
           </button>
-          <button className="btn sell" disabled={!signedIn || busy || !held} onClick={() => run("/api/spot/sell", { tokens: "all" }, `Sold all ${market.id}`)}>
-            Sell all
+        </form>
+        <div className="row" style={{ gap: 4 }}>
+          <span className="muted small grow">Sell</span>
+          {[0.25, 0.5].map((f) => (
+            <button
+              key={f}
+              className="btn small sell"
+              disabled={!signedIn || busy || !held}
+              onClick={() => held && sell(String(Math.floor(num(held.tokens) * f)), `Sold ${f * 100}% of ${market.id}`)}
+            >
+              {f * 100}%
+            </button>
+          ))}
+          <button className="btn small sell" disabled={!signedIn || busy || !held} onClick={() => sell("all", `Sold all ${market.id}`)}>
+            All
           </button>
         </div>
+        <FormError error={server.error} />
         <div className="faint" style={{ fontSize: 11 }}>
           {c.oracleWindow === 0
             ? "The perp marks to this curve instantly: a spot buy moves the oracle in the same transaction, and buying then selling back costs only fees. That is the pump attack (finding F)."
