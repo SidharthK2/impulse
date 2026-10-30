@@ -4,10 +4,10 @@
 import { QueryClient, type QueryKey, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo } from "react";
 import { ApiError, api, live } from "./api";
-import { fixtureCall, isFixtureMarket, setRealMarketIds, useFixtureWorld } from "./fixtures";
+import { fixtureCall, fixtureCandles, isFixtureMarket, setRealMarketIds, useFixtureWorld } from "./fixtures";
 import { normalizeAccount, normalizeEvents, normalizeMarkets } from "./normalize";
 import { useSession } from "./store";
-import type { AccountView, BookView, ConfigView, FillView, LeaderRow, MarketView, RiskEvent } from "./types";
+import type { AccountView, BookView, Candle, ConfigView, FillView, LeaderRow, MarketView, RiskEvent } from "./types";
 
 export const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: Infinity, retry: 1, refetchOnWindowFocus: false } },
@@ -100,6 +100,31 @@ export function useTrades(id: string): FillView[] {
   const real = useLive(["trades", id], fixture ? null : `trades:${id}`, null, same<FillView[]>).data;
   const fx = useFixtureWorld((s) => (fixture ? s.snap?.trades[id] : undefined));
   return (fixture ? fx : real) ?? [];
+}
+
+/** 1m mark candles: the REST history, with each websocket push (the latest two candles) merged in. */
+export function useCandles(id: string): Candle[] | undefined {
+  const fixture = isFixtureMarket(id);
+  const qc = useQueryClient();
+  useEffect(() => {
+    if (fixture) return;
+    return live.subscribe(`candles:${id}`, (raw) => qc.setQueryData<Candle[]>(["candles", id], (old) => mergeCandles(old, raw as Candle[])));
+  }, [id, fixture, qc]);
+  const real = useQuery({ queryKey: ["candles", id], queryFn: () => api<Candle[]>("GET", `/api/markets/${encodeURIComponent(id)}/candles`), enabled: !fixture }).data;
+  const snap = useFixtureWorld((s) => (fixture ? s.snap : null));
+  const fx = useMemo(() => (fixture && snap ? (fixtureCandles(id) ?? undefined) : undefined), [fixture, id, snap]);
+  return fixture ? fx : real;
+}
+
+function mergeCandles(old: Candle[] | undefined, fresh: Candle[]): Candle[] {
+  if (!old) return fresh;
+  const out = [...old];
+  for (const f of fresh) {
+    const i = out.findIndex((c) => c.t === f.t);
+    if (i >= 0) out[i] = f;
+    else if (!out.length || f.t > out[out.length - 1]!.t) out.push(f);
+  }
+  return out;
 }
 
 export function useLeaderboard(): LeaderRow[] {

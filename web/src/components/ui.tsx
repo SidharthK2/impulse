@@ -66,9 +66,11 @@ const KIND_TONE: Record<string, string> = {
   graduation: "up",
   gap: "info",
   listing: "",
+  open: "up",
+  ipo: "info",
 };
 
 export function KindBadge({ kind }: { kind: string }) {
-  const label = kind === "adl" ? "ADL close" : kind;
+  const label = kind === "adl" ? "ADL close" : kind === "open" ? "coin open" : kind === "ipo" ? "IPO" : kind;
   return <span className={`badge ${KIND_TONE[kind] ?? ""}`}>{label}</span>;
 }

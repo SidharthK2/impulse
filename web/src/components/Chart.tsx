@@ -1,168 +1,487 @@
-import {
-  CandlestickSeries,
-  ColorType,
-  HistogramSeries,
-  type IChartApi,
-  type IPriceLine,
-  type ISeriesApi,
-  type UTCTimestamp,
-  createChart,
-} from "lightweight-charts";
-import { useEffect, useRef, useState } from "react";
-import { api, live } from "../api";
-import { fixtureCandles } from "../fixtures";
-import type { Candle, MarketView, PositionView } from "../types";
+// Mark price chart on a 2D canvas: an animated line and area, a crosshair, the viewer's entry and liquidation
+// lines, and markers for the risk events that carry a price (who paid, on hover).
 
-const INTERVALS = [1, 5, 15] as const;
-type Interval = (typeof INTERVALS)[number];
+import { useEffect, useMemo, useRef, useState } from "react";
+import { num, price as fmtPrice } from "../format";
+import { useCandles, useFeed } from "../queries";
+import { type Range, usePrefs } from "../store";
+import type { Candle, MarketView, PositionView, RiskEvent } from "../types";
+import { type Incident, IncidentCard, incidents } from "./WhoPaid";
 
-const css = (v: string) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
-// lightweight-charts renders UTC; shift so the axis reads in local time.
-const local = (ms: number) => (Math.floor(ms / 1000) - new Date(ms).getTimezoneOffset() * 60) as UTCTimestamp;
+const RANGES: Record<Range, number> = { "5m": 5 * 60_000, "1h": 60 * 60_000, "1d": 24 * 60 * 60_000 };
+const MARKER_KINDS = new Set(["liquidation", "bankrupt", "haircut", "adl", "open", "ipo"]);
+const PAD = { top: 18, right: 72, bottom: 24, left: 8 };
+const HIT = 12;
 
-function bucket(cs: Candle[], minutes: Interval): Candle[] {
-  if (minutes === 1) return cs;
-  const out: Candle[] = [];
-  const size = minutes * 60_000;
-  for (const c of cs) {
-    const t = Math.floor(c.t / size) * size;
-    const last = out[out.length - 1];
-    if (last && last.t === t) {
-      last.h = Math.max(last.h, c.h);
-      last.l = Math.min(last.l, c.l);
-      last.c = c.c;
-      last.v += c.v;
-    } else out.push({ ...c, t });
-  }
-  return out;
+interface Pt {
+  t: number;
+  p: number;
 }
 
+interface Marker {
+  incident: Incident;
+  x: number;
+  y: number;
+  kind: "adl" | "liq" | "open" | "ipo";
+  approx: boolean;
+}
+
+interface Colors {
+  up: string;
+  down: string;
+  warn: string;
+  info: string;
+  accent: string;
+  text: string;
+  muted: string;
+  faint: string;
+  line: string;
+  panel: string;
+  mono: string;
+}
+
+function readColors(): Colors {
+  const cs = getComputedStyle(document.documentElement);
+  const v = (n: string) => cs.getPropertyValue(n).trim();
+  return { up: v("--up"), down: v("--down"), warn: v("--warn"), info: v("--info"), accent: v("--accent"), text: v("--text"), muted: v("--muted"), faint: v("--faint"), line: v("--line"), panel: v("--panel"), mono: v("--mono") };
+}
+
+/** 1, 2 or 5 × a power of ten, giving about `n` steps over `span`. */
+function niceStep(span: number, n: number): number {
+  const raw = span / Math.max(1, n);
+  const pow = 10 ** Math.floor(Math.log10(raw));
+  const f = raw / pow;
+  return (f < 1.5 ? 1 : f < 3.5 ? 2 : f < 7.5 ? 5 : 10) * pow;
+}
+
+/** Candle closes (at the end of each minute) where there are no live samples, live samples where there are. */
+function buildSeries(candles: Candle[] | undefined, samples: Pt[], from: number, now: number): Pt[] {
+  const s0 = samples.find((s) => s.t >= from);
+  const cut = s0?.t ?? Infinity;
+  const pts: Pt[] = [];
+  for (const c of candles ?? []) {
+    const t = Math.min(c.t + 60_000, now);
+    if (t >= from - 60_000 && t < cut) pts.push({ t, p: c.c });
+  }
+  for (const s of samples) if (s.t >= cut) pts.push(s);
+  return pts.sort((a, b) => a.t - b.t);
+}
+
+function priceAt(pts: Pt[], t: number): number | null {
+  if (!pts.length || t < pts[0]!.t) return null;
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1]!;
+    const b = pts[i]!;
+    if (t <= b.t) return b.t === a.t ? b.p : a.p + ((b.p - a.p) * (t - a.t)) / (b.t - a.t);
+  }
+  return pts[pts.length - 1]!.p;
+}
+
+/** `#rrggbb` (or `#rgb`) at an alpha, for canvas fills. Anything else passes through unchanged. */
+function alpha(color: string, a: number): string {
+  const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(color);
+  if (!m) return color;
+  const hex = m[1]!.length === 3 ? [...m[1]!].map((x) => x + x).join("") : m[1]!;
+  const n = parseInt(hex, 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+}
+
+const markerKind = (i: Incident): Marker["kind"] =>
+  i.other.some((e) => e.kind === "open") ? "open" : i.other.some((e) => e.kind === "ipo") ? "ipo" : i.bankrupt.length || i.haircuts.length || i.closes.length ? "adl" : "liq";
+
+const hhmm = (t: number, secs = false) => new Date(t).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", ...(secs && { second: "2-digit" }) });
+
 export function Chart({ market, position }: { market: MarketView; position?: PositionView }) {
-  const el = useRef<HTMLDivElement>(null);
-  const chart = useRef<IChartApi | null>(null);
-  const series = useRef<{ candles: ISeriesApi<"Candlestick">; volume: ISeriesApi<"Histogram"> } | null>(null);
-  const lines = useRef<IPriceLine[]>([]);
-  const raw = useRef<Candle[]>([]);
-  const [interval, setInterval_] = useState<Interval>(1);
-  const intervalRef = useRef<Interval>(1);
-  intervalRef.current = interval;
+  const wrap = useRef<HTMLDivElement>(null);
+  const canvas = useRef<HTMLCanvasElement>(null);
+  const range = usePrefs((s) => s.range);
+  const setRange = usePrefs((s) => s.setRange);
+  const theme = usePrefs((s) => s.theme);
+  const candles = useCandles(market.id);
+  const feed = useFeed();
+  const samples = useRef<Pt[]>([]);
+  const [hover, setHover] = useState<{ marker: Marker; left: number; top: number } | null>(null);
 
-  const draw = (fit: boolean) => {
-    const s = series.current;
-    if (!s) return;
-    const cs = bucket(raw.current, intervalRef.current);
-    const up = css("--up");
-    const down = css("--down");
-    s.candles.setData(cs.map((c) => ({ time: local(c.t), open: c.o, high: c.h, low: c.l, close: c.c })));
-    s.volume.setData(cs.map((c) => ({ time: local(c.t), value: c.v, color: c.c >= c.o ? `${up}55` : `${down}55` })));
-    if (fit && cs.length) chart.current?.timeScale().setVisibleLogicalRange({ from: Math.max(0, cs.length - 150), to: cs.length + 4 });
-  };
+  const events = useMemo(() => incidents(feed.filter((e: RiskEvent) => e.market === market.id && MARKER_KINDS.has(e.kind))), [feed, market.id]);
 
+  // Live marks between candles, for the short ranges.
   useEffect(() => {
-    if (!el.current) return;
-    const c = createChart(el.current, {
-      autoSize: true,
-      layout: { background: { type: ColorType.Solid, color: "transparent" }, textColor: css("--muted"), fontFamily: css("--sans"), fontSize: 11 },
-      grid: { vertLines: { color: css("--line") }, horzLines: { color: css("--line") } },
-      rightPriceScale: { borderColor: css("--line") },
-      timeScale: { borderColor: css("--line"), timeVisible: true, secondsVisible: false },
-      crosshair: { mode: 0 },
-    });
-    const minMove = Number(market.tick);
-    const candles = c.addSeries(CandlestickSeries, {
-      upColor: css("--up"),
-      downColor: css("--down"),
-      wickUpColor: css("--up"),
-      wickDownColor: css("--down"),
-      borderVisible: false,
-      priceFormat: { type: "price", precision: market.priceDecimals, minMove },
-    });
-    const volume = c.addSeries(HistogramSeries, { priceScaleId: "vol", priceFormat: { type: "volume" }, lastValueVisible: false, priceLineVisible: false });
-    c.priceScale("vol").applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
-    chart.current = c;
-    series.current = { candles, volume };
-    lines.current = [];
-    raw.current = [];
-
-    let alive = true;
-    if (fixtureCandles(market.id)) {
-      const poll = () => {
-        raw.current = fixtureCandles(market.id) ?? raw.current;
-        draw(!raw.current.length);
-      };
-      poll();
-      const t = setInterval(poll, 1000);
-      return () => {
-        clearInterval(t);
-        c.remove();
-        chart.current = null;
-        series.current = null;
-      };
-    }
-    api<Candle[]>("GET", `/api/markets/${encodeURIComponent(market.id)}/candles`)
-      .then((cs) => {
-        if (!alive) return;
-        raw.current = cs;
-        draw(true);
-      })
-      .catch(() => {});
-    const off = live.subscribe(`candles:${market.id}`, (data) => {
-      const fresh = data as Candle[];
-      if (!raw.current.length) return;
-      for (const f of fresh) {
-        const i = raw.current.findIndex((x) => x.t === f.t);
-        if (i >= 0) raw.current[i] = f;
-        else if (f.t > raw.current[raw.current.length - 1]!.t) raw.current.push(f);
-      }
-      draw(false);
-    });
-    return () => {
-      alive = false;
-      off();
-      c.remove();
-      chart.current = null;
-      series.current = null;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    samples.current = [];
   }, [market.id]);
-
-  useEffect(() => draw(true), [interval]);
-
-  // Entry, liquidation and bankruptcy lines for the viewer's position.
-  const entry = position?.entry;
-  const liq = position?.liquidationPrice;
-  const bust = position?.bankruptcyPrice;
   useEffect(() => {
-    const s = series.current;
-    if (!s) return;
-    for (const l of lines.current) s.candles.removePriceLine(l);
-    lines.current = [];
-    const add = (p: string | null | undefined, color: string, title: string) => {
-      if (!p) return;
-      lines.current.push(s.candles.createPriceLine({ price: Number(p), color, lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title }));
+    const p = num(market.mark);
+    if (!Number.isFinite(p)) return;
+    const now = Date.now();
+    const s = samples.current;
+    if (s.length && now - s[s.length - 1]!.t < 250) s[s.length - 1] = { t: now, p };
+    else s.push({ t: now, p });
+    while (s.length && s[0]!.t < now - 15 * 60_000) s.shift();
+  }, [market.mark]);
+
+  // Everything the frame loop reads, refreshed on every render without restarting the loop.
+  const input = useRef({ candles, events, range, decimals: market.priceDecimals, entry: num(position?.entry), liq: num(position?.liquidationPrice), mark: num(market.mark) });
+  input.current = { candles, events, range, decimals: market.priceDecimals, entry: num(position?.entry), liq: num(position?.liquidationPrice), mark: num(market.mark) };
+  const colors = useRef<Colors | null>(null);
+  useEffect(() => {
+    colors.current = readColors();
+  }, [theme]);
+
+  useEffect(() => {
+    const el = canvas.current!;
+    const box = wrap.current!;
+    const ctx = el.getContext("2d")!;
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let w = 0;
+    let h = 0;
+    let dpr = 1;
+    const size = () => {
+      const r = box.getBoundingClientRect();
+      dpr = window.devicePixelRatio || 1;
+      w = Math.max(1, Math.floor(r.width));
+      h = Math.max(1, Math.floor(r.height));
+      el.width = Math.round(w * dpr);
+      el.height = Math.round(h * dpr);
+      el.style.width = `${w}px`;
+      el.style.height = `${h}px`;
     };
-    add(entry, css("--info"), "entry");
-    add(liq, css("--warn"), "liq");
-    add(bust, css("--down"), "bankrupt");
-  }, [entry, liq, bust, market.id]);
+    size();
+    const ro = new ResizeObserver(size);
+    ro.observe(box);
+
+    const mouse = { x: -1, y: -1, in: false };
+    let markers: Marker[] = [];
+    let hovered: Marker | null = null;
+    let span = RANGES[input.current.range];
+    let head = NaN;
+    let lo = NaN;
+    let hi = NaN;
+    let last = performance.now();
+    let raf = 0;
+
+    const frame = (tf: number) => {
+      raf = requestAnimationFrame(frame);
+      const dt = Math.min(100, tf - last);
+      last = tf;
+      const ease = (ms: number) => (reduce ? 1 : 1 - Math.exp(-dt / ms));
+      const c = colors.current ?? readColors();
+      const inp = input.current;
+      const now = Date.now();
+      const target = RANGES[inp.range];
+      span = Math.exp(Math.log(span) + (Math.log(target) - Math.log(span)) * ease(140));
+      const from = now - span;
+
+      const pts = buildSeries(inp.candles, samples.current, from, now);
+      const markTarget = Number.isFinite(inp.mark) ? inp.mark : pts[pts.length - 1]?.p;
+      if (markTarget !== undefined) {
+        head = Number.isFinite(head) ? head + (markTarget - head) * ease(180) : markTarget;
+        pts.push({ t: now, p: head });
+      }
+
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+      ctx.font = `11px ${c.mono}`;
+      // The price axis is as wide as its widest label (tiny creator coin prices run long).
+      const R = Math.max(PAD.right, Math.ceil(ctx.measureText(fmtPrice(markTarget ?? 0, inp.decimals)).width) + 22);
+      const pw = w - PAD.left - R;
+      const ph = h - PAD.top - PAD.bottom;
+      if (pts.length < 2 || pw < 20 || ph < 20) {
+        ctx.fillStyle = c.muted;
+        ctx.textAlign = "center";
+        ctx.fillText(inp.candles ? "Waiting for prices…" : "Loading…", w / 2, h / 2);
+        markers = [];
+        return;
+      }
+
+      // Y range: visible prices, the entry line and visible markers; eased so new extremes glide in.
+      const vis = pts.filter((p) => p.t >= from - 60_000);
+      let mn = Math.min(...vis.map((p) => p.p));
+      let mx = Math.max(...vis.map((p) => p.p));
+      for (const i of inp.events) {
+        if (i.time < from || i.price === null) continue;
+        mn = Math.min(mn, num(i.price));
+        mx = Math.max(mx, num(i.price));
+      }
+      if (Number.isFinite(inp.entry)) {
+        mn = Math.min(mn, inp.entry);
+        mx = Math.max(mx, inp.entry);
+      }
+      const pad = Math.max((mx - mn) * 0.12, Math.abs(mx) * 0.002, 1e-12);
+      mn -= pad;
+      mx += pad;
+      lo = Number.isFinite(lo) ? lo + (mn - lo) * ease(220) : mn;
+      hi = Number.isFinite(hi) ? hi + (mx - hi) * ease(220) : mx;
+      const X = (t: number) => PAD.left + ((t - from) / span) * pw;
+      const Y = (p: number) => PAD.top + (1 - (p - lo) / (hi - lo)) * ph;
+      const P = (y: number) => lo + (1 - (y - PAD.top) / ph) * (hi - lo);
+      const fmt = (p: number) => fmtPrice(p, inp.decimals);
+
+      // Grid and axes.
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = c.line;
+      ctx.fillStyle = c.faint;
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      const ps = niceStep(hi - lo, Math.max(2, Math.floor(ph / 56)));
+      for (let p = Math.ceil(lo / ps) * ps; p <= hi; p += ps) {
+        const y = Math.round(Y(p)) + 0.5;
+        ctx.beginPath();
+        ctx.moveTo(PAD.left, y);
+        ctx.lineTo(PAD.left + pw, y);
+        ctx.stroke();
+        ctx.fillText(fmt(p), PAD.left + pw + 8, y);
+      }
+      const ts = span <= 6 * 60_000 ? 60_000 : span <= 2 * 3_600_000 ? 10 * 60_000 : 3 * 3_600_000;
+      const tzOff = new Date().getTimezoneOffset() * 60_000;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "alphabetic";
+      for (let t = Math.ceil((from - tzOff) / ts) * ts + tzOff; t <= now; t += ts) {
+        const x = Math.round(X(t)) + 0.5;
+        ctx.beginPath();
+        ctx.moveTo(x, PAD.top);
+        ctx.lineTo(x, PAD.top + ph);
+        ctx.stroke();
+        if (x > PAD.left + 20 && x < PAD.left + pw - 20) ctx.fillText(hhmm(t), x, h - 7);
+      }
+
+      // Line and area, coloured by the move over the window.
+      const first = vis[0]!.p;
+      const tone = head >= first ? c.up : c.down;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(PAD.left, 0, pw, h);
+      ctx.clip();
+      ctx.beginPath();
+      pts.forEach((p, i) => (i ? ctx.lineTo(X(p.t), Y(p.p)) : ctx.moveTo(X(p.t), Y(p.p))));
+      const grad = ctx.createLinearGradient(0, PAD.top, 0, PAD.top + ph);
+      grad.addColorStop(0, alpha(tone, 0.28));
+      grad.addColorStop(1, alpha(tone, 0));
+      ctx.lineJoin = "round";
+      ctx.lineWidth = 1.75;
+      ctx.strokeStyle = tone;
+      ctx.stroke();
+      ctx.lineTo(X(now), PAD.top + ph);
+      ctx.lineTo(X(pts[0]!.t), PAD.top + ph);
+      ctx.closePath();
+      ctx.fillStyle = grad;
+      ctx.fill();
+      ctx.restore();
+
+      // Horizontal lines: entry, liquidation, and the live mark. Off-scale lines pin to the edge with an arrow.
+      const hline = (p: number, color: string, label: string, dashed: boolean) => {
+        if (!Number.isFinite(p)) return;
+        const off = p > hi ? "↑" : p < lo ? "↓" : "";
+        const y = off ? (p > hi ? PAD.top + 8 : PAD.top + ph - 8) : Y(p);
+        if (!off) {
+          ctx.setLineDash(dashed ? [4, 4] : [2, 3]);
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(PAD.left, Math.round(y) + 0.5);
+          ctx.lineTo(PAD.left + pw, Math.round(y) + 0.5);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+        const text = `${label ? `${label} ` : ""}${fmt(p)}${off}`;
+        const tw = ctx.measureText(text).width + 10;
+        const x0 = label ? PAD.left + pw - tw - 4 : PAD.left + pw + 2;
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.roundRect(x0, y - 8, label ? tw : R - 4, 16, 3);
+        ctx.fill();
+        ctx.fillStyle = c.panel;
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+        ctx.fillText(text, x0 + 5, y + 0.5);
+      };
+      hline(inp.entry, c.info, "entry", true);
+      hline(inp.liq, c.warn, "liq", true);
+      hline(head, tone, "", false);
+
+      // Pulsing head.
+      const hx = X(now);
+      const hy = Y(head);
+      const pulse = reduce ? 0 : (Math.sin(tf / 320) + 1) / 2;
+      ctx.fillStyle = alpha(tone, 0.18 + pulse * 0.2);
+      ctx.beginPath();
+      ctx.arc(hx, hy, 6 + pulse * 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = tone;
+      ctx.beginPath();
+      ctx.arc(hx, hy, 3, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Risk markers.
+      markers = [];
+      for (const i of inp.events) {
+        if (i.time < from || i.time > now + 1000) continue;
+        const exact = i.price !== null;
+        const p = exact ? num(i.price) : priceAt(pts, i.time);
+        if (p === null || !Number.isFinite(p)) continue;
+        markers.push({ incident: i, x: X(i.time), y: Y(p), kind: markerKind(i), approx: !exact });
+      }
+      for (const m of markers) {
+        const col = m.kind === "adl" ? c.down : m.kind === "liq" ? c.warn : m.kind === "open" ? c.accent : c.info;
+        const on = hovered?.incident.key === m.incident.key;
+        if (m.kind === "open" || m.kind === "ipo") {
+          ctx.setLineDash([3, 3]);
+          ctx.strokeStyle = col;
+          ctx.beginPath();
+          ctx.moveTo(Math.round(m.x) + 0.5, PAD.top);
+          ctx.lineTo(Math.round(m.x) + 0.5, PAD.top + ph);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+        const label = m.kind === "adl" ? (m.incident.bankrupt.length ? "ADL" : "HC") : m.kind === "liq" ? "L" : m.kind === "open" ? "OPEN" : "IPO";
+        ctx.font = `600 10px ${c.mono}`;
+        const tw = ctx.measureText(label).width + 8;
+        const above = m.y - PAD.top > 30;
+        const ly = above ? m.y - 20 : m.y + 12;
+        ctx.strokeStyle = col;
+        ctx.beginPath();
+        ctx.moveTo(m.x, m.y);
+        ctx.lineTo(m.x, above ? ly + 8 : ly);
+        ctx.stroke();
+        ctx.fillStyle = col;
+        ctx.beginPath();
+        ctx.roundRect(m.x - tw / 2, ly - 8, tw, 16, 8);
+        ctx.fill();
+        ctx.fillStyle = c.panel;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(label, m.x, ly + 0.5);
+        ctx.beginPath();
+        ctx.arc(m.x, m.y, on ? 6 : 4.5, 0, Math.PI * 2);
+        ctx.fillStyle = c.panel;
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.setLineDash(m.approx ? [2, 2] : []);
+        ctx.strokeStyle = col;
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.lineWidth = 1;
+        ctx.font = `11px ${c.mono}`;
+      }
+
+      // Crosshair.
+      if (mouse.in && mouse.x >= PAD.left && mouse.x <= PAD.left + pw && mouse.y >= PAD.top && mouse.y <= PAD.top + ph) {
+        ctx.strokeStyle = c.muted;
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(Math.round(mouse.x) + 0.5, PAD.top);
+        ctx.lineTo(Math.round(mouse.x) + 0.5, PAD.top + ph);
+        ctx.moveTo(PAD.left, Math.round(mouse.y) + 0.5);
+        ctx.lineTo(PAD.left + pw, Math.round(mouse.y) + 0.5);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        const t = from + ((mouse.x - PAD.left) / pw) * span;
+        const at = priceAt(pts, t);
+        const py = fmt(P(mouse.y));
+        ctx.fillStyle = c.text;
+        ctx.beginPath();
+        ctx.roundRect(PAD.left + pw + 2, mouse.y - 8, R - 4, 16, 3);
+        ctx.fill();
+        ctx.fillStyle = c.panel;
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+        ctx.fillText(py, PAD.left + pw + 7, mouse.y + 0.5);
+        const tl = `${hhmm(t, span <= 2 * 3_600_000)}${at !== null ? `  ${fmt(at)}` : ""}`;
+        const tw = ctx.measureText(tl).width + 12;
+        const tx = Math.min(Math.max(mouse.x - tw / 2, PAD.left), PAD.left + pw - tw);
+        ctx.fillStyle = c.text;
+        ctx.beginPath();
+        ctx.roundRect(tx, h - PAD.bottom + 4, tw, 16, 3);
+        ctx.fill();
+        ctx.fillStyle = c.panel;
+        ctx.fillText(tl, tx + 6, h - PAD.bottom + 12.5);
+        if (at !== null) {
+          ctx.fillStyle = c.text;
+          ctx.beginPath();
+          ctx.arc(mouse.x, Y(at), 3, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    };
+    raf = requestAnimationFrame(frame);
+
+    const pick = (x: number, y: number) => {
+      let best: Marker | null = null;
+      let bd = HIT;
+      for (const m of markers) {
+        const d = Math.hypot(m.x - x, m.y - y);
+        const dl = Math.hypot(m.x - x, m.y - 20 - y); // the label pill above the dot
+        const dd = Math.min(d, dl);
+        if (dd < bd) {
+          bd = dd;
+          best = m;
+        }
+      }
+      return best;
+    };
+    const move = (e: PointerEvent) => {
+      const r = el.getBoundingClientRect();
+      mouse.x = e.clientX - r.left;
+      mouse.y = e.clientY - r.top;
+      mouse.in = true;
+      const m = pick(mouse.x, mouse.y);
+      if (m?.incident.key !== hovered?.incident.key) {
+        hovered = m;
+        setHover(m ? { marker: m, left: m.x, top: m.y } : null);
+      }
+      el.style.cursor = m ? "pointer" : "crosshair";
+    };
+    const leave = () => {
+      mouse.in = false;
+      hovered = null;
+      setHover(null);
+    };
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerdown", move);
+    el.addEventListener("pointerleave", leave);
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerdown", move);
+      el.removeEventListener("pointerleave", leave);
+    };
+  }, [market.id]);
 
   return (
     <div className="panel chart-panel">
       <div className="panel-head">
         <h3>Mark price</h3>
-        <span className="faint" style={{ fontSize: 11 }}>
-          oracle: {market.source.label}
-        </span>
+        <span className="faint small nowrap">{market.source.label}</span>
         <span className="spacer" />
         <div className="tabs">
-          {INTERVALS.map((i) => (
-            <button key={i} className={i === interval ? "on" : ""} onClick={() => setInterval_(i)}>
-              {i}m
+          {(Object.keys(RANGES) as Range[]).map((r) => (
+            <button key={r} className={r === range ? "on" : ""} onClick={() => setRange(r)}>
+              {r}
             </button>
           ))}
         </div>
       </div>
-      <div className="chart" ref={el} />
+      <div className="chart" ref={wrap}>
+        <canvas ref={canvas} aria-label={`${market.id} mark price chart`} role="img" />
+        {hover && <HoverCard hover={hover} market={market} box={wrap.current} />}
+      </div>
+    </div>
+  );
+}
+
+function HoverCard({ hover, market, box }: { hover: { marker: Marker; left: number; top: number }; market: MarketView; box: HTMLDivElement | null }) {
+  const W = 280;
+  const bw = box?.clientWidth ?? 600;
+  const bh = box?.clientHeight ?? 400;
+  const left = hover.left + 14 + W > bw ? Math.max(4, hover.left - 14 - W) : hover.left + 14;
+  const top = Math.min(Math.max(4, hover.top - 40), Math.max(4, bh - 200));
+  const i = hover.marker.incident;
+  return (
+    <div className="chart-hover" style={{ left, top, width: W }}>
+      <div className="faint small">
+        {new Date(i.time).toLocaleString("en-US", { hour12: false, month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+        {hover.marker.approx && " · price approximate (event has none)"}
+      </div>
+      <IncidentCard incident={i} market={market} />
     </div>
   );
 }

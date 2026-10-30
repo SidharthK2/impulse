@@ -1317,3 +1317,30 @@ tr.me {
   font-size: 24px;
   font-weight: 600;
 }
+
+/* ---------- chart ---------- */
+
+.chart canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  touch-action: pan-y;
+}
+.chart-hover {
+  position: absolute;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  background: var(--panel);
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+.chart-hover .incident {
+  border: 0;
+  padding: 0;
+  background: transparent;
+}

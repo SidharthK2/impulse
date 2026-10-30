@@ -269,7 +269,7 @@ export function createWorld(now: number): World {
       now,
     );
     const crashAt = now - 25 * MIN;
-    add(m, history([{ t: now - 24 * HOUR, p: seed }, { t: now - 8 * HOUR, p: 16.2 }, { t: crashAt - MIN, p: 19.6 }, { t: crashAt, p: 15.1 }, { t: crashAt + 6 * MIN, p: 16.8 }, { t: now, p: mark }], 0.004));
+    add(m, history([{ t: now - 24 * HOUR, p: seed }, { t: now - 8 * HOUR, p: 16.2 }, { t: now - 41 * MIN, p: 18.92 }, { t: crashAt - MIN, p: 19.6 }, { t: crashAt, p: 15.1 }, { t: crashAt + 6 * MIN, p: 16.8 }, { t: now, p: mark }], 0.004));
     event(w, { time: now - 41 * MIN, market: m.id, kind: "liquidation", accounts: ["ape"], text: "ape liquidated: long 400 HELIX closed at 18.92, kept $611.40", amount: "611.40", price: "18.92" });
     cluster(w, m.id, crashAt, 15.1, "degen", "long 2,500 HELIX", 1842.17, [
       ["maker", 1203.55],
