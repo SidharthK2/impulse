@@ -27,11 +27,11 @@ Admin page token: `impulse-admin`. The 5-minute demo, the API, settings and env 
 
 | Path | What it is |
 |---|---|
-| `rs/engine` | Risk engine: margin, liquidation, ADL, funding, graduation, bonding curves, launches, invariants |
-| `rs/server` | Exchange server: order books, matching, HTTP + websocket API, feeds, house bots; a command journal, snapshots and history tables in SQLite (`DATA_DIR/impulse.db`) |
+| `crates/engine` | Risk engine: margin, liquidation, ADL, funding, graduation, bonding curves, launches, invariants |
+| `crates/server` | Exchange server: order books, matching, HTTP + websocket API, feeds, house bots; a command journal, snapshots and history tables in SQLite (`DATA_DIR/impulse.db`) |
 | `web/` | Trading UI: React, TanStack Router/Query/Form/Pacer, zustand, custom canvas chart. Its own pnpm project, the only Node code in the app |
 | `docs/` | [MVP.md](docs/MVP.md) (run, demo, API), [API-CONTRACT.md](docs/API-CONTRACT.md), [ACCOUNTING.md](docs/ACCOUNTING.md) (the engine's model and invariants), [DECISIONS.md](docs/DECISIONS.md) |
-| `tests/` | Test data for the Rust tests: `scenarios/` (event streams) and `golden/` (the TypeScript reference engine's frozen results, generated in the research repo). The tests themselves are in `rs/engine/tests` and `rs/server/tests` |
+| `tests/` | Test data for the Rust tests: `scenarios/` (event streams) and `golden/` (the TypeScript reference engine's frozen results, generated in the research repo). The tests themselves are in `crates/engine/tests` and `crates/server/tests` |
 
 ## Check it
 

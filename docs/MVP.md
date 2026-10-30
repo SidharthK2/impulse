@@ -3,7 +3,7 @@
 *Built 2026-10-25/26 on the `mvp` branch (TypeScript); the backend moved to Rust on 2026-10-30/31. It takes the risk
 engine from simulation to a live venue with play money.*
 
-The research engine (TypeScript, now in the impulse-research repo, ported to `rs/engine`) answers *what happens when a price gaps, and who pays?* on
+The research engine (TypeScript, now in the impulse-research repo, ported to `crates/engine`) answers *what happens when a price gaps, and who pays?* on
 scripted scenarios. The MVP puts that same engine behind a real exchange: order books, live oracles, accounts, bots and a
 trading UI. Gaps, liquidations and ADL happen live, and you can watch who pays.
 
@@ -35,7 +35,7 @@ no longer used by the app or its tests; its README says how to run them.
 | Env var | Default | |
 |---|---|---|
 | `PORT` | `8787` | API + static app (`0` picks a free port) |
-| `DATA_DIR` | `rs/data` | the database, `impulse.db` (gitignored) |
+| `DATA_DIR` | `data` | the database, `impulse.db` (gitignored) |
 | `WEB_DIR` | `web/dist` | the built app |
 | `ADMIN_TOKEN` | `impulse-admin` | header `x-admin-token` for the admin page/API |
 | `OFFLINE` | unset | `1` = no network: every market gets a simulated price |
@@ -50,19 +50,19 @@ To start fresh, point `DATA_DIR` at a new directory (`make clean-data` prints ho
 
 | Piece | Where | What it does |
 |---|---|---|
-| Risk engine | `rs/engine` (port of the TypeScript engine in impulse-research) | Positions, margin, liquidation, ADL, funding, graduation, taper, curves, launches, invariants |
-| Exchange | `rs/server/src/exchange.rs` | Order books, matching, auto-margin, accounts, launches, pre-IPO marks, history; every change is an engine transition |
-| Order book | `rs/server/src/book.rs` | Price-time priority CLOB per market |
-| Units | `rs/server/src/units.rs` | Coins ↔ integer lots (Hyperliquid `szDecimals`), coin price ↔ lot price, ticks |
-| Feeds | `rs/server/src/feeds.rs` | Hyperliquid mids, Polymarket midpoints + resolution, offline random walk, chart backfill |
-| Bots | `rs/server/src/bots.rs` | `maker` ladders every market; `ape`, `degen`, `whale`, `scalper` trade with leverage, snipe new coins, trade curves |
-| API | `rs/server/src/api.rs`, `ws.rs` | JSON over HTTP (axum), websocket hub, static app |
-| Views | `rs/server/src/views.rs` | Exact decimal-string JSON for markets, books, accounts, leaderboard |
-| Commands | `rs/server/src/command.rs` | Every state-changing input as data, and `apply`, the only code that changes the exchange |
-| Sequencer | `rs/server/src/sequencer.rs` | The single-threaded core: `submit` (journal before reply, fail-stop), snapshots, recovery, replay |
-| Store | `rs/server/src/store.rs` | SQLite: schema and migrations, the journal, snapshots, read tables, history paging |
-| Intake | `rs/server/src/intake.rs` | Wall clock and randomness, the only places the server reads either; the core gets them in commands |
-| Legacy JSON | `rs/server/src/persist.rs` | The pre-database snapshot format: imported on first start, written by `export-json` |
+| Risk engine | `crates/engine` (port of the TypeScript engine in impulse-research) | Positions, margin, liquidation, ADL, funding, graduation, taper, curves, launches, invariants |
+| Exchange | `crates/server/src/exchange.rs` | Order books, matching, auto-margin, accounts, launches, pre-IPO marks, history; every change is an engine transition |
+| Order book | `crates/server/src/book.rs` | Price-time priority CLOB per market |
+| Units | `crates/server/src/units.rs` | Coins ↔ integer lots (Hyperliquid `szDecimals`), coin price ↔ lot price, ticks |
+| Feeds | `crates/server/src/feeds.rs` | Hyperliquid mids, Polymarket midpoints + resolution, offline random walk, chart backfill |
+| Bots | `crates/server/src/bots.rs` | `maker` ladders every market; `ape`, `degen`, `whale`, `scalper` trade with leverage, snipe new coins, trade curves |
+| API | `crates/server/src/api.rs`, `ws.rs` | JSON over HTTP (axum), websocket hub, static app |
+| Views | `crates/server/src/views.rs` | Exact decimal-string JSON for markets, books, accounts, leaderboard |
+| Commands | `crates/server/src/command.rs` | Every state-changing input as data, and `apply`, the only code that changes the exchange |
+| Sequencer | `crates/server/src/sequencer.rs` | The single-threaded core: `submit` (journal before reply, fail-stop), snapshots, recovery, replay |
+| Store | `crates/server/src/store.rs` | SQLite: schema and migrations, the journal, snapshots, read tables, history paging |
+| Intake | `crates/server/src/intake.rs` | Wall clock and randomness, the only places the server reads either; the core gets them in commands |
+| Legacy JSON | `crates/server/src/persist.rs` | The pre-database snapshot format: imported on first start, written by `export-json` |
 | Web | `web/src/` | React trading UI: TanStack Router, Query, Form and Pacer, zustand, a custom canvas chart |
 
 One process, one core: the exchange sits behind a single mutex on a single-threaded runtime, and each request is one
@@ -122,13 +122,13 @@ floats. `seq` ties every history row to the command that produced it.
 Inspect it while the server runs (WAL lets readers in), or rebuild it offline:
 
 ```bash
-sqlite3 rs/data/impulse.db
+sqlite3 data/impulse.db
   sqlite> SELECT kind, COUNT(*) FROM commands GROUP BY kind ORDER BY 2 DESC;
   sqlite> SELECT ts, kind, text, amount FROM risk_events WHERE kind IN ('bankrupt', 'haircut', 'ipo') ORDER BY id DESC LIMIT 20;
   sqlite> SELECT seq, ts, version, length(state) FROM snapshots;
-DATA_DIR=rs/data rs/target/release/impulse-server replay           # latest snapshot + tail → {seq, hash, …}
-DATA_DIR=rs/data rs/target/release/impulse-server replay --full    # from seq 1 (or a legacy import's snapshot 0)
-DATA_DIR=rs/data rs/target/release/impulse-server export-json DIR  # the legacy JSON snapshot format, DIR/snapshot.json
+DATA_DIR=data target/release/impulse-server replay           # latest snapshot + tail → {seq, hash, …}
+DATA_DIR=data target/release/impulse-server replay --full    # from seq 1 (or a legacy import's snapshot 0)
+DATA_DIR=data target/release/impulse-server export-json DIR  # the legacy JSON snapshot format, DIR/snapshot.json
 ```
 
 `GET /api/admin/stats` reports the journal's position and the time per command (apply + commit).
@@ -235,23 +235,23 @@ carries snipes, and `feed` carries the `open` and `ipo` kinds and each event's m
 
 ## Tests
 
-All Rust, all in `make test` (`cargo test --manifest-path rs/Cargo.toml`):
+All Rust, all in `make test` (`cargo test`):
 
-- `rs/engine/tests/golden.rs`: parity with the TypeScript reference engine, with no TypeScript at runtime. Its
+- `crates/engine/tests/golden.rs`: parity with the TypeScript reference engine, with no TypeScript at runtime. Its
   results for every scenario in `tests/scenarios/` and for 600 random histories (300 that launch a creator coin and
   set book mids, 300 fuzz histories under both ADL policies) are frozen in `tests/golden/`; the Rust engine replays
   the stored event lists and must match every step's effects or rejection reason, and the final state.
-- `rs/engine/tests/engine.rs`, `alloc.rs`: engine behaviour (scenarios' exact numbers, ADL policies, graduation,
+- `crates/engine/tests/engine.rs`, `alloc.rs`: engine behaviour (scenarios' exact numbers, ADL policies, graduation,
   taper, funding, validation, rounding, curves, launches, the funding premium) and largest-remainder apportionment.
-- `rs/server/tests/*.rs`: the HTTP and websocket API. Each test binary starts the server binary it was built with
+- `crates/server/tests/*.rs`: the HTTP and websocket API. Each test binary starts the server binary it was built with
   (`TEST_CLOCK=1 OFFLINE=1 BOTS=0`, a temp `DATA_DIR`) and drives it with reqwest and tokio-tungstenite: `api`,
   `exchange` (matching, risk, snapshot), `launch`, `preipo`, `funding`, `endpoints`.
-- `rs/server/tests/durability.rs`: a bots-on session of 3,000 commands replays from seq 1 to the live state hash;
+- `crates/server/tests/durability.rs`: a bots-on session of 3,000 commands replays from seq 1 to the live state hash;
   a snapshot plus its tail reaches the same hash; `kill -9` mid-trading loses nothing acknowledged and the
   restarted state equals the journal's; refused commands write no journal row; the read tables match the
   in-memory history and the journal's effects; a legacy JSON snapshot imports with the same state; and per-command
   timing with bots on and `synchronous=FULL` (printed with `cargo test --test durability -- --nocapture`).
-- Unit tests in `rs/engine/src` and `rs/server/src` (fixed point, units, book, rng).
+- Unit tests in `crates/engine/src` and `crates/server/src` (fixed point, units, book, rng).
 
 `tests/golden/` is regenerated only from the archived TypeScript engine (`golden/generate.ts` in impulse-research).
 

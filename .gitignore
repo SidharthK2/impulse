@@ -1,5 +1,5 @@
 node_modules
 web/dist
-rs/target
-rs/data
+target
+data
 .claude/worktrees/

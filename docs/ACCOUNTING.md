@@ -247,7 +247,7 @@ Global:
 
 If a bankrupt account's equity −D is simply clamped to 0, then Σ E_i = V + D. Every winning
 account still shows its full PnL, so the claims exceed the vault by D. The first winner
-to withdraw gets paid, and the last one finds the vault short. `rs/engine/tests/engine.rs` (`clamping_…`) shows
+to withdraw gets paid, and the last one finds the vault short. `crates/engine/tests/engine.rs` (`clamping_…`) shows
 this numerically. Solvency means **re-allocating** D to specific accounts, not hiding it.
 
 ## Deliberately omitted (v1)

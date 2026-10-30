@@ -14,12 +14,13 @@ RUN pnpm run build
 # ---- server (Rust) ----
 FROM rust:1.96-bookworm AS server
 WORKDIR /src
-COPY rs/ rs/
+COPY Cargo.toml Cargo.lock ./
+COPY crates/ crates/
 # Cache mounts keep the crate registry and build artifacts between builds on the same builder.
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/src/rs/target \
-    cargo build --release --locked --manifest-path rs/Cargo.toml -p impulse-server \
-    && cp rs/target/release/impulse-server /impulse-server
+    --mount=type=cache,target=/src/target \
+    cargo build --release --locked -p impulse-server \
+    && cp target/release/impulse-server /impulse-server
 
 # ---- runtime ----
 FROM debian:bookworm-slim

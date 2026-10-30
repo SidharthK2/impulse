@@ -1,6 +1,6 @@
 // Impulse paper exchange: MicroPerps with ADL as the only backstop, live.
 //
-//   PORT=8787  DATA_DIR=rs/data  WEB_DIR=web/dist  ADMIN_TOKEN=impulse-admin
+//   PORT=8787  DATA_DIR=data  WEB_DIR=web/dist  ADMIN_TOKEN=impulse-admin
 //   OFFLINE=1 (no network feeds)  BOTS=0 (no house bots)  TEST_CLOCK=1 (a clock only /api/test/* moves)
 //   EXIT_WITH_STDIN=1 (exit when stdin closes: for test harnesses)  TIMER_SPEEDUP=N (clock, bots and walk N× faster: tests)
 
@@ -99,14 +99,14 @@ async fn main() {
     let here = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let args: Vec<String> = std::env::args().skip(1).collect();
     let port: u16 = env("PORT").and_then(|p| p.parse().ok()).unwrap_or(8787);
-    let data_dir = env("DATA_DIR").map(PathBuf::from).unwrap_or_else(|| here.join("../data"));
+    let data_dir = env("DATA_DIR").map(PathBuf::from).unwrap_or_else(|| here.join("../../data"));
     let web_dir = env("WEB_DIR").map(PathBuf::from).unwrap_or_else(|| here.join("../../web/dist"));
     let admin_token = env("ADMIN_TOKEN").unwrap_or_else(|| "impulse-admin".into());
     let offline = env("OFFLINE").as_deref() == Some("1");
     let bots = env("BOTS").as_deref() != Some("0");
     let test_clock = env("TEST_CLOCK").as_deref() == Some("1");
     let clock = IntakeClock::new(test_clock);
-    let cli_data_dir = || env("DATA_DIR").map(PathBuf::from).unwrap_or_else(|| here.join("../data"));
+    let cli_data_dir = || env("DATA_DIR").map(PathBuf::from).unwrap_or_else(|| here.join("../../data"));
     match args.first().map(String::as_str) {
         Some("replay") => replay(&cli_data_dir(), &args[1..]),
         Some("export-json") => export_json(&cli_data_dir(), &args[1..]),
