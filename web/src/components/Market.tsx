@@ -4,6 +4,7 @@ import { act } from "../queries";
 import { compact, countdown, num, pct, price, tone, usd } from "../format";
 import { useNow } from "../hooks";
 import type { AccountView, MarketView } from "../types";
+import { BookPricedBadge } from "./PreIpo";
 import { headline } from "./status";
 import { Stat, useToast } from "./ui";
 
@@ -86,6 +87,22 @@ export function MarketBar({ market, markets, onPick }: { market: MarketView; mar
         {!market.mark && market.snipe && <span className="faint small">projected open</span>}
       </div>
       <div className="mbar-stats">
+        <BookPricedBadge market={market} />
+        {market.preipo && (
+          <>
+            <Stat label="Implied valuation" title="Mark × 1,000,000,000 shares">
+              {usd(market.preipo.impliedValuation, { compact: true })}
+            </Stat>
+            <Stat label="Seed">{price(market.preipo.seedPrice, market.priceDecimals)}</Stat>
+            <Stat label="Status">
+              {market.preipo.status === "public" ? (
+                <span className="info-text">public · IPO {price(market.preipo.ipoPrice, market.priceDecimals)}</span>
+              ) : (
+                "private"
+              )}
+            </Stat>
+          </>
+        )}
       {market.launch && (
         <>
           <Stat label="Open price" title={`Opened ${new Date(market.launch.openedAt).toLocaleString()}`}>

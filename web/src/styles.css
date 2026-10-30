@@ -1298,3 +1298,22 @@ tr.me {
 .tape .r span {
   white-space: nowrap;
 }
+
+.badge.book {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: transparent;
+  white-space: nowrap;
+}
+.info-text {
+  color: var(--info);
+}
+.valuation {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.valuation .v {
+  font-size: 24px;
+  font-weight: 600;
+}

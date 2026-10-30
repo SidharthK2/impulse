@@ -5,6 +5,7 @@ import { Chart } from "../components/Chart";
 import { InfoPanel, MarketBar, SpotPanel } from "../components/Market";
 import { OrderBook, Trades } from "../components/OrderBook";
 import { OrderForm } from "../components/OrderForm";
+import { PreIpoPanel } from "../components/PreIpo";
 import { LaunchPanel, SnipePanel } from "../components/Snipe";
 import { useAccount, useMarkets } from "../queries";
 import { useCanTrade, usePrefs, useUi } from "../store";
@@ -53,6 +54,7 @@ export function TradePage() {
         {!sniping && <OrderForm market={market} account={account} signedIn={signedIn} picked={picked} onSignUp={() => openModal("signup")} />}
         {!sniping && market.curve && <SpotPanel market={market} account={account} signedIn={signedIn} />}
         {market.launch && <LaunchPanel market={market} />}
+        {market.preipo && <PreIpoPanel market={market} />}
         <InfoPanel market={market} />
       </div>
       <AccountPanel account={account} markets={byId} current={market} signedIn={signedIn} />
