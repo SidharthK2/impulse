@@ -50,6 +50,10 @@ export function describeEvent(e: Event, before: State): string {
       return `spot sell ${e.market}: ${e.account} sells ${e.tokens === "all" ? "all" : e.tokens} tokens`;
     case "advance":
       return `advance   +${e.seconds}s → t=${before.time + BigInt(e.seconds)}s`;
+    case "snipe":
+      return `snipe     ${e.market}: ${e.account} bids ${amt(e.amount)}`;
+    case "open":
+      return `OPEN      ${e.market}`;
   }
 }
 
@@ -116,6 +120,9 @@ function effectLines(effects: Effect[]): string[] {
         break;
       case "mark":
         out.push(`    [${f.market}] mark ${fmtPrice(f.from)} → ${fmtPrice(f.to)} (spot ${fmtPrice(f.spot)})`);
+        break;
+      case "open":
+        out.push(`    [${f.market}] OPENED at ${fmtPrice(f.price)}: $${fmtUsd(f.sniped)} of bids bought ${f.tokens} tokens; launch reserve $${fmtUsd(f.reserve)}`);
         break;
     }
   }

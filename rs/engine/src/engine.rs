@@ -5,7 +5,7 @@
 // Every event is an atomic state transition: apply to a clone, assert invariants, commit or reject.
 
 use crate::alloc::allocate;
-use crate::fixed::{ceil_div, fmt_price, fmt_usd, parse_fixed, parse_int, sign};
+use crate::fixed::{ceil_div, fmt_price, fmt_usd, isqrt, parse_fixed, parse_int, sign};
 use crate::ser::{big, big_map, big_opt, Num};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -121,6 +121,19 @@ pub struct CurveOracle {
     pub history: Vec<OraclePoint>,
 }
 
+/// Creator-coin launch: a snipe window before the curve opens. Bids are USDC from the wallet (net of the spot fee)
+/// and can't be cancelled. At the open, the whole book of bids buys from the curve at one price (see on_open).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Launch {
+    pub open: bool,
+    /// net USDC per account, waiting for the open
+    #[serde(with = "big_map")]
+    pub bids: BTreeMap<String, i128>,
+    /// after the open: the part of the bids the curve didn't take, held by the market
+    #[serde(with = "big")]
+    pub reserve: i128,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Status {
@@ -135,6 +148,7 @@ pub struct Market {
     pub config: MarketConfig,
     pub curve: Option<Curve>,
     pub oracle: Option<CurveOracle>,
+    pub launch: Option<Launch>,
     #[serde(with = "big_opt")]
     pub mark: Option<i128>,
     #[serde(with = "big")]
@@ -217,6 +231,9 @@ pub struct MarketEvent {
     pub initial_leverage: Option<Num>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub maintenance_leverage: Option<Num>,
+    /// curve markets only: open with a snipe window (spot and perp trading wait for `open`)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub launch: Option<bool>,
 }
 
 /// Amounts are decimals, or "all" where the TS engine allows it.
@@ -234,6 +251,20 @@ pub enum Event {
     SpotSell { account: String, market: String, tokens: Num },
     Advance { seconds: Num },
     Resolve { market: String, price: Num },
+    /// bid USDC into a launch; "all" allowed
+    Snipe { account: String, market: String, amount: Num },
+    /// end a launch's snipe window: fill every bid at one price
+    Open { market: String },
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct LaunchFill {
+    pub account: String,
+    /// net bid
+    #[serde(with = "big")]
+    pub usdc: i128,
+    #[serde(with = "big")]
+    pub tokens: i128,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -319,6 +350,18 @@ pub enum Effect {
         tier: usize,
         #[serde(with = "big")]
         leverage: i128,
+    },
+    Open {
+        market: String,
+        #[serde(with = "big")]
+        price: i128,
+        #[serde(with = "big")]
+        sniped: i128,
+        #[serde(with = "big")]
+        tokens: i128,
+        #[serde(with = "big")]
+        reserve: i128,
+        fills: Vec<LaunchFill>,
     },
 }
 
@@ -636,6 +679,9 @@ fn on_market(s: &mut State, e: &MarketEvent) -> R<()> {
     };
     let mut curve = None;
     let mut oracle = None;
+    if e.launch == Some(true) && !(attention || e.curve.is_some()) {
+        return rej("only curve markets can launch");
+    }
     if attention || e.curve.is_some() {
         let spec = e.curve.as_ref();
         let x0 = fixed(spec.and_then(|c| c.usdc.as_ref()).map_or("5000", |n| n.0.as_str()))?;
@@ -667,6 +713,7 @@ fn on_market(s: &mut State, e: &MarketEvent) -> R<()> {
         config,
         curve,
         oracle,
+        launch: (e.launch == Some(true)).then(|| Launch { open: false, bids: BTreeMap::new(), reserve: 0 }),
         mark,
         time: s.time,
         tier: 0,
@@ -742,6 +789,7 @@ fn on_trade(s: &mut State, market: &str, buyer: &str, seller: &str, size: &Num, 
     if m.status != Status::Open {
         return rej(format!("{} is resolved", m.id));
     }
+    assert_launched(m)?;
     if m.mark.is_none() {
         return rej(format!("{} has no oracle price yet", m.id));
     }
@@ -1019,10 +1067,93 @@ fn check_curve(m: &Market) -> R<()> {
     Ok(())
 }
 
+/// Spot and perp trading wait for a launch's open.
+fn assert_launched(m: &Market) -> R<()> {
+    match &m.launch {
+        Some(l) if !l.open => rej(format!("{} is in its snipe window: trading starts at the open", m.id)),
+        _ => Ok(()),
+    }
+}
+
+fn pending_launch(m: &Market) -> R<()> {
+    match &m.launch {
+        None => rej(format!("{} has no launch", m.id)),
+        Some(l) if l.open => rej(format!("{} is already open", m.id)),
+        Some(_) => Ok(()),
+    }
+}
+
+fn on_snipe(s: &mut State, account: &str, market: &str, amount: &Num) -> R<()> {
+    let a = get_account(&mut s.accounts, account)?;
+    let m = get_market(&mut s.markets, market)?;
+    check_curve(m)?;
+    pending_launch(m)?;
+    let usdc = parse_amount(amount, a.wallet, "snipe")?;
+    let f = fee(usdc, m.curve.as_ref().unwrap().fee_bps); // the spot fee applies to snipes too
+    if usdc - f <= 0 {
+        return rej("snipe too small");
+    }
+    a.wallet -= usdc;
+    s.fees += f;
+    *m.launch.as_mut().unwrap().bids.entry(a.id.clone()).or_insert(0) += usdc - f;
+    Ok(())
+}
+
+/// The open: all bids B buy from the curve together, at one price. The curve moves from (x0, y0) to (x1, y1) with
+///   x1 = (x0 + √(x0·(x0 + 4B))) / 2,  y1 = ⌈x0·y0 / x1⌉,  open price x1 / y1,
+/// the point where buying y0 − y1 tokens at the open price costs B: x1·(x1 − x0) = x0·B. Only x1 − x0 enters the
+/// curve; the rest of B stays in the market as its launch reserve. Tokens split pro-rata by bid (largest remainder).
+/// Where a launch's curve opens for total bids `b`: (x1, y1). See on_open.
+pub fn open_curve(x0: i128, y0: i128, b: i128) -> (i128, i128) {
+    let x1 = (x0 + isqrt(x0 * (x0 + 4 * b))) / 2;
+    (x1, ceil_div(x0 * y0, x1))
+}
+
+fn on_open(s: &mut State, market: &str) -> R<Vec<Effect>> {
+    let now = s.time;
+    let m = get_market(&mut s.markets, market)?;
+    check_curve(m)?;
+    pending_launch(m)?;
+    let bids: Vec<(String, i128)> = m.launch.as_ref().unwrap().bids.iter().map(|(k, v)| (k.clone(), *v)).collect();
+    let b: i128 = bids.iter().map(|(_, v)| v).sum();
+    let c = m.curve.as_mut().unwrap();
+    let x0 = c.x;
+    let (x1, y1) = open_curve(x0, c.y, b);
+    let tokens = c.y - y1;
+    let split = allocate(tokens, &bids.iter().map(|(_, v)| *v).collect::<Vec<_>>()).map_err(fatal)?;
+    let mut fills = vec![];
+    for ((account, usdc), t) in bids.into_iter().zip(split) {
+        if t > 0 {
+            let a = s.accounts.get_mut(&account).ok_or_else(|| fatal(format!("bid from unknown account {account}")))?;
+            *a.spot.entry(m.id.clone()).or_insert(0) += t;
+        }
+        fills.push(LaunchFill { account, usdc, tokens: t });
+    }
+    c.x = x1;
+    c.y = y1;
+    let reserve = b - (x1 - x0);
+    m.launch = Some(Launch { open: true, bids: BTreeMap::new(), reserve });
+    // The oracle restarts at the open price as if it had held for a whole window: nobody could trade the curve
+    // before the open, and a pump right after it must take a full window to move a TWAP mark.
+    let before = m.mark.expect("curve market has a mark");
+    let price = spot_price(c);
+    let oracle = m.oracle.as_mut().unwrap();
+    oracle.history = vec![OraclePoint { t: now - oracle.window, price }];
+    m.mark = Some(price);
+    let mut effects = vec![Effect::Open { market: m.id.clone(), price, sniped: b, tokens, reserve, fills }];
+    if price != before {
+        effects.push(Effect::Mark { market: m.id.clone(), from: before, to: price, spot: price });
+    }
+    effects.extend(graduate(m));
+    update_funding_rate(m);
+    Ok(effects)
+}
+
 fn on_spot_buy(s: &mut State, account: &str, market: &str, amount: &Num) -> R<Vec<Effect>> {
     let a = get_account(&mut s.accounts, account)?;
     let m = get_market(&mut s.markets, market)?;
     check_curve(m)?;
+    assert_launched(m)?;
     let c = m.curve.as_mut().unwrap();
     let usdc = parse_amount(amount, a.wallet, "spend")?;
     let f = fee(usdc, c.fee_bps);
@@ -1060,6 +1191,7 @@ fn on_spot_sell(s: &mut State, account: &str, market: &str, tokens: &Num) -> R<V
     let a = get_account(&mut s.accounts, account)?;
     let m = get_market(&mut s.markets, market)?;
     check_curve(m)?;
+    assert_launched(m)?;
     let c = m.curve.as_mut().unwrap();
     let held = a.spot.get(&m.id).copied().unwrap_or(0);
     let tokens = if tokens.is("all") { held } else { int(&tokens.0)? };
@@ -1231,6 +1363,13 @@ pub fn check_invariants(s: &State) -> Vec<String> {
     let mut held = 0;
     for m in s.markets.values() {
         held += m.vault;
+        if let Some(l) = &m.launch {
+            held += l.reserve; // USDC the open didn't put in the curve
+            held += l.bids.values().sum::<i128>(); // bids waiting for the open
+            if l.open && !l.bids.is_empty() {
+                errs.push(format!("{}: bids left after the open", m.id));
+            }
+        }
         let Some(c) = &m.curve else { continue };
         held += c.x - c.x0; // real USDC sitting in the curve
         let tokens: i128 = s.accounts.values().map(|a| a.spot.get(&m.id).copied().unwrap_or(0)).sum();
@@ -1240,7 +1379,7 @@ pub fn check_invariants(s: &State) -> Vec<String> {
     }
     if wallets + held + s.fees != s.total_deposits - s.total_withdrawals {
         errs.push(format!(
-            "wallets + vaults + curves + fees {} != deposits − withdrawals {}",
+            "wallets + vaults + curves + launches + fees {} != deposits − withdrawals {}",
             wallets + held + s.fees,
             s.total_deposits - s.total_withdrawals
         ));
@@ -1265,6 +1404,8 @@ pub fn apply(state: &State, event: &Event) -> Result<(State, Vec<Effect>), Apply
         Event::SpotBuy { account, market, amount } => on_spot_buy(&mut s, account, market, amount),
         Event::SpotSell { account, market, tokens } => on_spot_sell(&mut s, account, market, tokens),
         Event::Advance { seconds } => on_advance(&mut s, seconds),
+        Event::Snipe { account, market, amount } => on_snipe(&mut s, account, market, amount).map(|_| vec![]),
+        Event::Open { market } => on_open(&mut s, market),
     }?;
     let errs = check_invariants(&s);
     if !errs.is_empty() {
@@ -1273,4 +1414,41 @@ pub fn apply(state: &State, event: &Event) -> Result<(State, Vec<Effect>), Apply
     }
     s.seq += 1;
     Ok((s, effects))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn run(events: &[Event]) -> (State, Vec<Result<Vec<Effect>, ApplyError>>) {
+        let mut s = initial_state();
+        let mut out = vec![];
+        for e in events {
+            match apply(&s, e) {
+                Ok((next, effects)) => {
+                    s = next;
+                    out.push(Ok(effects));
+                }
+                Err(err) => out.push(Err(err)),
+            }
+        }
+        (s, out)
+    }
+
+    #[test]
+    fn launch_opens_at_the_documented_price() {
+        let market = Event::Market(MarketEvent { id: "C".into(), preset: Some("attention".into()), fee_bps: Some("0".into()), launch: Some(true), ..Default::default() });
+        let (s, results) = run(&[
+            market,
+            Event::Deposit { account: "a".into(), amount: "100000".into() },
+            Event::Snipe { account: "a".into(), market: "C".into(), amount: "100000".into() },
+            Event::Open { market: "C".into() },
+        ]);
+        let Ok(effects) = &results[3] else { panic!("open failed: {:?}", results[3]) };
+        let Effect::Open { price, tokens, reserve, sniped, .. } = &effects[0] else { panic!("no open effect") };
+        assert_eq!((*price, *tokens, *sniped, *reserve), (125_000, 800_000_000, 100_000 * PPB, 80_000 * PPB)); // $0.000125
+        assert_eq!(s.accounts["a"].spot["C"], 800_000_000);
+        assert_eq!(s.markets["C"].mark, Some(125_000));
+        assert!(check_invariants(&s).is_empty());
+    }
 }

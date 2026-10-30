@@ -55,14 +55,20 @@ describe.skipIf(!existsSync(bin))("differential: Rust engine = TS engine", () =>
     const rust = runRust(histories);
     let rejected = 0;
     let haircuts = 0;
+    let opens = 0;
+    let snipes = 0;
     histories.forEach((h, i) => {
       compare(`seed ${i + 1}`, h, rust[i]);
       const steps = (rust[i] as { steps: { ok: boolean; effects?: { kind: string }[] }[] }).steps;
       rejected += steps.filter((s) => !s.ok).length;
       haircuts += steps.filter((s) => s.effects?.some((e) => e.kind === "haircut")).length;
+      opens += steps.filter((s) => s.effects?.some((e) => e.kind === "open")).length;
+      snipes += h.filter((e, j) => e.type === "snipe" && steps[j]!.ok).length;
     });
     // The histories must actually exercise refusals and ADL, or the comparison proves little.
     expect(rejected).toBeGreaterThan(300);
     expect(haircuts).toBeGreaterThan(30);
+    expect(opens).toBe(300); // every history launches its creator coin
+    expect(snipes).toBeGreaterThan(600);
   }, 120_000);
 });

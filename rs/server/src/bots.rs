@@ -2,7 +2,8 @@
 //  - maker: quotes a ladder around the oracle on every market, skewed against its inventory. It is an ordinary
 //    account with no special treatment, so ADL haircuts it like anyone else.
 //  - noise traders: open and close random leveraged positions against the book, so markets have volume (and
-//    graduate) and gaps have somebody to liquidate.
+//    graduate) and gaps have somebody to liquidate. They also snipe new creator coins with small amounts and
+//    trade the curves of open ones.
 
 use crate::book::{Side, Tif};
 use crate::exchange::{Exchange, Kind, OrderInput};
@@ -91,7 +92,7 @@ impl Bots {
         let meta = x.markets[id].clone();
         let m = &x.state.markets[id];
         let Some(mark_lot) = m.mark else { return };
-        if m.status != Status::Open {
+        if m.status != Status::Open || m.launch.as_ref().is_some_and(|l| !l.open) {
             return;
         }
         let lev = leverage_now(m).0 as f64;
@@ -129,6 +130,9 @@ impl Bots {
             return;
         }
         let wallet = x.wallet(t.id);
+        if wallet > 500 * ONE && self.coins(x, t.id) {
+            return;
+        }
         let open: Vec<String> = x.state.markets.values().filter(|m| m.status == Status::Open && m.positions.get(t.id).is_some_and(|p| p.size != 0)).map(|m| m.id.clone()).collect();
 
         if !open.is_empty() && (self.rng.next() < 0.35 || open.len() >= 4) {
@@ -188,6 +192,43 @@ impl Bots {
         let side = if self.rng.next() < p_buy { Side::Buy } else { Side::Sell };
         let input = OrderInput { leverage: Some(lev.min(max_lev)), slippage: Some(0.03), ..OrderInput::market(id, side, coins_from_lots(sz, lots as i128)) };
         let _ = x.place_order(t.id, input); // insufficient balance for this size, or no liquidity
+    }
+
+    /// Maybe snipe a coin in its window (once each, $20–300) or trade an open curve ($20–200). True if it acted.
+    fn coins(&mut self, x: &mut Exchange, id: &str) -> bool {
+        let now = x.now();
+        let sniping: Vec<String> = x
+            .markets
+            .values()
+            .filter(|m| m.launch.as_ref().is_some_and(|l| l.opened.is_none() && now < l.opens_at && !l.bids.iter().any(|b| b.account == id)))
+            .map(|m| m.id.clone())
+            .collect();
+        if !sniping.is_empty() && self.rng.next() < 0.5 {
+            let coin = &sniping[self.rng.below(sniping.len())];
+            let usdc = 20 + (self.rng.next() * 280.0) as i64;
+            return x.snipe(id, coin, &usdc.to_string()).is_ok();
+        }
+        if self.rng.next() >= 0.15 {
+            return false;
+        }
+        let curves: Vec<String> = x
+            .state
+            .markets
+            .values()
+            .filter(|m| m.status == Status::Open && m.curve.is_some() && m.launch.as_ref().is_none_or(|l| l.open))
+            .map(|m| m.id.clone())
+            .collect();
+        if curves.is_empty() {
+            return false;
+        }
+        let coin = &curves[self.rng.below(curves.len())];
+        let held = x.state.accounts.get(id).and_then(|a| a.spot.get(coin)).copied().unwrap_or(0);
+        if held > 1 && self.rng.next() < 0.4 {
+            x.spot_sell(id, coin, &(held / 2).to_string()).is_ok()
+        } else {
+            let usdc = 20 + (self.rng.next() * 180.0) as i64;
+            x.spot_buy(id, coin, &usdc.to_string()).is_ok()
+        }
     }
 
     pub fn summary(x: &Exchange) -> Vec<BotSummary> {

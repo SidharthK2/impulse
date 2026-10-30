@@ -535,3 +535,70 @@ describe("pump attack sweep", async () => {
     }
   });
 });
+
+describe("creator-coin launch", () => {
+  const C = "COIN";
+  const launch = (feeBps = 100): Event => ({ type: "market", id: C, preset: "attention", launch: true, feeBps, oracleWindow: 600 });
+  const snipe = (account: string, amount: string): Event => ({ type: "snipe", account, market: C, amount });
+
+  it("$100,000 of bids opens at $0.000125 and sells 800,000,000 tokens", () => {
+    const { state, results } = run([
+      launch(0),
+      { type: "deposit", account: "a", amount: "100000" },
+      { type: "deposit", account: "b", amount: "100000" },
+      snipe("a", "75000"),
+      snipe("b", "25000"),
+      { type: "open", market: C },
+    ]);
+    expect(results.every((r) => r.ok)).toBe(true);
+    const open = (results.at(-1) as Extract<Result, { ok: true }>).effects.find((e) => e.kind === "open")!;
+    expect(open).toMatchObject({ price: 125_000n, sniped: usd("100000"), tokens: 800_000_000n, reserve: usd("80000") });
+    const m = state.markets[C]!;
+    expect(m.curve).toMatchObject({ x: usd("25000"), y: 200_000_000n });
+    expect(m.mark).toBe(125_000n); // the oracle starts at the open price, TWAP or not
+    expect(state.accounts.a!.spot[C]).toBe(600_000_000n);
+    expect(state.accounts.b!.spot[C]).toBe(200_000_000n);
+    expect(m.launch).toEqual({ open: true, bids: {}, reserve: usd("80000") });
+    expect(checkInvariants(state)).toEqual([]);
+  });
+
+  it("holds bids and the launch reserve inside the conservation invariant, fee included", () => {
+    const { state, results } = run([launch(100), { type: "deposit", account: "a", amount: "1000" }, snipe("a", "1000")]);
+    expect(results.every((r) => r.ok)).toBe(true);
+    expect(state.accounts.a!.wallet).toBe(0n);
+    expect(state.fees).toBe(usd("10")); // the 1% spot fee is charged on snipes too
+    expect(state.markets[C]!.launch!.bids.a).toBe(usd("990"));
+    const after = apply(state, { type: "open", market: C });
+    expect(after.ok).toBe(true);
+    const s = (after as Extract<Result, { ok: true }>).state;
+    const m = s.markets[C]!;
+    expect(m.curve!.x - m.curve!.x0 + m.launch!.reserve).toBe(usd("990"));
+    expect(checkInvariants(s)).toEqual([]);
+  });
+
+  it("rejects trading before the open and bids after it", () => {
+    const { results } = run([
+      launch(),
+      ...fund("a", "1000", C),
+      ...fund("b", "1000", C),
+      { type: "deposit", account: "a", amount: "100" },
+      { type: "spotBuy", account: "a", market: C, amount: "10" },
+      T("a", "b", 1000, "0.000005", C),
+      snipe("a", "50"),
+      { type: "open", market: C },
+      snipe("a", "50"),
+      { type: "open", market: C },
+      { type: "spotBuy", account: "a", market: C, amount: "10" },
+    ]);
+    const reasons = results.map((r) => (r.ok ? "ok" : r.reason));
+    expect(reasons.slice(6)).toEqual([
+      "COIN is in its snipe window: trading starts at the open",
+      "COIN is in its snipe window: trading starts at the open",
+      "ok",
+      "ok",
+      "COIN is already open",
+      "COIN is already open",
+      "ok",
+    ]);
+  });
+});

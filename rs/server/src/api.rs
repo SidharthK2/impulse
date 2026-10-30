@@ -213,6 +213,7 @@ pub fn effect_kind(e: &Effect) -> &'static str {
         Effect::Mark { .. } => "mark",
         Effect::Funding { .. } => "funding",
         Effect::Graduation { .. } => "graduation",
+        Effect::Open { .. } => "open",
     }
 }
 
@@ -389,31 +390,45 @@ async fn spot_sell(State(app): State<App>, User(id): User, b: Body) -> ApiResult
     ok(json!({ "ok": true }))
 }
 
-/// Permissionless listing, Mirror's pitch: anyone can launch an attention market for a handle.
-async fn attention(State(app): State<App>, User(id): User, b: Body) -> ApiResult {
-    let raw = b.str("handle")?;
-    let handle = format!("@{}", raw.strip_prefix('@').unwrap_or(&raw));
+/// How long a new creator coin takes bids before its curve opens.
+const SNIPE_SECONDS: i64 = 60;
+
+/// A creator coin for a handle: an attention market that opens after a snipe window.
+fn coin_spec(raw: &str, window: f64, adl: &str, creator: &str) -> Result<MarketSpec, ExError> {
+    let handle = format!("@{}", raw.strip_prefix('@').unwrap_or(raw));
     if !(3..=21).contains(&handle.len()) || !handle[1..].bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_') {
-        return Err(ExError::bad("handle must be 2–20 letters, digits or _").into());
+        return Err(ExError::bad("handle must be 2–20 letters, digits or _"));
     }
-    let window = b.num("oracleWindow").unwrap_or(600.0);
     if ![0.0, 60.0, 600.0, 3600.0].contains(&window) {
-        return Err(ExError::bad("oracleWindow must be 0, 60, 600 or 3600 seconds").into());
+        return Err(ExError::bad("oracleWindow must be 0, 60, 600 or 3600 seconds"));
     }
-    let adl = if b.0.get("adl") == Some(&json!("size")) { "size" } else { "pnl" };
     let oracle = if window == 0.0 { "the instant spot price".into() } else { format!("a {}-minute TWAP of the spot price", window / 60.0) };
-    let spec = MarketSpec {
+    Ok(MarketSpec {
         name: Some(format!("{handle} attention token")),
         base: Some(handle.clone()),
         oracle_window: Some(window),
         adl: Some(adl.into()),
-        creator: Some(id.clone()),
-        description: Some(format!("Listed by {id}. Spot trades on an xy=k curve ($5k virtual USDC, 1B tokens); the perp's oracle is {oracle}.")),
+        creator: Some(creator.into()),
+        snipe_seconds: Some(SNIPE_SECONDS),
+        description: Some(format!(
+            "Listed by {creator}. Bids for {SNIPE_SECONDS} s, then opens at one price for every bid. Spot trades on an xy=k curve ($5k virtual USDC, 1B tokens); the perp's oracle is {oracle}."
+        )),
         ..MarketSpec::new(handle, Kind::Attention, Source::Curve)
-    };
+    })
+}
+
+/// Permissionless listing, Mirror's pitch: anyone can launch an attention market for a handle.
+async fn attention(State(app): State<App>, User(id): User, b: Body) -> ApiResult {
+    let adl = if b.0.get("adl") == Some(&json!("size")) { "size" } else { "pnl" };
+    let spec = coin_spec(&b.str("handle")?, b.num("oracleWindow").unwrap_or(600.0), adl, &id)?;
     let mut core = app.lock();
     let mid = core.x.create_market(spec)?.id.clone();
     ok(views::market_view(&core.x, &mid))
+}
+
+async fn snipe(State(app): State<App>, User(id): User, b: Body) -> ApiResult {
+    app.lock().x.snipe(&id, &b.str("market")?, &b.str("usdc")?)?;
+    ok(json!({ "ok": true }))
 }
 
 // ---------- admin ----------
@@ -479,6 +494,27 @@ async fn admin_hyperliquid(State(app): State<App>, _: Admin, b: Body) -> ApiResu
     ok(views::market_view(&app.lock().x, &id))
 }
 
+/// A creator coin for the demo, listed by admin (a random handle if none is given).
+async fn admin_demo_coin(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
+    let handle = match b.opt_str("handle") {
+        Some(h) => h,
+        None => {
+            let mut rng = Rng::from_time();
+            let tag: String = (0..5).map(|_| b"abcdefghijkmnpqrstuvwxyz23456789"[rng.below(32)] as char).collect();
+            format!("demo_{tag}")
+        }
+    };
+    let spec = coin_spec(&handle, 600.0, "pnl", "admin")?;
+    let mut core = app.lock();
+    let mid = core.x.create_market(spec)?.id.clone();
+    ok(views::market_view(&core.x, &mid))
+}
+
+async fn admin_pump(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
+    let effects = app.lock().x.pump(&b.str("market")?, &b.str("usdc")?)?;
+    ok(json!({ "effects": kinds(&effects) }))
+}
+
 async fn admin_deposit(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
     app.lock().x.deposit(&b.str("account")?, &b.str("amount")?)?;
     ok(json!({ "ok": true }))
@@ -527,6 +563,7 @@ async fn test_market(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
         oracle_window: b.num("oracleWindow"),
         fee_bps: b.num("feeBps"),
         adl: b.opt_str("adl"),
+        snipe_seconds: b.num("snipeSeconds").map(|v| v as i64),
         ..MarketSpec::new(b.str("id")?, parse_kind(&b.str("kind")?)?, source)
     };
     let mut core = app.lock();
@@ -665,6 +702,7 @@ pub fn router(app: App) -> Router {
         .route("/api/spot/buy", post(spot_buy))
         .route("/api/spot/sell", post(spot_sell))
         .route("/api/attention", post(attention))
+        .route("/api/snipe", post(snipe))
         .route("/api/admin/price", post(admin_price))
         .route("/api/admin/release", post(admin_release))
         .route("/api/admin/resolve", post(admin_resolve))
@@ -672,6 +710,8 @@ pub fn router(app: App) -> Router {
         .route("/api/admin/polymarket", post(admin_polymarket))
         .route("/api/admin/hyperliquid", post(admin_hyperliquid))
         .route("/api/admin/deposit", post(admin_deposit))
+        .route("/api/admin/demo-coin", post(admin_demo_coin))
+        .route("/api/admin/pump", post(admin_pump))
         .route("/api/admin/bots", post(admin_bots))
         .route("/api/admin/status", get(admin_status))
         .route("/ws", get(crate::ws::upgrade));

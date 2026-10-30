@@ -94,6 +94,40 @@ pub struct MarketMeta {
     pub creator: Option<String>,
     pub resolves_at_ms: Option<i64>,
     pub held_until: Option<i64>, // admin price override: feed ticks are ignored until then
+    #[serde(default)]
+    pub launch: Option<LaunchMeta>,
+}
+
+/// A creator coin's snipe window, as the exchange sees it: when it opens and every bid, for the views. The
+/// engine holds the money (net bids per account) and does the open.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LaunchMeta {
+    pub opens_at: i64,
+    pub bids: Vec<SnipeBid>, // in time order
+    pub opened: Option<Opened>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SnipeBid {
+    pub account: String,
+    #[serde(with = "big")]
+    pub usdc: i128, // what the bidder paid, fee included
+    pub time: i64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Opened {
+    #[serde(with = "big")]
+    pub open_price: i128, // nano-USD per token
+    pub opened_at: i64,
+    #[serde(with = "big")]
+    pub sniped: i128, // bids net of the fee: what bought the tokens
+    #[serde(with = "big")]
+    pub tokens_sold: i128,
+    #[serde(with = "big")]
+    pub reserve: i128,
 }
 
 #[derive(Clone, Debug)]
@@ -116,6 +150,7 @@ pub struct MarketSpec {
     pub taper_seconds: Option<f64>,
     pub initial_leverage: Option<f64>,
     pub maintenance_leverage: Option<f64>,
+    pub snipe_seconds: Option<i64>, // attention markets: open with a snipe window this long
 }
 
 impl MarketSpec {
@@ -139,6 +174,7 @@ impl MarketSpec {
             taper_seconds: None,
             initial_leverage: None,
             maintenance_leverage: None,
+            snipe_seconds: None,
         }
     }
 }
@@ -189,6 +225,8 @@ pub enum RiskKind {
     Graduation,
     Gap,
     Listing,
+    Open,
+    Ipo,
 }
 
 /// Serialized as is for the API and the websocket feed.
@@ -287,7 +325,9 @@ pub const FAUCET_AMOUNT: i128 = 10_000 * impulse_engine::fixed::ONE;
 const FAUCET_CAP: i128 = 100_000 * impulse_engine::fixed::ONE;
 const FAUCET_COOLDOWN_MS: i64 = 60_000;
 const MAX_OPEN_ORDERS: usize = 200;
-const RESERVED: [&str; 2] = ["curve", "admin"];
+const RESERVED: [&str; 3] = ["curve", "admin", HOUSE];
+/// The account /api/admin/pump trades from.
+pub const HOUSE: &str = "house";
 
 fn valid_name(id: &str) -> bool {
     (3..=16).contains(&id.len()) && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
@@ -438,6 +478,9 @@ impl Exchange {
             }
             if let Some(t) = m.held_until.as_mut() {
                 *t += down_ms;
+            }
+            if let Some(l) = m.launch.as_mut().filter(|l| l.opened.is_none()) {
+                l.opens_at += down_ms;
             }
         }
         self.version += 1;
@@ -611,6 +654,23 @@ impl Exchange {
                     let mark = self.state.markets[market].mark.unwrap_or(0);
                     self.candle(market, mark, usdc.abs(), None);
                 }
+                Effect::Open { market, price, sniped, tokens, reserve, fills } => {
+                    let now = self.now();
+                    let snipers = fills.iter().filter(|f| f.tokens > 0).count();
+                    let text = format!(
+                        "{market} opened at {}: ${} of snipes from {snipers} account{} bought {} tokens; ${} held as the launch reserve",
+                        fmt(*price, 0),
+                        cents(*sniped),
+                        if snipers == 1 { "" } else { "s" },
+                        group(&tokens.to_string()),
+                        cents(*reserve)
+                    );
+                    self.record(market, RiskKind::Open, fills.iter().filter(|f| f.tokens > 0).map(|f| f.account.clone()).collect(), text, Some(*sniped));
+                    if let Some(l) = self.markets.get_mut(market.as_str()).and_then(|m| m.launch.as_mut()) {
+                        l.opened = Some(Opened { open_price: *price, opened_at: now, sniped: *sniped, tokens_sold: *tokens, reserve: *reserve });
+                    }
+                    self.candle(market, *price, 0, None);
+                }
                 Effect::Funding { .. } => {} // funding accrues every clock step; positions carry the running total
             }
         }
@@ -782,6 +842,7 @@ impl Exchange {
             taper_seconds: spec.taper_seconds.and_then(num),
             initial_leverage: spec.initial_leverage.and_then(num),
             maintenance_leverage: spec.maintenance_leverage.and_then(num),
+            launch: spec.snipe_seconds.map(|_| true),
             ..Default::default()
         });
         let meta = MarketMeta {
@@ -798,6 +859,7 @@ impl Exchange {
             creator: spec.creator.clone(),
             resolves_at_ms: spec.resolves_at_ms,
             held_until: None,
+            launch: spec.snipe_seconds.map(|secs| LaunchMeta { opens_at: self.now() + secs * 1000, bids: vec![], opened: None }),
         };
         let mut events = vec![event];
         if let (Some(start), false) = (start, kind == Kind::Attention) {
@@ -884,13 +946,82 @@ impl Exchange {
     }
 
     /// Move the engine clock to wall time: funding accrues, curve TWAPs refresh, tapers tighten, risk runs.
+    /// Then open every launch whose snipe window has ended.
     pub fn clock(&mut self) -> XResult<Vec<Effect>> {
         let t = self.engine_time(self.now());
-        if t <= self.state.time {
-            return Ok(vec![]);
+        let mut effects = vec![];
+        if t > self.state.time {
+            let seconds = (t - self.state.time).to_string();
+            effects = self.commit(&[Event::Advance { seconds: seconds.into() }])?;
         }
-        let seconds = (t - self.state.time).to_string();
-        self.commit(&[Event::Advance { seconds: seconds.into() }])
+        let now = self.now();
+        let due: Vec<String> = self.markets.values().filter(|m| m.launch.as_ref().is_some_and(|l| l.opened.is_none() && now >= l.opens_at)).map(|m| m.id.clone()).collect();
+        for id in due {
+            effects.extend(self.commit(&[Event::Open { market: id }])?);
+        }
+        Ok(effects)
+    }
+
+    /// A snipe-window bid: USDC from the wallet, no cancel, filled at the open price.
+    pub fn snipe(&mut self, account: &str, market: &str, usdc: &str) -> XResult<()> {
+        self.account(account)?;
+        let now = self.now();
+        let Some(launch) = &self.market(market)?.launch else {
+            return Err(ExError::bad(format!("{market} has no snipe window")));
+        };
+        if launch.opened.is_some() || now >= launch.opens_at {
+            return Err(ExError::bad(format!("{market}'s snipe window has closed")));
+        }
+        let before = self.wallet(account);
+        self.commit(&[Event::Snipe { account: account.into(), market: market.into(), amount: usdc.into() }])?;
+        let paid = before - self.wallet(account);
+        if let Some(l) = self.market_mut(market)?.launch.as_mut() {
+            l.bids.push(SnipeBid { account: account.into(), usdc: paid, time: now });
+        }
+        Ok(())
+    }
+
+    /// Net bids waiting for a launch's open, per account (the engine's book of bids).
+    pub fn pending_bids(&self, market: &str) -> Option<&BTreeMap<String, i128>> {
+        self.state.markets.get(market)?.launch.as_ref().filter(|l| !l.open).map(|l| &l.bids)
+    }
+
+    /// Admin pump: the house account buys (usdc > 0) or sells about |usdc| of tokens (usdc < 0) on the curve.
+    pub fn pump(&mut self, market: &str, usdc: &str) -> XResult<Vec<Effect>> {
+        let meta = self.market(market)?;
+        if meta.kind != Kind::Attention {
+            return Err(ExError::bad(format!("{market} has no spot curve: use /api/admin/price")));
+        }
+        let v = parse(usdc)?;
+        if v == 0 {
+            return Err(ExError::bad("usdc must be non-zero"));
+        }
+        if !self.accounts.contains_key(HOUSE) {
+            let meta = AccountMeta { id: HOUSE.into(), api_key: api_key(), bot: true, created_at: self.now(), last_faucet: 0 };
+            self.keys.insert(meta.api_key.clone(), HOUSE.into());
+            self.accounts.insert(HOUSE.into(), meta);
+        }
+        if v > 0 {
+            let short = v - self.wallet(HOUSE);
+            let mut events = vec![];
+            if short > 0 {
+                events.push(ev_deposit(HOUSE, dec(short)));
+            }
+            events.push(Event::SpotBuy { account: HOUSE.into(), market: market.into(), amount: dec(v).into() });
+            return self.commit(&events);
+        }
+        // Tokens whose sale nets about |usdc| after the fee: x − k/(y + t) = |usdc| / (1 − fee).
+        let c = self.state.markets[market].curve.as_ref().expect("attention markets have a curve");
+        let gross = (-v) * 10_000 / (10_000 - c.fee_bps);
+        if gross >= c.x - c.x0 {
+            return Err(ExError::bad(format!("the curve holds only ${} of real USDC", usd(c.x - c.x0))));
+        }
+        let tokens = ceil_div(c.x * c.y, c.x - gross) - c.y;
+        let held = self.state.accounts.get(HOUSE).and_then(|a| a.spot.get(market)).copied().unwrap_or(0);
+        if held == 0 {
+            return Err(ExError::bad(format!("the house holds no {market} to sell: pump it up first")));
+        }
+        self.commit(&[Event::SpotSell { account: HOUSE.into(), market: market.into(), tokens: tokens.min(held).to_string().into() }])
     }
 
     // ---------- spot (attention curves) ----------
@@ -922,6 +1053,9 @@ impl Exchange {
         let Some(mark) = m.mark else {
             return Err(ExError::bad(format!("{} has no price yet", meta.id)));
         };
+        if m.launch.as_ref().is_some_and(|l| !l.open) {
+            return Err(ExError::bad(format!("{} is in its snipe window: trading starts at the open", meta.id)));
+        }
         let mut size = lots_from_coins(meta.sz_decimals, &input.size).map_err(|e| ExError::bad(format!("size: {e}")))?;
         if size <= 0 {
             return Err(ExError::bad("size must be positive"));

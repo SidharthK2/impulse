@@ -53,15 +53,21 @@ export function randomHistory(seed: number): Event[] {
     step({ type: "tick", market: m.id, price: m.start });
   }
   step({ type: "market", id: "ATTN", preset: "attention", oracleWindow: pick([0, 60, 300]), adl, feeBps: pick([0, 100, 250]) });
+  // A creator coin with a snipe window: bids before the open, trading after it.
+  step({ type: "market", id: "COIN", preset: "attention", launch: true, oracleWindow: pick([0, 60, 600]), adl, feeBps: pick([0, 100]) });
   for (const n of names) {
     step({ type: "deposit", account: n, amount: String(30 + Math.floor(r() * 900)) });
     for (const m of priced) step({ type: "allocate", account: n, market: m.id, amount: String(10 + Math.floor(r() * 300)) });
     step({ type: "deposit", account: n, amount: String(100 + Math.floor(r() * 3000)) });
     step({ type: "spotBuy", account: n, market: "ATTN", amount: String(50 + Math.floor(r() * 1000)) });
     step({ type: "allocate", account: n, market: "ATTN", amount: String(10 + Math.floor(r() * 300)) });
+    step({ type: "allocate", account: n, market: "COIN", amount: String(10 + Math.floor(r() * 300)) });
+    if (r() < 0.8) step({ type: "snipe", account: n, market: "COIN", amount: r() < 0.05 ? "all" : String(1 + Math.floor(r() * 3000)) });
   }
   const steps = 80 + Math.floor(r() * 120);
+  const openAt = Math.floor(r() * (steps / 2));
   for (let i = 0; i < steps; i++) {
+    if (i === openAt) step({ type: "open", market: "COIN" });
     const roll0 = r();
     if (roll0 < 0.04) {
       // things the engine must refuse, identically
@@ -79,20 +85,27 @@ export function randomHistory(seed: number): Event[] {
           { type: "market", id: "EQ", preset: "perp" },
           { type: "market", id: "BAD", preset: "perp", initialLeverage: 5, maintenanceLeverage: 2 },
           { type: "resolve", market: "ATTN", price: "1" },
+          { type: "open", market: "ATTN" },
+          { type: "snipe", account: "a", market: "EQ", amount: "1" },
+          { type: "snipe", account: pick(names), market: "COIN", amount: "5" },
+          { type: "snipe", account: "nobody", market: "COIN", amount: "5" },
+          { type: "market", id: "BADL", preset: "perp", launch: true },
         ]),
       );
       continue;
     }
     if (roll0 < 0.3) {
+      const cm = r() < 0.5 ? "ATTN" : "COIN";
       const a = pick(names);
       const roll = r();
-      const mark = s.markets.ATTN!.mark!;
-      if (roll < 0.35) {
+      const mark = s.markets[cm]!.mark!;
+      if (cm === "COIN" && !s.markets.COIN!.launch!.open && roll < 0.3) step({ type: "snipe", account: a, market: "COIN", amount: String(1 + Math.floor(r() * 500)) });
+      else if (roll < 0.35) {
         const b = pick(names.filter((n) => n !== a));
         const size = BigInt(Math.max(1, Math.floor((5 + r() * 300) / (Number(mark) / 1e9))));
-        step({ type: "trade", market: "ATTN", buyer: a, seller: b, size: size.toString(), price: (Number(mark) / 1e9).toFixed(9) });
-      } else if (roll < 0.6) step({ type: "spotBuy", account: a, market: "ATTN", amount: r() < 0.2 ? "all" : String(1 + Math.floor(r() * 2000)) });
-      else if (roll < 0.8) step({ type: "spotSell", account: a, market: "ATTN", tokens: r() < 0.5 ? "all" : String(1 + Math.floor(r() * 1e6)) });
+        step({ type: "trade", market: cm, buyer: a, seller: b, size: size.toString(), price: (Number(mark) / 1e9).toFixed(9) });
+      } else if (roll < 0.6) step({ type: "spotBuy", account: a, market: cm, amount: r() < 0.2 ? "all" : String(1 + Math.floor(r() * 2000)) });
+      else if (roll < 0.8) step({ type: "spotSell", account: a, market: cm, tokens: r() < 0.5 ? "all" : String(1 + Math.floor(r() * 1e6)) });
       else step({ type: "advance", seconds: 1 + Math.floor(r() * 600) });
       continue;
     }
@@ -121,6 +134,7 @@ export function randomHistory(seed: number): Event[] {
   }
   for (const n of names) {
     step({ type: "spotSell", account: n, market: "ATTN", tokens: "all" });
+    step({ type: "spotSell", account: n, market: "COIN", tokens: "all" });
     step({ type: "withdraw", account: n, amount: "all" });
   }
   return events;

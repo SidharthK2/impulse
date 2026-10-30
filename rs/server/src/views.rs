@@ -5,9 +5,10 @@ use crate::book::{Order, Side, Tif};
 use crate::exchange::{Exchange, Fill, FillKind, Kind, MarketMeta, RiskEvent, Source};
 use crate::units::{coin_price, coins_from_lots, fmt, pow10, tick_decimals, usd};
 use impulse_engine::{
-    depth, equity, initial_margin, leverage_now, maintenance_margin, open_interest, releasable, spot_price, taper_progress, unrealized, AdlPolicy, Market, Position,
-    Status, FUNDING_BASE_PPB, GRADUATION, PPB,
+    depth, equity, initial_margin, leverage_now, maintenance_margin, open_curve, open_interest, releasable, spot_price, taper_progress, unrealized, AdlPolicy, Market,
+    Position, Status, FUNDING_BASE_PPB, GRADUATION, PPB,
 };
+use std::collections::BTreeMap;
 use serde::Serialize;
 
 const DAY: i64 = 86_400_000;
@@ -119,6 +120,112 @@ pub struct MarketView<'a> {
     held_until: Option<i64>,
     created_at: i64,
     positions: usize,
+    snipe: Option<SnipeView<'a>>,
+    launch: Option<LaunchView>,
+    settings: Vec<Setting>,
+}
+
+#[derive(Serialize)]
+pub struct SnipeBidView<'a> {
+    account: &'a str,
+    usdc: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    time: Option<i64>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SnipeView<'a> {
+    opens_at: i64,
+    total: String, // USDC bid, fee included
+    snipers: usize,
+    projected_open_price: String, // if the window closed now
+    top: Vec<SnipeBidView<'a>>,    // largest 10 accounts
+    recent: Vec<SnipeBidView<'a>>, // latest 10 bids
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LaunchView {
+    open_price: String,
+    opened_at: i64,
+    sniped: String, // bids net of the fee: what bought the tokens
+    tokens_sold: String,
+    reserve: String,
+}
+
+/// A market parameter, and whether it's ours (`ours: true`: Mirror doesn't publish it, so we picked it).
+#[derive(Serialize)]
+pub struct Setting {
+    label: &'static str,
+    value: String,
+    ours: bool,
+}
+
+fn setting(label: &'static str, value: impl Into<String>, ours: bool) -> Setting {
+    Setting { label, value: value.into(), ours }
+}
+
+fn pct_per_hour(ppb: i128) -> String {
+    format!("{}%/h", ppb as f64 / 1e7)
+}
+
+fn settings(meta: &MarketMeta, m: &Market) -> Vec<Setting> {
+    let mut out = vec![];
+    match &meta.source {
+        Source::Curve => {
+            let window = m.oracle.as_ref().map_or(0, |o| o.window);
+            let oracle = if window == 0 { "instant spot price".to_string() } else { format!("{}-minute TWAP of spot", window / 60) };
+            out.push(setting("Perp oracle", oracle, true));
+            if let Some(c) = &m.curve {
+                out.push(setting("Spot curve", format!("x·y=k, ${} virtual USDC × {} tokens", crate::units::group(&(c.x0 / PPB).to_string()), crate::units::group(&c.y0.to_string())), false));
+                out.push(setting("Spot fee", format!("{}%{}", c.fee_bps as f64 / 100.0, if meta.launch.is_some() { ", also on snipes" } else { "" }), true));
+            }
+            if let Some(l) = &meta.launch {
+                out.push(setting("Snipe window", format!("{} s", (l.opens_at - meta.created_at + 500) / 1000), true));
+                out.push(setting("Open price", "x1 = (x0 + √(x0·(x0 + 4B))) / 2, P = x1 / y1; one price for every bid", false));
+            }
+        }
+        _ => out.push(setting("Oracle", source_label(meta), true)),
+    }
+    out.push(setting("Start leverage", format!("{}×", m.config.initial_leverage), false));
+    if m.config.graduation {
+        out.push(setting("Leverage graduation", format!("{} tiers up to {}× on volume and depth", GRADUATION.len(), GRADUATION[GRADUATION.len() - 1].leverage), true));
+    }
+    out.push(setting("Maintenance", format!("notional / {}×", m.config.maintenance_leverage), true));
+    if m.config.funding {
+        out.push(setting("Funding base rate", format!("{} at launch, {} at the top tier", pct_per_hour(FUNDING_BASE_PPB[0]), pct_per_hour(FUNDING_BASE_PPB[FUNDING_BASE_PPB.len() - 1])), true));
+    }
+    let adl = match m.config.adl {
+        AdlPolicy::Pnl => "pro-rata on profit first, then principal",
+        AdlPolicy::Size => "pro-rata by position size",
+    };
+    out.push(setting("ADL", adl, true));
+    out.push(setting("Insurance fund", "none: shortfalls are charged to the other side in the same transaction", false));
+    out
+}
+
+fn snipe_view<'a>(x: &'a Exchange, meta: &'a MarketMeta, m: &Market) -> Option<SnipeView<'a>> {
+    let l = meta.launch.as_ref().filter(|l| l.opened.is_none())?;
+    let mut by_account: BTreeMap<&str, i128> = BTreeMap::new();
+    for b in &l.bids {
+        *by_account.entry(&b.account).or_default() += b.usdc;
+    }
+    let mut top: Vec<(&str, i128)> = by_account.iter().map(|(a, v)| (*a, *v)).collect();
+    top.sort_by(|a, b| b.1.cmp(&a.1));
+    let net: i128 = x.pending_bids(&meta.id).map_or(0, |b| b.values().sum());
+    let projected = m.curve.as_ref().map_or(0, |c| {
+        let (x1, y1) = open_curve(c.x, c.y, net);
+        x1 / y1
+    });
+    Some(SnipeView {
+        opens_at: l.opens_at,
+        total: usd(l.bids.iter().map(|b| b.usdc).sum()),
+        snipers: by_account.len(),
+        projected_open_price: fmt(coin_price(meta.sz_decimals, projected), 0),
+        top: top.into_iter().take(10).map(|(account, v)| SnipeBidView { account, usdc: usd(v), time: None }).collect(),
+        recent: l.bids.iter().rev().take(10).map(|b| SnipeBidView { account: &b.account, usdc: usd(b.usdc), time: Some(b.time) }).collect(),
+    })
 }
 
 pub fn market_view<'a>(x: &'a Exchange, id: &str) -> MarketView<'a> {
@@ -184,6 +291,15 @@ pub fn market_view<'a>(x: &'a Exchange, id: &str) -> MarketView<'a> {
         held_until: meta.held_until,
         created_at: meta.created_at,
         positions: m.positions.values().filter(|p| p.size != 0).count(),
+        snipe: snipe_view(x, meta, m),
+        launch: meta.launch.as_ref().and_then(|l| l.opened.as_ref()).map(|o| LaunchView {
+            open_price: fmt(coin_price(meta.sz_decimals, o.open_price), 0),
+            opened_at: o.opened_at,
+            sniped: usd(o.sniped),
+            tokens_sold: o.tokens_sold.to_string(),
+            reserve: usd(o.reserve),
+        }),
+        settings: settings(meta, m),
     }
 }
 
@@ -430,6 +546,14 @@ pub struct AccountView<'a> {
     orders: Vec<OrderView<'a>>,
     fills: Vec<FillView<'a>>,
     risk: Vec<&'a RiskEvent>,
+    snipes: Vec<AccountSnipe<'a>>,
+}
+
+#[derive(Serialize)]
+pub struct AccountSnipe<'a> {
+    market: &'a str,
+    usdc: String,
+    time: i64,
 }
 
 pub fn account_view<'a>(x: &'a Exchange, id: &'a str) -> AccountView<'a> {
@@ -490,6 +614,13 @@ pub fn account_view<'a>(x: &'a Exchange, id: &'a str) -> AccountView<'a> {
         orders: x.orders_of(id, None).map(|o| order_view(x, o)).collect(),
         fills,
         risk,
+        // bids still waiting for an open
+        snipes: x
+            .markets
+            .values()
+            .filter_map(|m| m.launch.as_ref().filter(|l| l.opened.is_none()).map(|l| (m, l)))
+            .flat_map(|(m, l)| l.bids.iter().filter(|b| b.account == id).map(|b| AccountSnipe { market: &m.id, usdc: usd(b.usdc), time: b.time }))
+            .collect(),
     }
 }
 

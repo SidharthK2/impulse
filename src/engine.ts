@@ -6,7 +6,7 @@
 // See docs/ACCOUNTING.md for the model this implements.
 
 import { allocate } from "./alloc.js";
-import { abs, ceilDiv, fmtPrice, fmtUsd, max, min, parseFixed, sign } from "./fixed.js";
+import { abs, ceilDiv, fmtPrice, fmtUsd, isqrt, max, min, parseFixed, sign } from "./fixed.js";
 
 // ---------- types ----------
 
@@ -88,11 +88,22 @@ export interface CurveOracle {
   history: { t: bigint; price: bigint }[]; // spot price change points, pruned to the window
 }
 
+/**
+ * Creator-coin launch: a snipe window before the curve opens. Bids are USDC from the wallet (net of the spot fee)
+ * and can't be cancelled. At the open, the whole book of bids buys from the curve at one price (see onOpen).
+ */
+export interface Launch {
+  open: boolean;
+  bids: Record<string, bigint>; // net USDC per account, waiting for the open
+  reserve: bigint; // after the open: the part of the bids the curve didn't take, held by the market
+}
+
 export interface Market {
   id: string;
   config: MarketConfig;
   curve: Curve | null;
   oracle: CurveOracle | null;
+  launch: Launch | null;
   mark: bigint | null;
   time: bigint; // market's view of the clock (kept in sync with State.time)
   tier: number; // graduation tier, 0 = launch
@@ -141,6 +152,7 @@ export type Event =
       resolvable?: boolean;
       initialLeverage?: number;
       maintenanceLeverage?: number;
+      launch?: boolean; // curve markets only: open with a snipe window (spot and perp trading wait for `open`)
     }
   | { type: "deposit"; account: string; amount: Amount }
   | { type: "withdraw"; account: string; amount: Amount } // "all" allowed
@@ -151,7 +163,9 @@ export type Event =
   | { type: "spotBuy"; account: string; market: string; amount: Amount } // USDC from wallet into the curve; "all" allowed
   | { type: "spotSell"; account: string; market: string; tokens: number | string } // tokens back to the curve; "all" allowed
   | { type: "advance"; seconds: number } // move the clock; curve oracles refresh and risk runs
-  | { type: "resolve"; market: string; price: string };
+  | { type: "resolve"; market: string; price: string }
+  | { type: "snipe"; account: string; market: string; amount: Amount } // bid USDC into a launch; "all" allowed
+  | { type: "open"; market: string }; // end a launch's snipe window: fill every bid at one price
 
 export interface ForcedClose {
   account: string;
@@ -168,7 +182,14 @@ export type Effect =
   | { kind: "spot"; market: string; account: string; usdc: bigint; tokens: bigint; fee: bigint; priceBefore: bigint; priceAfter: bigint }
   | { kind: "mark"; market: string; from: bigint; to: bigint; spot: bigint }
   | { kind: "funding"; market: string; rate: bigint; seconds: bigint; total: bigint; payers: "long" | "short" }
-  | { kind: "graduation"; market: string; tier: number; leverage: bigint };
+  | { kind: "graduation"; market: string; tier: number; leverage: bigint }
+  | { kind: "open"; market: string; price: bigint; sniped: bigint; tokens: bigint; reserve: bigint; fills: LaunchFill[] };
+
+export interface LaunchFill {
+  account: string;
+  usdc: bigint; // net bid
+  tokens: bigint;
+}
 
 export type Result =
   | { ok: true; state: State; effects: Effect[] }
@@ -365,6 +386,7 @@ function onMarket(s: State, e: Extract<Event, { type: "market" }>) {
   }
   let curve: Curve | null = null;
   let oracle: CurveOracle | null = null;
+  if (e.launch && !(attention || e.curve)) throw new Rejected("only curve markets can launch");
   if (attention || e.curve) {
     const x0 = parseFixed(e.curve?.usdc ?? "5000");
     const y0 = BigInt(e.curve?.tokens ?? 1_000_000_000);
@@ -379,6 +401,7 @@ function onMarket(s: State, e: Extract<Event, { type: "market" }>) {
     config,
     curve,
     oracle,
+    launch: e.launch ? { open: false, bids: {}, reserve: 0n } : null,
     mark: curve ? spotPrice(curve) : null,
     time: s.time,
     tier: 0,
@@ -443,6 +466,7 @@ function onRelease(s: State, e: Extract<Event, { type: "release" }>) {
 function onTrade(s: State, e: Extract<Event, { type: "trade" }>): Effect[] {
   const m = getMarket(s, e.market);
   if (m.status !== "open") throw new Rejected(`${m.id} is resolved`);
+  assertLaunched(m);
   if (m.mark === null) throw new Rejected(`${m.id} has no oracle price yet`);
   if (e.buyer === e.seller) throw new Rejected("self-trade");
   const size = BigInt(e.size);
@@ -632,10 +656,81 @@ function getCurve(m: Market): Curve {
   return m.curve;
 }
 
+/** Spot and perp trading wait for a launch's open. */
+function assertLaunched(m: Market) {
+  if (m.launch && !m.launch.open) throw new Rejected(`${m.id} is in its snipe window: trading starts at the open`);
+}
+
+function pendingLaunch(m: Market): Launch {
+  if (!m.launch) throw new Rejected(`${m.id} has no launch`);
+  if (m.launch.open) throw new Rejected(`${m.id} is already open`);
+  return m.launch;
+}
+
+function onSnipe(s: State, e: Extract<Event, { type: "snipe" }>) {
+  const a = getAccount(s, e.account);
+  const m = getMarket(s, e.market);
+  const c = getCurve(m);
+  const launch = pendingLaunch(m);
+  const usdc = parseAmount(e.amount, a.wallet, "snipe");
+  const f = fee(usdc, c.feeBps); // the spot fee applies to snipes too
+  if (usdc - f <= 0n) throw new Rejected("snipe too small");
+  a.wallet -= usdc;
+  s.fees += f;
+  launch.bids[a.id] = (launch.bids[a.id] ?? 0n) + usdc - f;
+}
+
+/**
+ * The open: all bids B buy from the curve together, at one price. The curve moves from (x0, y0) to (x1, y1) with
+ *   x1 = (x0 + √(x0·(x0 + 4B))) / 2,  y1 = ⌈x0·y0 / x1⌉,  open price x1 / y1,
+ * the point where buying y0 − y1 tokens at the open price costs B: x1·(x1 − x0) = x0·B. Only x1 − x0 enters the
+ * curve; the rest of B stays in the market as its launch reserve. Tokens split pro-rata by bid (largest remainder).
+ */
+/** Where a launch's curve opens for total bids `B`: [x1, y1]. See onOpen. */
+export function openCurve(x0: bigint, y0: bigint, B: bigint): [bigint, bigint] {
+  const x1 = (x0 + isqrt(x0 * (x0 + 4n * B))) / 2n;
+  return [x1, ceilDiv(x0 * y0, x1)];
+}
+
+function onOpen(s: State, e: Extract<Event, { type: "open" }>): Effect[] {
+  const m = getMarket(s, e.market);
+  const c = getCurve(m);
+  const launch = pendingLaunch(m);
+  const bids = Object.keys(launch.bids)
+    .sort()
+    .map((account) => ({ key: account, weight: launch.bids[account]! }));
+  const B = bids.reduce((sum, b) => sum + b.weight, 0n);
+  const x0 = c.x;
+  const [x1, y1] = openCurve(x0, c.y, B);
+  const tokens = c.y - y1;
+  const split = allocate(tokens, bids);
+  const fills: LaunchFill[] = [];
+  for (const b of bids) {
+    const t = split.get(b.key)!;
+    fills.push({ account: b.key, usdc: b.weight, tokens: t });
+    if (t > 0n) s.accounts[b.key]!.spot[m.id] = (s.accounts[b.key]!.spot[m.id] ?? 0n) + t;
+  }
+  c.x = x1;
+  c.y = y1;
+  m.launch = { open: true, bids: {}, reserve: B - (x1 - x0) };
+  // The oracle restarts at the open price as if it had held for a whole window: nobody could trade the curve
+  // before the open, and a pump right after it must take a full window to move a TWAP mark.
+  const before = m.mark!;
+  const price = spotPrice(c);
+  m.oracle!.history = [{ t: s.time - m.oracle!.window, price }];
+  m.mark = price;
+  const effects: Effect[] = [{ kind: "open", market: m.id, price, sniped: B, tokens, reserve: m.launch.reserve, fills }];
+  if (price !== before) effects.push({ kind: "mark", market: m.id, from: before, to: price, spot: price });
+  effects.push(...graduate(m));
+  updateFundingRate(m);
+  return effects;
+}
+
 function onSpotBuy(s: State, e: Extract<Event, { type: "spotBuy" }>): Effect[] {
   const a = getAccount(s, e.account);
   const m = getMarket(s, e.market);
   const c = getCurve(m);
+  assertLaunched(m);
   const usdc = parseAmount(e.amount, a.wallet, "spend");
   const f = fee(usdc, c.feeBps);
   const priceBefore = spotPrice(c);
@@ -659,6 +754,7 @@ function onSpotSell(s: State, e: Extract<Event, { type: "spotSell" }>): Effect[]
   const a = getAccount(s, e.account);
   const m = getMarket(s, e.market);
   const c = getCurve(m);
+  assertLaunched(m);
   const held = a.spot[m.id] ?? 0n;
   const tokens = e.tokens === "all" ? held : BigInt(e.tokens);
   if (tokens <= 0n) throw new Rejected("nothing to sell");
@@ -770,13 +866,18 @@ export function checkInvariants(s: State): string[] {
   for (const id of marketIds(s)) {
     const m = s.markets[id]!;
     held += m.vault;
+    if (m.launch) {
+      held += m.launch.reserve; // USDC the open didn't put in the curve
+      for (const bid of Object.values(m.launch.bids)) held += bid; // bids waiting for the open
+      if (m.launch.open && Object.keys(m.launch.bids).length > 0) errs.push(`${id}: bids left after the open`);
+    }
     if (!m.curve) continue;
     held += m.curve.x - m.curve.x0; // real USDC sitting in the curve
     const tokens = accountIds(s).reduce((sum, a) => sum + (s.accounts[a]!.spot[id] ?? 0n), 0n);
     if (tokens !== m.curve.y0 - m.curve.y) errs.push(`${id}: Σ holdings ${tokens} != tokens sold ${m.curve.y0 - m.curve.y}`);
   }
   if (wallets + held + s.fees !== s.totalDeposits - s.totalWithdrawals) {
-    errs.push(`wallets + vaults + curves + fees ${wallets + held + s.fees} != deposits − withdrawals ${s.totalDeposits - s.totalWithdrawals}`);
+    errs.push(`wallets + vaults + curves + launches + fees ${wallets + held + s.fees} != deposits − withdrawals ${s.totalDeposits - s.totalWithdrawals}`);
   }
   return errs;
 }
@@ -820,6 +921,12 @@ export function apply(state: State, event: Event): Result {
         break;
       case "advance":
         effects = onAdvance(s, event);
+        break;
+      case "snipe":
+        onSnipe(s, event);
+        break;
+      case "open":
+        effects = onOpen(s, event);
         break;
       default:
         throw new Rejected(`unknown event ${JSON.stringify(event)}`);
