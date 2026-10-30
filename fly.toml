@@ -1,12 +1,14 @@
-# Fly.io config for Impulse. One machine only: the whole exchange lives in one process, with its SQLite
-# database on the volume below. Never scale this app past one machine. Setup: docs/DEPLOY.md.
+# Fly.io config for Impulse, sized for the lowest cost. One machine only: the whole exchange lives in one process,
+# with its SQLite database on the volume below. Never scale this app past one machine. Setup: docs/DEPLOY.md.
 
-app = "impulse"           # change to the name you pick in `fly apps create`
+app = "impulse-sid"
 primary_region = "sin"    # Singapore; any region works (`fly platform regions`)
 
 # The server takes a final snapshot on SIGTERM; give it time before the machine is killed.
 kill_signal = "SIGTERM"
 kill_timeout = "30s"
+# Disk-backed swap is free; it covers memory spikes on the 256 MB machine.
+swap_size_mb = 256
 
 [build]
   dockerfile = "Dockerfile"
@@ -26,15 +28,12 @@ kill_timeout = "30s"
 [http_service]
   internal_port = 8787
   force_https = true
-  # Always on: the clock, the bots and the price feeds run inside the server.
-  auto_stop_machines = "off"
+  # Stops when nobody is connected and starts on the next request, so it only costs while in use. While stopped,
+  # the clock, bots and price feeds pause; the server treats downtime as a pause. For always-on, set
+  # auto_stop_machines = "off" and min_machines_running = 1.
+  auto_stop_machines = "stop"
   auto_start_machines = true
-  min_machines_running = 1
-
-  [http_service.concurrency]
-    type = "connections"
-    soft_limit = 200
-    hard_limit = 250
+  min_machines_running = 0
 
   [[http_service.checks]]
     # Startup replays the journal since the last snapshot before serving.
@@ -46,4 +45,4 @@ kill_timeout = "30s"
 
 [[vm]]
   size = "shared-cpu-1x"
-  memory = "512mb"
+  memory = "256mb"

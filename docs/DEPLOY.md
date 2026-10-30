@@ -7,7 +7,7 @@ and keeps its SQLite database on a Fly volume. Files: `Dockerfile`, `.dockerigno
 **Rules that keep it correct**
 - **One machine, always.** The exchange is one process holding its state in memory, journaled to SQLite on one
   volume. Two machines would be two separate exchanges. Always deploy with `--ha=false`; never `fly scale count 2`.
-- **Always on.** `auto_stop_machines = "off"`: the clock, bots and price feeds run inside the server.
+- **Stops when idle.** `auto_stop_machines = "stop"`: cheapest; bots and prices pause while nobody's connected.
 - **Set `ADMIN_TOKEN`.** The default `impulse-admin` is public in this repo; anyone could crash markets with it.
 - **Never set `TEST_CLOCK`** in production: it turns on the `/api/test/*` hooks.
 
@@ -48,5 +48,8 @@ Optional: `fly secrets set OFFLINE=1` (or uncomment it in `fly.toml`) for simula
 
 ## Cost
 
-Pay-as-you-go, no plan: a shared-cpu-1x machine with 512 MB is about $3.69/month, the 1 GB volume about
-$0.15/month, plus bandwidth. Fly has no hard spending cap. Check current prices on fly.io/pricing.
+Sized for the lowest cost: one shared-cpu-1x machine with 256 MB (about $2.19/month if it ran all month) that stops
+when nobody is connected, so it bills only while in use; a 1 GB volume (about $0.15/month); shared IPs (free).
+While stopped, the clock, bots and prices pause, and the first visit afterwards takes a few seconds to start.
+For always-on, set `auto_stop_machines = "off"` and `min_machines_running = 1` in fly.toml. Fly has no hard
+spending cap. Check current prices on fly.io/pricing.
