@@ -1,0 +1,8 @@
+# Only the web app and the Rust workspace go into the build.
+*
+!web/
+!rs/
+web/node_modules
+web/dist
+rs/target
+rs/data

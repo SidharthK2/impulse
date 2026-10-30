@@ -1,0 +1,25 @@
+# Deploy to Fly.io on every push to mvp (or by hand from the Actions tab).
+# Needs the repo secret FLY_API_TOKEN: `fly tokens create deploy -x 999999h`, then add it under
+# Settings → Secrets and variables → Actions. The image is built on Fly's remote builder, not on the runner.
+name: Deploy to Fly
+
+on:
+  push:
+    branches: [mvp]
+  workflow_dispatch:
+
+# One deploy at a time; a newer push waits rather than racing the running one.
+concurrency:
+  group: fly-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      # --ha=false: exactly one machine; the exchange can't run as two copies over one volume.
+      - run: flyctl deploy --remote-only --ha=false
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

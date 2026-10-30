@@ -1,0 +1,49 @@
+# Fly.io config for Impulse. One machine only: the whole exchange lives in one process, with its SQLite
+# database on the volume below. Never scale this app past one machine. Setup: docs/DEPLOY.md.
+
+app = "impulse"           # change to the name you pick in `fly apps create`
+primary_region = "sin"    # Singapore; any region works (`fly platform regions`)
+
+# The server takes a final snapshot on SIGTERM; give it time before the machine is killed.
+kill_signal = "SIGTERM"
+kill_timeout = "30s"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8787"
+  DATA_DIR = "/data"
+  WEB_DIR = "/app/web/dist"
+  # OFFLINE = "1"   # simulated prices instead of live Hyperliquid / Polymarket
+  # BOTS = "0"      # no house market maker or noise traders
+  # ADMIN_TOKEN is a secret: `fly secrets set ADMIN_TOKEN=...`
+
+[mounts]
+  source = "impulse_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8787
+  force_https = true
+  # Always on: the clock, the bots and the price feeds run inside the server.
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "connections"
+    soft_limit = 200
+    hard_limit = 250
+
+  [[http_service.checks]]
+    # Startup replays the journal since the last snapshot before serving.
+    grace_period = "30s"
+    interval = "15s"
+    timeout = "5s"
+    method = "GET"
+    path = "/api/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
