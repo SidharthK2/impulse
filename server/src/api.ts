@@ -8,9 +8,11 @@ import { type IncomingMessage, type ServerResponse, createServer } from "node:ht
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { WebSocket, WebSocketServer } from "ws";
 import type { Bots } from "./bots.js";
-import { type Exchange, ExchangeError, type MarketSpec, type OrderInput } from "./exchange.js";
+import { checkInvariants } from "../../src/engine.js";
+import { Exchange, ExchangeError, type Kind, type MarketSpec, type OrderInput, type Source } from "./exchange.js";
 import { listHyperliquid, listPolymarket } from "./feeds.js";
-import { coinsFromLots, usd } from "./units.js";
+import { deserialize, serialize } from "./persist.js";
+import { coinsFromLots, parseFixed, usd } from "./units.js";
 import { accountView, bookView, candlesView, configView, fillView, leaderboardView, marketView, orderView, tradesView } from "./views.js";
 
 interface Ctx {
@@ -28,6 +30,8 @@ export interface ApiOptions {
   bots: Bots | null;
   webDir: string | null;
   log: (s: string) => void;
+  /** Test hooks under /api/test/*: the exchange's clock must be one only `advance` moves. */
+  test?: { advance: (ms: number) => void };
 }
 
 const str = (v: unknown, name: string): string => {
@@ -210,6 +214,46 @@ export function createApi(x: Exchange, opts: ApiOptions) {
     return { enabled: opts.bots.enabled };
   });
   route("GET", "/api/admin/status", "admin", () => ({ bots: opts.bots ? { enabled: opts.bots.enabled, accounts: opts.bots.summary() } : null }));
+
+  // ---------- test hooks (the Rust server has the same ones under TEST_CLOCK=1) ----------
+
+  const test = opts.test;
+  if (test) {
+    route("POST", "/api/test/advance", "admin", (c) => {
+      test.advance(optNum(c.body.ms) ?? 0);
+      return { effects: x.clock().map((e) => e.kind), now: x.now() };
+    });
+    route("POST", "/api/test/market", "admin", (c) => {
+      const b = c.body;
+      const spec: MarketSpec = {
+        id: str(b.id, "id"),
+        kind: str(b.kind, "kind") as Kind,
+        source: (b.source as Source | undefined) ?? { kind: "manual" },
+        ...(b.price !== undefined && { price: str(b.price, "price") }),
+        ...(optNum(b.szDecimals) !== undefined && { szDecimals: optNum(b.szDecimals) }),
+        ...(optNum(b.oracleWindow) !== undefined && { oracleWindow: optNum(b.oracleWindow) }),
+        ...(optNum(b.feeBps) !== undefined && { feeBps: optNum(b.feeBps) }),
+        ...(typeof b.adl === "string" && { adl: b.adl as "size" | "pnl" }),
+      };
+      return marketView(x, x.createMarket(spec).id);
+    });
+    route("POST", "/api/test/tick", "admin", (c) => {
+      const effects = x.tick(str(c.body.market, "market"), parseFixed(str(c.body.price, "price")));
+      return { effects: effects === null ? null : effects.map((e) => e.kind) };
+    });
+    route("GET", "/api/test/invariants", "admin", () => checkInvariants(x.state));
+    // Round-trip the whole exchange through a snapshot in place, then treat `downMs` as downtime.
+    route("POST", "/api/test/reload", "admin", (c) => {
+      const before = serialize(x.toSnapshot());
+      const y = Exchange.fromSnapshot(deserialize(before), { now: x.now });
+      const identical = serialize(y.toSnapshot()) === before;
+      Object.assign(x, y, { version: x.version + 1 });
+      const down = optNum(c.body.downMs) ?? 0;
+      test.advance(down);
+      x.resumeAfter(down);
+      return { identical, effects: x.clock().map((e) => e.kind) };
+    });
+  }
 
   // ---------- plumbing ----------
 

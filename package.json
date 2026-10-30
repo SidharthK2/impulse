@@ -7,16 +7,18 @@
   },
   "scripts": {
     "test": "cargo build --quiet --manifest-path rs/Cargo.toml --bins && vitest run",
+    "test:rust": "cargo test --manifest-path rs/Cargo.toml",
     "typecheck": "tsc --noEmit && tsc --noEmit -p server && tsc --noEmit -p web",
+    "start": "pnpm web:build && pnpm server",
+    "dev": "trap 'kill 0' INT TERM EXIT; cargo run --manifest-path rs/Cargo.toml -p impulse-server & pnpm --filter impulse-web dev",
+    "server": "cargo run --release --manifest-path rs/Cargo.toml -p impulse-server",
+    "web:build": "pnpm --filter impulse-web build",
+    "dev:ts": "pnpm -r --parallel dev",
+    "server:ts": "pnpm --filter impulse-server start",
     "replay": "tsx src/cli.ts",
     "demo": "tsx src/cli.ts scenarios/gap-down-resolve-0.json scenarios/gap-down-resolve-1.json scenarios/gap-up-resolve-0.json scenarios/memecoin-squeeze.json scenarios/isolation-two-markets.json scenarios/attention-pump.json scenarios/principal-fallback.json scenarios/graduation-blowup.json scenarios/resolution-taper.json scenarios/funding-drain.json",
     "attack": "tsx src/attack.ts",
-    "compare": "tsx src/compare.ts",
-    "dev": "pnpm -r --parallel dev",
-    "server": "pnpm --filter impulse-server start",
-    "web:build": "pnpm --filter impulse-web build",
-    "start": "pnpm web:build && pnpm server",
-    "test:rust": "cargo test --manifest-path rs/Cargo.toml"
+    "compare": "tsx src/compare.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.4",
