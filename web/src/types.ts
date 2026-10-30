@@ -67,7 +67,7 @@ export interface MarketView {
   resolvable: boolean;
   resolvesAt: number | null;
   taper: { seconds: number; progress: number } | null;
-  curve: { price: string; usdcIn: string; tokensSold: string; supply: string; feeBps: number; oracleWindow: number; marketCap: string } | null;
+  curve: { price: string | null; usdcIn: string; tokensSold: string; supply: string; feeBps: number; oracleWindow: number; marketCap: string } | null;
   heldUntil: number | null;
   createdAt: number;
   positions: number;

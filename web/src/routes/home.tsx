@@ -155,7 +155,7 @@ function LaunchBox() {
       }}
     >
       <h3>Launch a coin</h3>
-      <p className="muted">Any handle gets a creator coin. Bids pool for five minutes, then everyone fills at one open price.</p>
+      <p className="muted">Any handle gets a creator coin. Bids pool during a short snipe window, then everyone fills at one open price.</p>
       <div className="row">
         <div className="adorn grow">
           <span className="prefix">@</span>
