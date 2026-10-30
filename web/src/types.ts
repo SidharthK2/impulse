@@ -1,4 +1,4 @@
-// Shapes of the server's JSON views (server/src/views.ts, plus the additions in docs/API-CONTRACT.md).
+// Shapes of the server's JSON views (rs/server/src/views.rs, plus the additions in docs/API-CONTRACT.md).
 // Money and prices are exact decimal strings in USD; times are ms since epoch. normalize.ts fills in any
 // contract field an older server leaves out, so components can rely on every field below being present.
 

@@ -1,9 +1,9 @@
-// Usage: tsx src/cli.ts <scenario.json> [more.json ...] [--json]
+// Usage: tsx archive/sims/cli.ts <scenario.json> [more.json ...] [--json]
 // Replays each scenario deterministically and prints the ledger after every event.
 
 import { readFileSync } from "node:fs";
-import { type Event, marketIds, replay } from "./engine.js";
-import { marketTotals, renderStep, stateHash, totals } from "./report.js";
+import { type Event, marketIds, replay } from "../../reference/engine/engine.js";
+import { marketTotals, renderStep, stateHash, totals } from "../../reference/engine/report.js";
 
 interface Scenario {
   name: string;
@@ -15,7 +15,7 @@ const args = process.argv.slice(2);
 const asJson = args.includes("--json");
 const files = args.filter((a) => !a.startsWith("--"));
 if (files.length === 0) {
-  console.error("usage: tsx src/cli.ts <scenario.json> [...] [--json]");
+  console.error("usage: tsx archive/sims/cli.ts <scenario.json> [...] [--json]");
   process.exit(1);
 }
 

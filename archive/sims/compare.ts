@@ -1,9 +1,9 @@
 // Replay scenarios under each ADL policy and compare who ends up with what.
-// Usage: tsx src/compare.ts [scenario.json ...]   (defaults to every scenario in scenarios/)
+// Usage: tsx archive/sims/compare.ts [scenario.json ...]   (defaults to every scenario in tests/scenarios/)
 
 import { readdirSync, readFileSync } from "node:fs";
-import { type AdlPolicy, type Event, type State, accountIds, equity, marketIds, replay, spotPrice } from "./engine.js";
-import { fmtUsd } from "./fixed.js";
+import { type AdlPolicy, type Event, type State, accountIds, equity, marketIds, replay, spotPrice } from "../../reference/engine/engine.js";
+import { fmtUsd } from "../../reference/engine/fixed.js";
 
 const POLICIES: AdlPolicy[] = ["size", "pnl"];
 
@@ -46,10 +46,10 @@ const money = (v: bigint) => (v === 0n ? "—" : `${v < 0n ? "-" : ""}$${fmtUsd(
 
 const files = process.argv.slice(2).length
   ? process.argv.slice(2)
-  : readdirSync("scenarios")
+  : readdirSync("tests/scenarios")
       .filter((f) => f.endsWith(".json"))
       .sort()
-      .map((f) => `scenarios/${f}`);
+      .map((f) => `tests/scenarios/${f}`);
 
 for (const file of files) {
   const sc = JSON.parse(readFileSync(file, "utf8")) as { name: string; events: Event[] };

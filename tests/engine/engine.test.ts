@@ -14,9 +14,9 @@ import {
   positionIds,
   releasable,
   replay,
-} from "../src/engine.js";
-import { parseFixed as usd } from "../src/fixed.js";
-import { stateHash } from "../src/report.js";
+} from "../../reference/engine/engine.js";
+import { parseFixed as usd } from "../../reference/engine/fixed.js";
+import { stateHash } from "../../reference/engine/report.js";
 
 const scenario = (name: string) =>
   (JSON.parse(readFileSync(new URL(`../scenarios/${name}.json`, import.meta.url), "utf8")) as { events: Event[] }).events;
@@ -512,27 +512,6 @@ describe("curve-priced markets (Mirror attention design)", () => {
     expect(effectsOf(pump.result).filter((f) => f.kind === "bankrupt").map((f) => (f.kind === "bankrupt" ? f.account : ""))).toEqual(["v1", "v2"]);
     const mallory = final.accounts.mallory!;
     expect(mallory.withdrawn - mallory.deposited).toBe(usd("1900.499932236")); // $2,000 of victim collateral − $99.50 fees
-  });
-});
-
-describe("pump attack sweep", async () => {
-  const { runAttack } = await import("../src/attack.js");
-
-  it("instant oracle: a modest pump extracts all victim collateral for fees only", () => {
-    const r = runAttack({ pump: 5_000, window: 0, feeBps: 100, retrace: 0 });
-    expect(r.victimLoss).toBe(r.victimCollateral);
-    const gap = r.victimCollateral - r.attackerFees - r.attackerPnl; // curve rounds a few nano-dollars in its own favour
-    expect(gap >= 0n && gap < usd("0.001")).toBe(true);
-  });
-
-  it("TWAP without arbitrage only delays the attack", () => {
-    expect(runAttack({ pump: 5_000, window: 3600, feeBps: 100, retrace: 0 }).attackerPnl).toBeGreaterThan(0n);
-  });
-
-  it("TWAP with strong arbitrage makes the attack unprofitable", () => {
-    for (const pump of [2_000, 5_000, 20_000]) {
-      expect(runAttack({ pump, window: 600, feeBps: 100, retrace: 0.9 }).attackerPnl).toBeLessThan(0n);
-    }
   });
 });
 

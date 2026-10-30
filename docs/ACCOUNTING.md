@@ -2,7 +2,7 @@
 
 This is **our** design. It's a guess at how a Mirror-style MicroPerp could work for any asset: tokens,
 attention markets, equities, prediction markets. It is not a reproduction of Mirror's engine: Mirror publishes
-no algorithm, only claims (see [MIRROR-NOTES.md](./MIRROR-NOTES.md)).
+no algorithm, only claims (see [MIRROR-NOTES.md](../archive/docs/MIRROR-NOTES.md)).
 
 ## Units (all integer, `bigint`)
 
@@ -247,7 +247,7 @@ Global:
 
 If a bankrupt account's equity −D is simply clamped to 0, then Σ E_i = V + D. Every winning
 account still shows its full PnL, so the claims exceed the vault by D. The first winner
-to withdraw gets paid, and the last one finds the vault short. `test/engine.test.ts` shows
+to withdraw gets paid, and the last one finds the vault short. `tests/engine/engine.test.ts` shows
 this numerically. Solvency means **re-allocating** D to specific accounts, not hiding it.
 
 ## Deliberately omitted (v1)

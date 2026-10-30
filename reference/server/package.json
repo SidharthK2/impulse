@@ -1,5 +1,5 @@
 {
-  "name": "impulse-server",
+  "name": "impulse-reference-server",
   "private": true,
   "type": "module",
   "scripts": {

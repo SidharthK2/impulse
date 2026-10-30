@@ -6,10 +6,10 @@
 // smoothing window, and anyone who sells into the pump while the attacker waits. We model those defenders as
 // arbitrageurs who sell spot until the price has retraced a fraction of the pump, then buy back after the dump.
 //
-// Usage: tsx src/attack.ts   (prints the parameter sweep)
+// Usage: tsx archive/sims/attack.ts   (prints the parameter sweep)
 
-import { type Event, type State, apply, equity, initialState, spotPrice } from "./engine.js";
-import { ceilDiv, fmt, fmtPrice, isqrt, parseFixed } from "./fixed.js";
+import { type Event, type State, apply, equity, initialState, spotPrice } from "../../reference/engine/engine.js";
+import { ceilDiv, fmt, fmtPrice, isqrt, parseFixed } from "../../reference/engine/fixed.js";
 
 export interface AttackParams {
   pump: number; // USDC the attacker spends on spot

@@ -3,7 +3,7 @@
 // engine rejects (unknown accounts, over-withdrawals, trades without collateral) so rejection reasons are
 // compared too.
 
-import { type Event, type State, apply, initialState } from "../src/engine.js";
+import { type Event, type State, apply, initialState } from "../../reference/engine/engine.js";
 
 export function rng(seed: number) {
   let x = seed >>> 0 || 1;

@@ -102,7 +102,7 @@ What happened, what we learned, and where things stand. Newest last.
   - A restart after downtime would charge the whole outage's funding at once. Downtime is now a pause.
   - After a forced gap, the stale-last-trade funding premium (finding J) goes to ±4%/h until someone trades. It's
     visible live and flagged in the UI.
-- 74 tests (53 engine + 15 exchange + 6 API). Full write-up: [MVP.md](./MVP.md).
+- 74 tests (53 engine + 15 exchange + 6 API). Full write-up: [MVP.md](../../docs/MVP.md).
 
 ## 2026-10-26: fact check against primary sources
 

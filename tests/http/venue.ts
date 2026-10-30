@@ -4,8 +4,8 @@
 
 import type { AddressInfo } from "node:net";
 import { inject } from "vitest";
-import { createApi } from "../src/api.js";
-import { Exchange } from "../src/exchange.js";
+import { createApi } from "../../reference/server/src/api.js";
+import { Exchange } from "../../reference/server/src/exchange.js";
 
 export interface Target {
   name: string;

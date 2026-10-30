@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allocate } from "../src/alloc.js";
+import { allocate } from "../../reference/engine/alloc.js";
 
 const w = (...weights: number[]) => weights.map((x, i) => ({ key: `k${i}`, weight: BigInt(x) }));
 const sum = (m: Map<string, bigint>) => [...m.values()].reduce((a, b) => a + b, 0n);

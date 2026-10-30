@@ -7,10 +7,10 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { type Event, apply, initialState } from "../src/engine.js";
+import { type Event, apply, initialState } from "../../reference/engine/engine.js";
 import { randomHistory } from "./histories.js";
 
-const root = new URL("..", import.meta.url).pathname;
+const root = new URL("../..", import.meta.url).pathname;
 const bin = `${root}rs/target/debug/impulse-replay`;
 
 /** JSON with bigints as decimal strings, the Rust side's encoding. */
@@ -43,8 +43,8 @@ function compare(name: string, events: Event[], rust: unknown) {
 
 describe.skipIf(!existsSync(bin))("differential: Rust engine = TS engine", () => {
   it("replays every scenario identically", () => {
-    const files = readdirSync(`${root}scenarios`).filter((f) => f.endsWith(".json")).sort();
-    const scenarios = files.map((f) => (JSON.parse(readFileSync(`${root}scenarios/${f}`, "utf8")) as { events: Event[] }).events);
+    const files = readdirSync(`${root}tests/scenarios`).filter((f) => f.endsWith(".json")).sort();
+    const scenarios = files.map((f) => (JSON.parse(readFileSync(`${root}tests/scenarios/${f}`, "utf8")) as { events: Event[] }).events);
     const rust = runRust(scenarios);
     files.forEach((f, i) => compare(f, scenarios[i]!, rust[i]));
     expect(files.length).toBeGreaterThan(5);

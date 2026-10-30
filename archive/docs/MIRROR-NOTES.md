@@ -90,7 +90,7 @@ and what they cost winners. It can't show that Mirror actually does them.
 
 ## Not in the docs: what our engine chose
 
-Mirror publishes none of these. Our choices live in `src/engine.ts` (rationale in [DECISIONS.md](./DECISIONS.md)).
+Mirror publishes none of these. Our choices live in `src/engine.ts` (rationale in [DECISIONS.md](../../docs/DECISIONS.md)).
 
 | Gap | Our choice |
 |---|---|

@@ -14,7 +14,7 @@ Newest last. Each entry: the decision, why, and what it rules out.
 | 2026-10-05 | v1 = everything short of a write-up: graduation, funding, taper. **Then** the brief | User |
 | 2026-10-06 | The brief and all docs live as **markdown in the repo**, not published artifacts | User |
 | 2026-10-09 | **Write everything down in `docs/`** (research, decisions, progress) | User |
-| 2026-10-09 | Next phase: intermediate projects that are both research and product inputs (`INTERMEDIATES.md`) | User asked for useful intermediaries toward the final product |
+| 2026-10-09 | Next phase: intermediate projects that are both research and product inputs (`archive/docs/INTERMEDIATES.md`) | User asked for useful intermediaries toward the final product |
 | 2026-10-25 | **Build an MVP: a paper-trading exchange** (order books, live oracles, bots, web UI) on the unchanged engine | User asked for an MVP with a frontend. It supersedes "simulation only" for the `mvp` branch; still no real money, custody or contracts |
 | 2026-10-25 | MVP lives in `server/` + `web/` (pnpm workspace) on branch `mvp`; local commits, no push | User |
 | 2026-10-25 | Oracles: Hyperliquid mids + Polymarket midpoints + own curves, with admin overrides; simulated prices offline | User chose live feeds; admin gaps make the research findings demoable |

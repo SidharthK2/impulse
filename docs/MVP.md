@@ -3,7 +3,7 @@
 *Built 2026-10-25/26 on the `mvp` branch (TypeScript); the backend moved to Rust on 2026-10-30/31. It takes the risk
 engine from simulation to a live venue with play money.*
 
-The research engine (`src/engine.ts`, ported to `rs/engine`) answers *what happens when a price gaps, and who pays?* on
+The research engine (`reference/engine/engine.ts`, ported to `rs/engine`) answers *what happens when a price gaps, and who pays?* on
 scripted scenarios. The MVP puts that same engine behind a real exchange: order books, live oracles, accounts, bots and a
 trading UI. Gaps, liquidations and ADL happen live, and you can watch who pays.
 
@@ -45,7 +45,7 @@ To start fresh, point `DATA_DIR` at a new directory. Nothing deletes old snapsho
 
 | Piece | Where | What it does |
 |---|---|---|
-| Risk engine | `rs/engine` (port of `src/engine.ts`) | Positions, margin, liquidation, ADL, funding, graduation, taper, curves, launches, invariants |
+| Risk engine | `rs/engine` (port of `reference/engine/engine.ts`) | Positions, margin, liquidation, ADL, funding, graduation, taper, curves, launches, invariants |
 | Exchange | `rs/server/src/exchange.rs` | Order books, matching, auto-margin, accounts, launches, pre-IPO marks, history; every change is an engine transition |
 | Order book | `rs/server/src/book.rs` | Price-time priority CLOB per market |
 | Units | `rs/server/src/units.rs` | Coins ↔ integer lots (Hyperliquid `szDecimals`), coin price ↔ lot price, ticks |
@@ -54,7 +54,7 @@ To start fresh, point `DATA_DIR` at a new directory. Nothing deletes old snapsho
 | API | `rs/server/src/api.rs`, `ws.rs` | JSON over HTTP (axum), websocket hub, static app |
 | Views | `rs/server/src/views.rs` | Exact decimal-string JSON for markets, books, accounts, leaderboard |
 | Persistence | `rs/server/src/persist.rs` | Whole-exchange JSON snapshot every 15 s and on shutdown (atomic rename) |
-| Web | `web/src/` | React + lightweight-charts trading UI |
+| Web | `web/src/` | React trading UI: TanStack Router, Query, Form and Pacer, zustand, a custom canvas chart |
 
 One process, one core: the exchange sits behind a single mutex on a single-threaded runtime, and each request is one
 synchronous step against it. Money is `i128` nano-USD everywhere; the engine has no floats.
@@ -155,18 +155,18 @@ carries snipes, and `feed` carries the `open` and `ipo` kinds and each event's m
 
 ## Tests
 
-- `test/differential.test.ts`: every scenario and 300 random histories (each now launches a creator coin: snipes,
+- `tests/engine/differential.test.ts`: every scenario and 300 random histories (each now launches a creator coin: snipes,
   refused pre-open trades, the open at a random step) through both engines; identical state and effects.
-- `test/engine.test.ts`: engine behaviour, including P_open for $100,000 and the launch reserve in conservation.
-- `server/test/api.test.ts`, `exchange.test.ts`: the HTTP and websocket API, run against an in-process TS server and
+- `tests/engine/engine.test.ts`: engine behaviour, including P_open for $100,000 and the launch reserve in conservation.
+- `tests/http/api.test.ts`, `exchange.test.ts`: the HTTP and websocket API, run against an in-process TS server and
   against the Rust binary (started by the vitest global setup with `TEST_CLOCK=1 OFFLINE=1 BOTS=0`).
-- `server/test/launch.test.ts`, `preipo.test.ts`: creator coins and pre-IPO, Rust server only.
+- `tests/http/launch.test.ts`, `preipo.test.ts`: creator coins and pre-IPO, Rust server only.
 
 Against a server you started yourself:
 
 ```bash
 TEST_CLOCK=1 OFFLINE=1 BOTS=0 ADMIN_TOKEN=t PORT=8790 DATA_DIR=$(mktemp -d) cargo run --manifest-path rs/Cargo.toml -p impulse-server
-BASE_URL=http://localhost:8790 pnpm vitest run server/test
+BASE_URL=http://localhost:8790 pnpm vitest run tests/http
 ```
 
 ## Demo script (5 minutes)
@@ -286,4 +286,4 @@ Each market reports these in `settings`, with `ours: true` where the number is o
 - One process, in memory, snapshotted every 15 s; a crash loses at most 15 s. Each engine transition clones the state,
   which is fine at this size and would need rethinking at real scale.
 - Snapshots are not shared between the servers: the Rust server reads and writes its own format in `rs/data`, the TS
-  server its own in `server/data`.
+  server its own in `reference/server/data`.

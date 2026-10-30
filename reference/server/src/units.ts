@@ -2,7 +2,7 @@
 // lot). A market's lot is 10^-szDecimals coins, Hyperliquid style: BTC trades in 0.00001 BTC lots, a binary
 // outcome or an attention token in whole units. Money is nano-USD everywhere, so lots × lot price stays exact.
 
-import { ONE, fmt, parseFixed } from "../../src/fixed.js";
+import { ONE, fmt, parseFixed } from "../../engine/fixed.js";
 
 export { ONE, fmt, parseFixed };
 

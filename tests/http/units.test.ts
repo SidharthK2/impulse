@@ -2,9 +2,9 @@
 // rs/server/src/units.rs and book.rs (`cargo test`).
 
 import { describe, expect, it } from "vitest";
-import { parseFixed as usd } from "../../src/fixed.js";
-import { Book, type Order } from "../src/book.js";
-import { autoTick, coinsFromLots, fmtScaled, lotPrice, lotsFromCoins, nanoFromFeed, parseScaled } from "../src/units.js";
+import { parseFixed as usd } from "../../reference/engine/fixed.js";
+import { Book, type Order } from "../../reference/server/src/book.js";
+import { autoTick, coinsFromLots, fmtScaled, lotPrice, lotsFromCoins, nanoFromFeed, parseScaled } from "../../reference/server/src/units.js";
 
 describe("units", () => {
   it("round-trips scaled decimals", () => {

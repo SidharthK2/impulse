@@ -2,7 +2,7 @@
 // server and the Rust server). Each test gets its own market and accounts, so the targets can be shared.
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { parseFixed } from "../../src/fixed.js";
+import { parseFixed } from "../../reference/engine/fixed.js";
 import { type User, type Venue, targets, uid } from "./venue.js";
 
 describe.each(targets())("exchange ($name)", ({ start }) => {

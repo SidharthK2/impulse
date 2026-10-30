@@ -8,7 +8,7 @@ import { type IncomingMessage, type ServerResponse, createServer } from "node:ht
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { WebSocket, WebSocketServer } from "ws";
 import type { Bots } from "./bots.js";
-import { checkInvariants } from "../../src/engine.js";
+import { checkInvariants } from "../../engine/engine.js";
 import { Exchange, ExchangeError, type Kind, type MarketSpec, type OrderInput, type Source } from "./exchange.js";
 import { listHyperliquid, listPolymarket } from "./feeds.js";
 import { deserialize, serialize } from "./persist.js";

@@ -19,8 +19,8 @@ import {
   initialMargin,
   initialState,
   leverageNow,
-} from "../../src/engine.js";
-import { abs, ceilDiv, max, min, sign } from "../../src/fixed.js";
+} from "../../engine/engine.js";
+import { abs, ceilDiv, max, min, sign } from "../../engine/fixed.js";
 import { Book, type Order, type Side, type Tif } from "./book.js";
 import { autoTick, coinPrice, coinsFromLots, dec, fmt, lotPrice, lotsFromCoins, parseFixed, pow10, usd } from "./units.js";
 

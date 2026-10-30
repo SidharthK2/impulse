@@ -15,8 +15,8 @@ import {
   spotPrice,
   taperProgress,
   unrealized,
-} from "../../src/engine.js";
-import { abs } from "../../src/fixed.js";
+} from "../../engine/engine.js";
+import { abs } from "../../engine/fixed.js";
 import type { Order } from "./book.js";
 import type { Exchange, Fill, MarketMeta } from "./exchange.js";
 import { coinPrice, coinsFromLots, fmt, pow10, tickDecimals, usd } from "./units.js";

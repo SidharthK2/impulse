@@ -3,7 +3,7 @@
 *Brief for Cesar · October 2026 · repo: `SidharthK2/impulse` (private)*
 
 > **Note (2026-10-26):** this brief is as sent on 2026-10-06. Since then: a live paper-trading MVP exists
-> ([MVP.md](./MVP.md)), so "simulation only" and "53 tests" are out of date (74 tests now); profile owners get 50% of
+> ([MVP.md](../../docs/MVP.md)), so "simulation only" and "53 tests" are out of date (74 tests now); profile owners get 50% of
 > attention-token fees; Mirror isn't live and its shipped app has no perp code yet. Current facts:
 > [MIRROR-NOTES.md](./MIRROR-NOTES.md). The findings and numbers below still stand.
 
@@ -174,7 +174,7 @@ Leverage quoted on notional `size × price` understates a short's risk at low pr
 
 ## Supporting docs
 
-- [ACCOUNTING.md](./ACCOUNTING.md): the model, the proofs, every invariant
+- [ACCOUNTING.md](../../docs/ACCOUNTING.md): the model, the proofs, every invariant
 - [MIRROR-NOTES.md](./MIRROR-NOTES.md): what Mirror's docs say and don't say
 - [FACT-CHECK.md](./FACT-CHECK.md): source check of the research memo (Ventuals has shut down, 3× not 5×, the
   superseded Chitra figure)

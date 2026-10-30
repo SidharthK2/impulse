@@ -11,6 +11,9 @@ importers:
       '@types/node':
         specifier: ^26.6.4
         version: 26.6.4
+      '@types/ws':
+        specifier: 8.18.2
+        version: 8.18.2
       tsx:
         specifier: ^4.23.15
         version: 4.23.15
@@ -20,8 +23,11 @@ importers:
       vitest:
         specifier: ^5.0.3
         version: 5.0.3(@types/node@26.6.4)(vite@8.3.4(@types/node@26.6.4)(esbuild@0.28.2)(tsx@4.23.15))
+      ws:
+        specifier: 8.22.0
+        version: 8.22.0
 
-  server:
+  reference/server:
     dependencies:
       ws:
         specifier: 8.22.0

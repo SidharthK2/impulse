@@ -4,8 +4,8 @@
 //  - noise traders: open and close random leveraged positions against the book, so markets have volume (and
 //    graduate) and gaps have somebody to liquidate.
 
-import { leverageNow } from "../../src/engine.js";
-import { abs } from "../../src/fixed.js";
+import { leverageNow } from "../../engine/engine.js";
+import { abs } from "../../engine/fixed.js";
 import type { Exchange, MarketMeta } from "./exchange.js";
 import { coinsFromLots, dec, usd } from "./units.js";
 

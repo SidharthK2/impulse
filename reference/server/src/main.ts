@@ -1,6 +1,6 @@
 // Impulse paper exchange: MicroPerps with ADL as the only backstop, live.
 //
-//   PORT=8787  DATA_DIR=server/data  ADMIN_TOKEN=impulse-admin  OFFLINE=1 (no network feeds)  BOTS=0 (no house bots)
+//   PORT=8787  DATA_DIR=reference/server/data  ADMIN_TOKEN=impulse-admin  OFFLINE=1 (no network feeds)  BOTS=0 (no house bots)
 
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,7 +13,7 @@ import { loadSnapshot, saveSnapshot } from "./persist.js";
 const here = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT ?? 8787);
 const DATA_DIR = process.env.DATA_DIR ?? join(here, "../data");
-const WEB_DIR = process.env.WEB_DIR ?? join(here, "../../web/dist");
+const WEB_DIR = process.env.WEB_DIR ?? join(here, "../../../web/dist");
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN ?? "impulse-admin";
 const OFFLINE = process.env.OFFLINE === "1";
 const BOTS = process.env.BOTS !== "0";

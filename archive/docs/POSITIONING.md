@@ -1,6 +1,6 @@
 # MicroPerps vs pump.fun and other perp DEXs: what's actually new
 
-*For Cesar · October 2026 · follows [BRIEF.md](./BRIEF.md). Evidence is from the engine, the MVP ([MVP.md](./MVP.md)) and our research notes.*
+*For Cesar · October 2026 · follows [BRIEF.md](./BRIEF.md). Evidence is from the engine, the MVP ([MVP.md](../../docs/MVP.md)) and our research notes.*
 
 ## TL;DR
 
@@ -87,7 +87,7 @@ For BTC, ETH and the majors, MicroPerps are just another perp DEX, and a structu
    manipulation-meter project (INTERMEDIATES #3) is aimed at it.
 
 The engine, ADL as the only backstop, is the easy part to copy. We built a working version: an order book, live
-Hyperliquid and Polymarket oracles, attention curves and a trading UI ([MVP.md](./MVP.md)). Its costs are well
+Hyperliquid and Polymarket oracles, attention curves and a trading UI ([MVP.md](../../docs/MVP.md)). Its costs are well
 understood and land on the winning side.
 
 ## Bottom line
@@ -112,4 +112,4 @@ therefore what Mirror's docs describe, not observed behaviour. See [MIRROR-NOTES
 - Mirror's claims and gaps: [MIRROR-NOTES.md](./MIRROR-NOTES.md), [research/mirror-infra.md](./research/mirror-infra.md)
 - HIP-3 terms, Ventuals: [FACT-CHECK.md](./FACT-CHECK.md), [research/tools-landscape.md](./research/tools-landscape.md)
 - Incidents (JELLY, POPCAT): [INTERMEDIATES.md](./INTERMEDIATES.md), [research/literature.md](./research/literature.md)
-- Live demo: [MVP.md](./MVP.md), market `@anon_dev`
+- Live demo: [MVP.md](../../docs/MVP.md), market `@anon_dev`
