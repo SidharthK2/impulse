@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import { useForm, useSelector } from "@tanstack/react-form";
 import { Fragment, useEffect, useState } from "react";
 import { api } from "../api";
 import { isFixtureMarket } from "../fixtures";
@@ -6,6 +7,7 @@ import { clock, num, price, size, tone, usd } from "../format";
 import { act, useFeed } from "../queries";
 import type { AccountView, MarketView, PositionView } from "../types";
 import { useToast } from "./ui";
+import { FieldError, FormError, invalid, positive, useServerError } from "./form";
 import { Roll } from "./Roll";
 import { WhoPaid } from "./WhoPaid";
 
@@ -84,21 +86,12 @@ function CancelAll() {
 function Positions({ account, markets }: { account: AccountView; markets: Record<string, MarketView> }) {
   const toast = useToast();
   const [marginFor, setMarginFor] = useState<string | null>(null);
-  const [amount, setAmount] = useState("");
   const open = account.positions.filter((p) => p.side !== "flat");
   if (open.length === 0 && account.spot.length === 0) return <div className="empty">No open positions.</div>;
 
   const close = (p: PositionView) =>
     act<{ status: string; reason: string | null }>("POST", "/api/positions/close", { market: p.market })
       .then((r) => toast(r.status === "filled" ? `Closed ${p.market}` : `Close ${r.status}: ${r.reason ?? ""}`, r.status === "filled" ? "up" : "warn"))
-      .catch((e) => toast((e as Error).message, "down"));
-  const margin = (p: PositionView, sign: 1 | -1) =>
-    act("POST", "/api/margin", { market: p.market, amount: `${sign < 0 ? "-" : ""}${amount}` })
-      .then(() => {
-        toast(`${sign > 0 ? "Added" : "Removed"} $${amount} margin on ${p.market}`, "up");
-        setAmount("");
-        setMarginFor(null);
-      })
       .catch((e) => toast((e as Error).message, "down"));
 
   return (
@@ -160,16 +153,7 @@ function Positions({ account, markets }: { account: AccountView; markets: Record
               {marginFor === p.market && (
                 <tr>
                   <td colSpan={12}>
-                    <div className="row" style={{ maxWidth: 520 }}>
-                      <span className="muted">Isolated margin: {usd(p.collateral)}, removable {usd(p.releasable)}</span>
-                      <input className="input mono" style={{ width: 120 }} placeholder="USD" value={amount} onChange={(e) => setAmount(e.target.value.trim())} />
-                      <button className="btn small" disabled={!(num(amount) > 0)} onClick={() => margin(p, 1)}>
-                        Add
-                      </button>
-                      <button className="btn small" disabled={!(num(amount) > 0)} onClick={() => margin(p, -1)}>
-                        Remove
-                      </button>
-                    </div>
+                    <MarginForm position={p} wallet={account.wallet} onDone={() => setMarginFor(null)} />
                   </td>
                 </tr>
               )}
@@ -194,6 +178,77 @@ function Positions({ account, markets }: { account: AccountView; markets: Record
         ))}
       </tbody>
     </table>
+  );
+}
+
+/** Add or remove isolated margin. The button pressed sets `dir`, which the amount is checked against. */
+function MarginForm({ position: p, wallet, onDone }: { position: PositionView; wallet: string; onDone: () => void }) {
+  const toast = useToast();
+  const server = useServerError();
+  const form = useForm({
+    defaultValues: { amount: "", dir: "add" as "add" | "remove" },
+    onSubmit: async ({ value }) => {
+      server.clear();
+      try {
+        await act("POST", "/api/margin", { market: p.market, amount: `${value.dir === "remove" ? "-" : ""}${value.amount}` });
+        toast(`${value.dir === "add" ? "Added" : "Removed"} $${value.amount} margin on ${p.market}`, "up");
+        onDone();
+      } catch (e) {
+        server.fail(e);
+      }
+    },
+  });
+  const pending = useSelector(form.store, (s) => s.isSubmitting);
+  return (
+    <form
+      className="margin-form"
+      noValidate
+      onSubmit={(e) => {
+        e.preventDefault();
+        void form.handleSubmit();
+      }}
+    >
+      <span className="muted">
+        Isolated margin: {usd(p.collateral)}, removable {usd(p.releasable)}
+      </span>
+      <form.Field
+        name="amount"
+        validators={{
+          onChangeListenTo: ["dir"],
+          onChange: ({ value, fieldApi }) => {
+            const bad = positive(value, "Amount");
+            if (bad) return bad;
+            if (fieldApi.form.getFieldValue("dir") === "remove" && num(value) > num(p.releasable)) return `At most ${usd(p.releasable)} can be removed`;
+            if (fieldApi.form.getFieldValue("dir") === "add" && num(value) > num(wallet)) return `More than your wallet (${usd(wallet)})`;
+            return undefined;
+          },
+        }}
+      >
+        {(f) => (
+          <div className="col" style={{ gap: 2 }}>
+            <input
+              className={`input mono ${invalid(f) ? "bad" : ""}`}
+              style={{ width: 120 }}
+              placeholder="USD"
+              inputMode="decimal"
+              value={f.state.value}
+              onChange={(e) => f.handleChange(e.target.value.trim())}
+              onBlur={f.handleBlur}
+              aria-label="Margin amount in USD"
+              aria-invalid={invalid(f)}
+            />
+            <FieldError field={f} />
+          </div>
+        )}
+      </form.Field>
+      <button type="submit" className="btn small" disabled={pending} onClick={() => form.setFieldValue("dir", "add")}>
+        Add
+      </button>
+      <button type="submit" className="btn small" disabled={pending} onClick={() => form.setFieldValue("dir", "remove")}>
+        Remove
+      </button>
+      <FormError error={server.error} />
+    </form>
   );
 }
 

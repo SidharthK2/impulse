@@ -1,9 +1,11 @@
 import { Link } from "@tanstack/react-router";
+import { useForm, useSelector } from "@tanstack/react-form";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { act } from "../queries";
 import { compact, countdown, num, pct, price, tone, usd } from "../format";
 import { useNow } from "../hooks";
 import type { AccountView, MarketView } from "../types";
+import { FormError, Input, positive, useServerError } from "./form";
 import { BookPricedBadge } from "./PreIpo";
 import { Roll } from "./Roll";
 import { headline } from "./status";
@@ -260,20 +262,37 @@ export function InfoPanel({ market }: { market: MarketView }) {
 
 export function SpotPanel({ market, account, signedIn }: { market: MarketView; account: AccountView | undefined; signedIn: boolean }) {
   const toast = useToast();
-  const [usdc, setUsdc] = useState("");
-  const [busy, setBusy] = useState(false);
+  const server = useServerError();
+  const [selling, setSelling] = useState(false);
   const c = market.curve!;
   const held = account?.spot.find((s) => s.market === market.id);
-  async function run(path: string, body: object, done: string) {
-    setBusy(true);
+  const wallet = account?.wallet ?? null;
+  const buy = useForm({
+    defaultValues: { usdc: "" },
+    onSubmit: async ({ value, formApi }) => {
+      server.clear();
+      try {
+        await act("POST", "/api/spot/buy", { market: market.id, usdc: value.usdc });
+        toast(`Bought ${market.id} with $${value.usdc}`, "up");
+        formApi.reset();
+      } catch (err) {
+        server.fail(err);
+      }
+    },
+  });
+  const buying = useSelector(buy.store, (s) => s.isSubmitting);
+  const busy = buying || selling;
+  // Sells are one-click buttons, not a form: they report through the same form-level error.
+  async function sell(tokens: string, done: string) {
+    setSelling(true);
+    server.clear();
     try {
-      await act("POST", path, { market: market.id, ...body });
+      await act("POST", "/api/spot/sell", { market: market.id, tokens });
       toast(done, "up");
-      setUsdc("");
     } catch (err) {
-      toast((err as Error).message, "down");
+      server.fail(err);
     } finally {
-      setBusy(false);
+      setSelling(false);
     }
   }
   return (
@@ -296,12 +315,31 @@ export function SpotPanel({ market, account, signedIn }: { market: MarketView; a
           <dt>You hold</dt>
           <dd>{held ? `${compact(held.tokens)} (${usd(held.value)})` : "—"}</dd>
         </dl>
-        <div className="row">
-          <input className="input mono" inputMode="decimal" placeholder="USDC" value={usdc} onChange={(e) => setUsdc(e.target.value.trim())} />
-          <button className="btn buy" disabled={!signedIn || busy || !(num(usdc) > 0)} onClick={() => run("/api/spot/buy", { usdc }, `Bought ${market.id} with $${usdc}`)}>
-            Buy
+        <form
+          className="row top"
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault();
+            void buy.handleSubmit();
+          }}
+        >
+          <buy.Field
+            name="usdc"
+            validators={{
+              onChange: ({ value }) => {
+                const bad = positive(value, "Amount");
+                if (bad) return bad;
+                if (wallet !== null && num(value) > num(wallet)) return `More than your wallet (${usd(wallet)})`;
+                return undefined;
+              },
+            }}
+          >
+            {(f) => <Input field={f} className="mono" inputMode="decimal" placeholder="USDC" aria-label="USDC to spend" transform={(v) => v.trim()} wrap={{ flex: 1 }} />}
+          </buy.Field>
+          <button type="submit" className="btn buy" disabled={!signedIn || busy}>
+            {buying ? "Buying…" : "Buy"}
           </button>
-        </div>
+        </form>
         <div className="row" style={{ gap: 4 }}>
           <span className="muted small grow">Sell</span>
           {[0.25, 0.5].map((f) => (
@@ -309,15 +347,16 @@ export function SpotPanel({ market, account, signedIn }: { market: MarketView; a
               key={f}
               className="btn small sell"
               disabled={!signedIn || busy || !held}
-              onClick={() => held && run("/api/spot/sell", { tokens: String(Math.floor(num(held.tokens) * f)) }, `Sold ${f * 100}% of ${market.id}`)}
+              onClick={() => held && sell(String(Math.floor(num(held.tokens) * f)), `Sold ${f * 100}% of ${market.id}`)}
             >
               {f * 100}%
             </button>
           ))}
-          <button className="btn small sell" disabled={!signedIn || busy || !held} onClick={() => run("/api/spot/sell", { tokens: "all" }, `Sold all ${market.id}`)}>
+          <button className="btn small sell" disabled={!signedIn || busy || !held} onClick={() => sell("all", `Sold all ${market.id}`)}>
             All
           </button>
         </div>
+        <FormError error={server.error} />
         <div className="faint" style={{ fontSize: 11 }}>
           {c.oracleWindow === 0
             ? "The perp marks to this curve instantly: a spot buy moves the oracle in the same transaction, and buying then selling back costs only fees. That is the pump attack (finding F)."

@@ -1,10 +1,12 @@
 // Creator coin launch: the snipe window before the open, and the launch facts after it.
 
-import { useState } from "react";
+import { useForm, useSelector } from "@tanstack/react-form";
+import { useRef } from "react";
 import { ago, compact, countdown, num, price, usd } from "../format";
 import { useNow } from "../hooks";
 import { act } from "../queries";
 import type { AccountView, MarketView } from "../types";
+import { FieldError, FormError, invalid, positive, useServerError } from "./form";
 import { Roll } from "./Roll";
 import { useToast } from "./ui";
 
@@ -13,9 +15,24 @@ const QUICK = [50, 250, 1000];
 export function SnipePanel({ market, account, canTrade, onSignUp }: { market: MarketView; account: AccountView | undefined; canTrade: boolean; onSignUp: () => void }) {
   const toast = useToast();
   const now = useNow(250);
-  const [usdc, setUsdc] = useState("");
-  const [busy, setBusy] = useState(false);
+  const server = useServerError();
   const s = market.snipe!;
+  const live = useRef({ opensAt: s.opensAt, wallet: account?.wallet ?? null });
+  live.current = { opensAt: s.opensAt, wallet: account?.wallet ?? null };
+  const form = useForm({
+    defaultValues: { usdc: "" },
+    onSubmit: async ({ value, formApi }) => {
+      server.clear();
+      try {
+        await act("POST", "/api/snipe", { market: market.id, usdc: value.usdc });
+        toast(`Sniped ${usd(value.usdc)} of ${market.id}`, "up");
+        formApi.reset();
+      } catch (e) {
+        server.fail(e);
+      }
+    },
+  });
+  const pending = useSelector(form.store, (st) => st.isSubmitting);
   const left = s.opensAt - now;
   const open = left <= 0;
   const window = Math.max(1, s.opensAt - market.createdAt);
@@ -24,19 +41,6 @@ export function SnipePanel({ market, account, canTrade, onSignUp }: { market: Ma
   const share = num(s.total) > 0 ? mine / num(s.total) : 0;
   const d = Math.max(market.priceDecimals, 6);
 
-  async function snipe() {
-    if (!canTrade) return onSignUp();
-    setBusy(true);
-    try {
-      await act("POST", "/api/snipe", { market: market.id, usdc });
-      toast(`Sniped ${usd(usdc)} of ${market.id}`, "up");
-      setUsdc("");
-    } catch (e) {
-      toast((e as Error).message, "down");
-    } finally {
-      setBusy(false);
-    }
-  }
 
   return (
     <div className="panel chart-panel snipe-panel">
@@ -85,23 +89,55 @@ export function SnipePanel({ market, account, canTrade, onSignUp }: { market: Ma
 
         <form
           className="snipe-form"
+          noValidate
           onSubmit={(e) => {
             e.preventDefault();
-            void snipe();
+            if (!canTrade) return onSignUp();
+            void form.handleSubmit();
           }}
         >
-          <div className="adorn grow">
-            <span className="prefix">$</span>
-            <input className="input mono" inputMode="decimal" placeholder="USDC to bid" value={usdc} onChange={(e) => setUsdc(e.target.value.trim())} aria-label="Snipe amount in USDC" disabled={open} />
-          </div>
+          <form.Field
+            name="usdc"
+            validators={{
+              onChange: ({ value }) => {
+                const bad = positive(value, "Amount");
+                if (bad) return bad;
+                const { wallet, opensAt } = live.current;
+                if (wallet !== null && num(value) > num(wallet)) return `More than your wallet (${usd(wallet)})`;
+                if (Date.now() >= opensAt) return "The snipe window has closed";
+                return undefined;
+              },
+            }}
+          >
+            {(f) => (
+              <div className="snipe-input grow">
+                <div className="adorn">
+                  <span className="prefix">$</span>
+                  <input
+                    className={`input mono ${invalid(f) ? "bad" : ""}`}
+                    inputMode="decimal"
+                    placeholder="USDC to bid"
+                    value={f.state.value}
+                    onChange={(e) => f.handleChange(e.target.value.trim())}
+                    onBlur={f.handleBlur}
+                    aria-label="Snipe amount in USDC"
+                    aria-invalid={invalid(f)}
+                    disabled={open}
+                  />
+                </div>
+                <FieldError field={f} />
+              </div>
+            )}
+          </form.Field>
           {QUICK.map((q) => (
-            <button key={q} type="button" className="btn small ghost" onClick={() => setUsdc(String(q))} disabled={open}>
+            <button key={q} type="button" className="btn small ghost" onClick={() => form.setFieldValue("usdc", String(q))} disabled={open}>
               ${compact(q)}
             </button>
           ))}
-          <button className="btn primary" disabled={open || busy || !(num(usdc) > 0)}>
-            {!canTrade ? "Sign up to snipe" : busy ? "Bidding…" : mine > 0 ? "Add to bid" : "Snipe"}
+          <button type="submit" className="btn primary" disabled={open || pending}>
+            {!canTrade ? "Sign up to snipe" : pending ? "Bidding…" : mine > 0 ? "Add to bid" : "Snipe"}
           </button>
+          <FormError error={server.error} />
         </form>
 
         <div className="snipe-lists">

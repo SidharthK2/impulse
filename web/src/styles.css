@@ -1490,3 +1490,92 @@ body {
     display: inline;
   }
 }
+
+/* ---------- forms ---------- */
+
+.field-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.input.bad,
+.input[aria-invalid="true"] {
+  border-color: var(--down);
+}
+.input.bad:focus {
+  box-shadow: 0 0 0 2px var(--down-bg);
+}
+.field-error {
+  color: var(--down);
+  font-size: 11px;
+  line-height: 1.35;
+}
+.form-error {
+  margin: 0;
+  font-size: 12px;
+}
+.row.top {
+  align-items: flex-start;
+}
+.snipe-form {
+  align-items: flex-start;
+}
+.snipe-input {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 160px;
+}
+.snipe-form .form-error {
+  flex-basis: 100%;
+}
+.margin-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 640px;
+}
+.margin-form > .muted {
+  align-self: center;
+}
+.margin-form .form-error {
+  flex-basis: 100%;
+}
+.token-form {
+  max-width: 520px;
+  align-items: flex-start;
+}
+.hold-row {
+  flex-wrap: wrap;
+  align-items: flex-start;
+  color: var(--muted);
+}
+.hold-row > span {
+  padding-top: 6px;
+}
+.price-form {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.mirror-forms {
+  flex-wrap: wrap;
+  max-width: 900px;
+  align-items: flex-start;
+}
+.mirror-forms > form {
+  flex: 1 1 380px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.create-market {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+.deposit-form {
+  max-width: 560px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}

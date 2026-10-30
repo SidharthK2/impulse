@@ -1,7 +1,9 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useForm, useSelector } from "@tanstack/react-form";
+import { useEffect, useRef } from "react";
 import { change24h } from "../components/Market";
 import { StatusChip, displayName, headline } from "../components/status";
+import { FieldError, FormError, invalid, useServerError } from "../components/form";
 import { Roll } from "../components/Roll";
 import { useToast } from "../components/ui";
 import { compact, num, pct, price, tone, usd } from "../format";
@@ -120,51 +122,81 @@ function MarketCard({ market: m, now }: { market: MarketView; now: number }) {
   );
 }
 
+const HANDLE = /^[A-Za-z0-9_]{2,20}$/;
+
 function LaunchBox() {
   const toast = useToast();
   const navigate = useNavigate();
   const canTrade = useCanTrade();
   const open = useUi((s) => s.open);
-  const [handle, setHandle] = useState("");
-  const [busy, setBusy] = useState(false);
+  const server = useServerError();
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (location.hash === "#launch") ref.current?.focus();
   }, []);
-  const clean = handle.trim().replace(/^@/, "");
-  async function launch() {
-    if (!canTrade) return open("signup");
-    setBusy(true);
-    try {
-      const m = await act<MarketView>("POST", "/api/attention", { handle: `@${clean}`, oracleWindow: 600, adl: "pnl" });
-      toast(m.snipe ? `${m.id} is open for sniping` : `${m.id} listed`, "up");
-      void navigate({ to: "/trade/$market", params: { market: m.id } });
-    } catch (e) {
-      toast((e as Error).message, "down");
-    } finally {
-      setBusy(false);
-    }
-  }
+  const form = useForm({
+    defaultValues: { handle: "" },
+    onSubmit: async ({ value }) => {
+      server.clear();
+      try {
+        const m = await act<MarketView>("POST", "/api/attention", { handle: `@${value.handle.replace(/^@/, "")}`, oracleWindow: 600, adl: "pnl" });
+        toast(m.snipe ? `${m.id} is open for sniping` : `${m.id} listed`, "up");
+        void navigate({ to: "/trade/$market", params: { market: m.id } });
+      } catch (e) {
+        server.fail(e);
+      }
+    },
+  });
+  const pending = useSelector(form.store, (s) => s.isSubmitting);
   return (
     <form
       id="launch"
       className="panel launch"
+      noValidate
       onSubmit={(e) => {
         e.preventDefault();
-        void launch();
+        if (!canTrade) return open("signup");
+        void form.handleSubmit();
       }}
     >
       <h3>Launch a coin</h3>
       <p className="muted">Any handle gets a creator coin. Bids pool during a short snipe window, then everyone fills at one open price.</p>
-      <div className="row">
-        <div className="adorn grow">
-          <span className="prefix">@</span>
-          <input ref={ref} className="input" placeholder="handle" value={handle} onChange={(e) => setHandle(e.target.value.replace(/\s/g, ""))} aria-label="Handle" />
-        </div>
-        <button className="btn primary" disabled={busy || clean.length < 2}>
-          {busy ? "Launching…" : "Launch"}
-        </button>
-      </div>
+      <form.Field
+        name="handle"
+        validators={{
+          onChange: ({ value }) => {
+            const h = value.replace(/^@/, "");
+            if (!h) return "Enter a handle";
+            if (!HANDLE.test(h)) return "2–20 letters, digits or _";
+            return undefined;
+          },
+        }}
+      >
+        {(f) => (
+          <div className="col" style={{ gap: 4 }}>
+            <div className="row">
+              <div className="adorn grow">
+                <span className="prefix">@</span>
+                <input
+                  ref={ref}
+                  className={`input ${invalid(f) ? "bad" : ""}`}
+                  placeholder="handle"
+                  value={f.state.value}
+                  onChange={(e) => f.handleChange(e.target.value.replace(/\s/g, ""))}
+                  onBlur={f.handleBlur}
+                  aria-label="Handle"
+                  aria-invalid={invalid(f)}
+                />
+              </div>
+              <button type="submit" className="btn primary" disabled={pending}>
+                {pending ? "Launching…" : "Launch"}
+              </button>
+            </div>
+            <FieldError field={f} />
+          </div>
+        )}
+      </form.Field>
+      <FormError error={server.error} />
     </form>
   );
 }

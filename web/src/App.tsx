@@ -1,5 +1,7 @@
+import { useForm, useSelector } from "@tanstack/react-form";
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
+import { FormError, Input, useServerError } from "./components/form";
 import { Roll } from "./components/Roll";
 import { api } from "./api";
 import { Modal, useToast } from "./components/ui";
@@ -143,22 +145,21 @@ function AccountChip({ account, signedIn, onSignUp, onSignOut }: { account: Acco
 }
 
 function SignUp({ onDone, onClose }: { onDone: (key: string) => void; onClose: () => void }) {
-  const [name, setName] = useState("");
-  const [existing, setExisting] = useState("");
   const [created, setCreated] = useState<{ id: string; apiKey: string } | null>(null);
-  const [err, setErr] = useState("");
-  const [busy, setBusy] = useState(false);
-  async function create() {
-    setBusy(true);
-    setErr("");
-    try {
-      setCreated(await api<{ id: string; apiKey: string }>("POST", "/api/accounts", { name }));
-    } catch (e) {
-      setErr((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
+  const server = useServerError();
+  const create = useForm({
+    defaultValues: { name: "" },
+    onSubmit: async ({ value }) => {
+      server.clear();
+      try {
+        setCreated(await api<{ id: string; apiKey: string }>("POST", "/api/accounts", { name: value.name.trim() }));
+      } catch (e) {
+        server.fail(e);
+      }
+    },
+  });
+  const signIn = useForm({ defaultValues: { key: "" }, onSubmit: ({ value }) => onDone(value.key.trim()) });
+  const pending = useSelector(create.store, (s) => s.isSubmitting);
   if (created) {
     return (
       <Modal onClose={() => onDone(created.apiKey)}>
@@ -177,26 +178,38 @@ function SignUp({ onDone, onClose }: { onDone: (key: string) => void; onClose: (
       <p>Pick a name. You get $10,000 of paper USDC, with more from the faucet. Nothing here is real money.</p>
       <form
         className="col"
+        noValidate
         onSubmit={(e) => {
           e.preventDefault();
-          void create();
+          void create.handleSubmit();
         }}
       >
-        <input className="input" autoFocus placeholder="name (3–16 letters, digits, _)" value={name} onChange={(e) => setName(e.target.value)} />
-        {err && <div className="note down">{err}</div>}
-        <button className="btn primary block" disabled={busy || name.trim().length < 3}>
-          Create account
+        <create.Field name="name" validators={{ onChange: ({ value }) => (/^[A-Za-z0-9_]{3,16}$/.test(value.trim()) ? undefined : "3–16 letters, digits or _") }}>
+          {(f) => <Input field={f} autoFocus placeholder="name (3–16 letters, digits, _)" aria-label="Account name" />}
+        </create.Field>
+        <FormError error={server.error} />
+        <button type="submit" className="btn primary block" disabled={pending}>
+          {pending ? "Creating…" : "Create account"}
         </button>
       </form>
       <div className="faint" style={{ fontSize: 12 }}>
         Already have one? Paste your API key:
       </div>
-      <div className="row">
-        <input className="input mono" placeholder="API key" value={existing} onChange={(e) => setExisting(e.target.value.trim())} />
-        <button className="btn" disabled={!existing} onClick={() => onDone(existing)}>
+      <form
+        className="row top"
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault();
+          void signIn.handleSubmit();
+        }}
+      >
+        <signIn.Field name="key" validators={{ onChange: ({ value }) => (value.trim() ? undefined : "Paste your API key") }}>
+          {(f) => <Input field={f} className="mono" placeholder="API key" aria-label="API key" transform={(v) => v.trim()} wrap={{ flex: 1 }} />}
+        </signIn.Field>
+        <button type="submit" className="btn">
           Sign in
         </button>
-      </div>
+      </form>
     </Modal>
   );
 }
