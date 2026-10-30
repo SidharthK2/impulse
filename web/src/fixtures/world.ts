@@ -371,7 +371,7 @@ function refresh(w: World, m: MarketView) {
     const cs = w.candles[m.id] ?? [];
     const dayAgo = cs.find((c) => c.t >= w.now - 24 * HOUR);
     if (dayAgo) m.open24h = fix(dayAgo.o, m.priceDecimals);
-    m.volume24h = money(cs.filter((c) => c.t >= w.now - 24 * HOUR).reduce((s, c) => s + c.v * c.c, 0));
+    m.volume24h = money(cs.filter((c) => c.t >= w.now - 24 * HOUR).reduce((s, c) => s + c.v * 12, 0)); // candle v is a made-up count; ~$12 a unit keeps volumes plausible
     m.openInterest = fix(m.positions * 180, m.szDecimals);
     m.openInterestUsd = money(m.positions * 180 * mark);
     if (m.preipo) m.preipo = { ...m.preipo, impliedValuation: money(mark * SHARES) };

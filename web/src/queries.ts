@@ -109,16 +109,17 @@ export function useTrades(id: string): FillView[] {
   return (fixture ? fx : real) ?? [];
 }
 
-/** 1m mark candles: the REST history, with each websocket push (the latest two candles) merged in. */
-export function useCandles(id: string): Candle[] | undefined {
+/** 1m mark candles: the REST history, with each websocket push (the latest two candles) merged in. Pass
+ * `enabled: false` to hold off loading (the home page waits until a card scrolls into view). */
+export function useCandles(id: string, enabled = true): Candle[] | undefined {
   const fixture = isFixtureMarket(id);
   const qc = useQueryClient();
   useEffect(() => {
-    if (fixture) return;
+    if (fixture || !enabled) return;
     return live.subscribe(`candles:${id}`, (raw) => qc.setQueryData<Candle[]>(["candles", id], (old) => mergeCandles(old, raw as Candle[])));
-  }, [id, fixture, qc]);
-  const real = useQuery({ queryKey: ["candles", id], queryFn: () => api<Candle[]>("GET", `/api/markets/${encodeURIComponent(id)}/candles`), enabled: !fixture }).data;
-  const snap = useFixtureWorld((s) => (fixture ? s.snap : null));
+  }, [id, fixture, qc, enabled]);
+  const real = useQuery({ queryKey: ["candles", id], queryFn: () => api<Candle[]>("GET", `/api/markets/${encodeURIComponent(id)}/candles`), enabled: enabled && !fixture }).data;
+  const snap = useFixtureWorld((s) => (fixture && enabled ? s.snap : null));
   const fx = useMemo(() => (fixture && snap ? (fixtureCandles(id) ?? undefined) : undefined), [fixture, id, snap]);
   return fixture ? fx : real;
 }

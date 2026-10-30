@@ -1,16 +1,29 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useForm, useSelector } from "@tanstack/react-form";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { change24h } from "../components/Market";
+import { Sparkline } from "../components/Sparkline";
 import { StatusChip, displayName, headline } from "../components/status";
 import { FieldError, FormError, invalid, useServerError } from "../components/form";
 import { Roll } from "../components/Roll";
 import { useToast } from "../components/ui";
-import { compact, num, pct, price, tone, usd } from "../format";
+import { incidents } from "../components/WhoPaid";
+import { ago, compact, countdown, num, pct, price, tone, usd } from "../format";
 import { useNow } from "../hooks";
-import { act, useMarkets } from "../queries";
-import { useCanTrade, useUi } from "../store";
+import { act, useCandles, useFeed, useLeaderboard, useMarkets } from "../queries";
+import { useCanTrade, usePrefs, useUi } from "../store";
 import type { MarketView } from "../types";
+
+type Category = "all" | "coins" | "preipo" | "crypto" | "prediction";
+type Sort = "volume" | "change" | "newest";
+
+const CATEGORIES: { id: Category; label: string; kinds: MarketView["kind"][] }[] = [
+  { id: "all", label: "All", kinds: ["attention", "preipo", "perp", "binary"] },
+  { id: "coins", label: "Creator coins", kinds: ["attention"] },
+  { id: "preipo", label: "Pre-IPO", kinds: ["preipo"] },
+  { id: "crypto", label: "Crypto and equities", kinds: ["perp"] },
+  { id: "prediction", label: "Prediction", kinds: ["binary"] },
+];
 
 const SECTIONS = [
   { id: "coins", title: "Creator coins", lead: "Snipe a coin before it opens: every bid fills at one price. Then it trades on its curve, with a perp beside it.", kinds: ["attention"] },
@@ -21,60 +34,242 @@ const SECTIONS = [
 export function HomePage() {
   const markets = useMarkets() ?? [];
   const now = useNow(1000);
+  const [category, setCategory] = useState<Category>("all");
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<Sort>("volume");
   useEffect(() => {
     document.title = "Markets · Impulse";
   }, []);
+
+  const q = query.trim().toLowerCase();
+  const matches = (m: MarketView) => !q || `${m.id} ${m.name} ${m.base}`.toLowerCase().includes(q);
+  const sorted = (xs: MarketView[]) => xs.filter(matches).sort(order(now, sort));
+  const sections =
+    category === "all"
+      ? SECTIONS.map((s) => ({ ...s, items: sorted(markets.filter((m) => (s.kinds as readonly string[]).includes(m.kind))) }))
+      : [{ id: category, title: CATEGORIES.find((c) => c.id === category)!.label, lead: "", items: sorted(markets.filter((m) => CATEGORIES.find((c) => c.id === category)!.kinds.includes(m.kind))) }];
+  const shown = sections.reduce((n, s) => n + s.items.length, 0);
+
   return (
     <div className="page wide home">
-      <section className="hero">
-        <div>
-          <h1>Trade anything before it lists.</h1>
-          <p className="lead">
-            Creator coins with a snipe launch, pre-IPO perps priced by our own book, and no insurance fund: when a position goes bankrupt, the other side pays, and you can see exactly who.
-            Paper money only.
-          </p>
+      <Hero markets={markets} />
+      <Spotlight markets={markets} now={now} />
+
+      <div className="home-toolbar" role="search">
+        <div className="tabs cat-tabs" role="tablist" aria-label="Market category">
+          {CATEGORIES.map((c) => {
+            const n = c.id === "all" ? markets.length : markets.filter((m) => c.kinds.includes(m.kind)).length;
+            return (
+              <button key={c.id} role="tab" aria-selected={category === c.id} className={category === c.id ? "on" : ""} onClick={() => setCategory(c.id)}>
+                {c.label}
+                <span className="count">{n}</span>
+              </button>
+            );
+          })}
         </div>
-        <LaunchBox />
-      </section>
-      {SECTIONS.map((s) => {
-        const items = markets.filter((m) => (s.kinds as readonly string[]).includes(m.kind)).sort(order(now));
-        return (
+        <span className="spacer" />
+        <input className="input home-search" type="search" placeholder="Search markets" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search markets" />
+        <select className="input home-sort" value={sort} onChange={(e) => setSort(e.target.value as Sort)} aria-label="Sort markets">
+          <option value="volume">24h volume</option>
+          <option value="change">24h change</option>
+          <option value="newest">Newest</option>
+        </select>
+      </div>
+
+      {shown === 0 && q ? <div className="empty panel">No markets match “{query}”.</div> : null}
+      {sections.map((s) =>
+        s.items.length === 0 && (q || category !== "all") ? null : (
           <section key={s.id} className="market-section">
             <div className="section-head">
               <h2>{s.title}</h2>
-              <span className="faint">{items.length}</span>
+              <span className="faint">{s.items.length}</span>
             </div>
-            <p className="muted section-lead">{s.lead}</p>
-            {items.length === 0 ? (
+            {s.lead && <p className="muted section-lead">{s.lead}</p>}
+            {s.items.length === 0 ? (
               <div className="empty panel">{s.id === "coins" ? "No creator coins yet. Launch one above." : "None listed yet."}</div>
             ) : (
               <div className="cards-grid">
-                {items.map((m) => (
+                {s.items.map((m) => (
                   <MarketCard key={m.id} market={m} now={now} />
                 ))}
               </div>
             )}
           </section>
-        );
-      })}
+        ),
+      )}
     </div>
   );
 }
 
-/** Sniping first (soonest open first), then live markets by 24h volume. */
-const order = (now: number) => (a: MarketView, b: MarketView) => {
+/** Sniping coins first (soonest open first), then by the chosen sort. */
+const order = (now: number, sort: Sort) => (a: MarketView, b: MarketView) => {
   const sa = a.snipe && a.snipe.opensAt > now ? a.snipe.opensAt : Infinity;
   const sb = b.snipe && b.snipe.opensAt > now ? b.snipe.opensAt : Infinity;
   if (sa !== sb) return sa - sb;
+  if (sort === "change") return (Number.isFinite(change24h(b)) ? change24h(b) : -Infinity) - (Number.isFinite(change24h(a)) ? change24h(a) : -Infinity);
+  if (sort === "newest") return b.createdAt - a.createdAt;
   return num(b.volume24h) - num(a.volume24h);
 };
+
+function Hero({ markets }: { markets: MarketView[] }) {
+  const lastMarket = usePrefs((s) => s.lastMarket);
+  const leaders = useLeaderboard();
+  const feed = useFeed();
+  const open = markets.filter((m) => m.status === "open");
+  const volume = open.reduce((s, m) => s + num(m.volume24h), 0);
+  const oi = open.reduce((s, m) => s + num(m.openInterestUsd), 0);
+  // All-time haircuts from the leaderboard; the recent feed is a floor when there's no leaderboard (fixtures only).
+  const haircuts = Math.max(
+    leaders.reduce((s, r) => s + num(r.haircuts), 0),
+    feed.filter((e) => e.kind === "haircut").reduce((s, e) => s + num(e.amount ?? "0"), 0),
+  );
+  const start = lastMarket && markets.some((m) => m.id === lastMarket) ? lastMarket : (markets.find((m) => m.kind === "perp")?.id ?? markets[0]?.id ?? "BTC-PERP");
+  return (
+    <section className="hero">
+      <div className="hero-copy">
+        <span className="eyebrow">
+          <i className="pulse" /> Paper-money exchange · live
+        </span>
+        <h1>Trade anything before it lists.</h1>
+        <p className="lead">
+          Snipe creator coins at one open price, trade pre-IPO perps priced by our own book, and see exactly who pays when a position goes bankrupt. There's no insurance fund.
+        </p>
+        <div className="row hero-ctas">
+          <Link className="btn primary lg" to="/trade/$market" params={{ market: start }}>
+            Start trading
+          </Link>
+          <Link className="btn ghost lg" to="/about">
+            How it works
+          </Link>
+        </div>
+      </div>
+      <LaunchBox />
+      <div className="kpis">
+        <div className="kpi">
+          <span className="label">Markets</span>
+          <span className="v mono">{open.length}</span>
+        </div>
+        <div className="kpi">
+          <span className="label">24h volume</span>
+          <Roll className="v mono" text={usd(volume, { compact: true })} value={volume} flash={false} />
+        </div>
+        <div className="kpi">
+          <span className="label">Open interest</span>
+          <Roll className="v mono" text={usd(oi, { compact: true })} value={oi} flash={false} />
+        </div>
+        <div className="kpi" title="ADL haircuts: profit (or principal) taken from the winning side to cover other traders' bankruptcies">
+          <span className="label">ADL haircuts paid</span>
+          <Roll className="v mono down" text={usd(haircuts, { compact: true })} value={haircuts} flash={false} />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** The coin opening soonest, and the latest bankruptcies with who covered them. */
+function Spotlight({ markets, now }: { markets: MarketView[]; now: number }) {
+  const feed = useFeed();
+  const sniping = markets.filter((m) => m.snipe && m.snipe.opensAt > now).sort((a, b) => a.snipe!.opensAt - b.snipe!.opensAt);
+  const next = sniping[0];
+  const recent = useMemo(() => incidents(feed.filter((e) => e.kind === "bankrupt" || e.kind === "haircut")).filter((i) => i.bankrupt.length > 0).slice(0, 4), [feed]);
+  return (
+    <section className="spotlight">
+      {next ? (
+        <Link to="/trade/$market" params={{ market: next.id }} className="panel snipe-spot">
+          <div className="snipe-spot-head">
+            <span className="chip snipe">
+              <i className="pulse" /> Sniping now
+            </span>
+            {sniping.length > 1 && <span className="faint small">+{sniping.length - 1} more</span>}
+          </div>
+          <div className="snipe-spot-body">
+            <div>
+              <div className="snipe-spot-name">{next.id}</div>
+              <div className="muted small">Every bid fills at one open price. No front-running the launch.</div>
+            </div>
+            <div className="snipe-spot-clock">
+              <span className="label">Opens in</span>
+              <span className="mono">{countdown(next.snipe!.opensAt - now)}</span>
+            </div>
+          </div>
+          <dl className="snipe-spot-stats">
+            <dt>Pool</dt>
+            <dd>{usd(next.snipe!.total)}</dd>
+            <dt>Snipers</dt>
+            <dd>{next.snipe!.snipers}</dd>
+            <dt>Projected open</dt>
+            <dd>{price(next.snipe!.projectedOpenPrice, Math.max(next.priceDecimals, 6))}</dd>
+          </dl>
+          <span className="btn primary snipe-spot-cta">Snipe {next.id} →</span>
+        </Link>
+      ) : (
+        <a href="#launch" className="panel snipe-spot idle">
+          <div className="snipe-spot-head">
+            <span className="chip">No snipes open</span>
+          </div>
+          <div className="snipe-spot-name">Launch the next creator coin</div>
+          <div className="muted small">Pick a handle above. Its snipe window opens right away, and every bid fills at one price when it closes.</div>
+        </a>
+      )}
+
+      <div className="panel paid-spot">
+        <div className="panel-head">
+          <h3>Who paid, live</h3>
+          <span className="spacer" />
+          <Link to="/feed" className="small">
+            All →
+          </Link>
+        </div>
+        {recent.length === 0 ? (
+          <div className="empty">No bankruptcies yet. When one happens, the traders who covered it show up here.</div>
+        ) : (
+          <ul className="paid-list">
+            {recent.map((i) => {
+              const paid = i.haircuts.reduce((s, e) => s + num(e.amount ?? "0"), 0);
+              const top = [...i.haircuts].sort((a, b) => num(b.amount ?? "0") - num(a.amount ?? "0"))[0];
+              return (
+                <li key={i.key}>
+                  <Link to="/trade/$market" params={{ market: i.market }} className="paid-row">
+                    <span className="paid-what">
+                      <b>{i.bankrupt[0]!.accounts[0]}</b> went bankrupt on <span className="mono">{i.market}</span>
+                    </span>
+                    <span className="mono down">{usd(i.shortfall)}</span>
+                    <span className="faint small paid-who">
+                      {i.haircuts.length > 0 ? `${i.haircuts.length} paid ${usd(paid)}${top ? `, most by ${top.accounts[0]}` : ""}` : "covered by ADL"} · {ago(i.time, now)}
+                    </span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </section>
+  );
+}
+
+/** Whether an element has scrolled into view (once true, stays true). */
+function useSeen<T extends Element>() {
+  const ref = useRef<T>(null);
+  const [seen, setSeen] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || seen) return;
+    const io = new IntersectionObserver(([e]) => e?.isIntersecting && setSeen(true), { rootMargin: "200px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [seen]);
+  return [ref, seen] as const;
+}
 
 function MarketCard({ market: m, now }: { market: MarketView; now: number }) {
   const ch = change24h(m);
   const px = headline(m);
   const sniping = !!m.snipe && m.snipe.opensAt > now;
+  const [ref, seen] = useSeen<HTMLAnchorElement>();
+  const candles = useCandles(m.id, seen && !m.snipe);
   return (
-    <Link to="/trade/$market" params={{ market: m.id }} className={`mcard ${sniping ? "sniping" : ""}`}>
+    <Link ref={ref} to="/trade/$market" params={{ market: m.id }} className={`mcard ${sniping ? "sniping" : ""}`}>
       <div className="mcard-top">
         <span className="mcard-name" title={m.name}>
           {displayName(m)}
@@ -85,6 +280,13 @@ function MarketCard({ market: m, now }: { market: MarketView; now: number }) {
         <Roll className="mono big" text={price(px, Math.max(m.priceDecimals, m.snipe ? 6 : 0))} value={num(px)} />
         {sniping ? <span className="faint small">projected open</span> : <span className={`mono ${tone(ch)}`}>{pct(ch)}</span>}
       </div>
+      {sniping ? (
+        <div className="spark spark-empty">
+          <span className="mono">{countdown(m.snipe!.opensAt - now)}</span> to the open
+        </div>
+      ) : (
+        <Sparkline candles={candles} decimals={m.priceDecimals} since={now - 24 * 3_600_000} />
+      )}
       <dl className="mcard-stats">
         {m.snipe && sniping ? (
           <>
