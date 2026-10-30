@@ -1408,8 +1408,7 @@ body {
   transition: background-color 0.2s;
 }
 .roll {
-  display: inline-flex;
-  align-items: baseline;
+  display: inline-block;
   border-radius: 4px;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
@@ -1417,24 +1416,31 @@ body {
 .roll.b {
   font-weight: 600;
 }
+/* The digit's own text is transparent: it sizes the slot and is what selection, copy and screen readers get. The
+   visible 0-9 strip is generated content (never part of the text), rolled by the --d custom property. */
 .roll-digit {
+  position: relative;
   display: inline-block;
   height: 1.25em;
   line-height: 1.25em;
   overflow: hidden;
   vertical-align: bottom;
+  -webkit-text-fill-color: transparent;
 }
-.roll-strip {
-  display: flex;
-  flex-direction: column;
+.roll-digit::before {
+  content: "0\A 1\A 2\A 3\A 4\A 5\A 6\A 7\A 8\A 9";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  text-align: center;
+  white-space: pre;
+  -webkit-text-fill-color: currentColor; /* the inherited, real colour */
+  transform: translateY(calc(var(--d) * -10%));
   transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
-.roll-strip > span {
-  height: 1.25em;
-  line-height: 1.25em;
-}
 @media (prefers-reduced-motion: reduce) {
-  .roll-strip {
+  .roll-digit::before {
     transition: none;
   }
 }

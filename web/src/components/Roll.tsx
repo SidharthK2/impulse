@@ -1,8 +1,6 @@
 // Animated numbers: each digit rolls to its new value, and the whole number flashes green or red when it moves.
 
-import { useEffect, useRef } from "react";
-
-const DIGITS = [..."0123456789"];
+import { type CSSProperties, useEffect, useRef } from "react";
 
 /** Flash an element's background up/down when a numeric value changes. */
 export function useFlash<T extends HTMLElement>(value: number) {
@@ -22,28 +20,23 @@ export function useFlash<T extends HTMLElement>(value: number) {
 
 /**
  * A formatted number whose digits roll. `value` drives the flash (defaults to parsing `text`); keys run from the
- * right so the units digit stays the same element when the number gets longer.
+ * right so the units digit stays the same element when the number gets longer. The rolling strip is CSS generated
+ * content, so selecting, copying or reading the number gives its real text.
  */
 export function Roll({ text, value, className = "", flash = true }: { text: string; value?: number; className?: string; flash?: boolean }) {
   const v = value ?? Number(text.replace(/[^0-9.\-−]/g, "").replace("−", "-"));
   const ref = useFlash<HTMLSpanElement>(flash ? v : NaN);
   const chars = [...text];
   return (
-    <span ref={ref} className={`roll ${className}`} aria-label={text} role="text">
+    <span ref={ref} className={`roll ${className}`}>
       {chars.map((ch, i) => {
         const key = chars.length - i;
         return /\d/.test(ch) ? (
-          <span key={`d${key}`} className="roll-digit" aria-hidden="true">
-            <span className="roll-strip" style={{ transform: `translateY(${-Number(ch) * 10}%)` }}>
-              {DIGITS.map((d) => (
-                <span key={d}>{d}</span>
-              ))}
-            </span>
-          </span>
-        ) : (
-          <span key={`c${key}`} aria-hidden="true">
+          <span key={`d${key}`} className="roll-digit" style={{ "--d": ch } as CSSProperties}>
             {ch}
           </span>
+        ) : (
+          <span key={`c${key}`}>{ch}</span>
         );
       })}
     </span>

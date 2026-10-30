@@ -59,6 +59,8 @@ function buildSeries(candles: Candle[] | undefined, samples: Pt[], from: number,
   const s0 = samples.find((s) => s.t >= from);
   const cut = s0?.t ?? Infinity;
   const pts: Pt[] = [];
+  const first = candles?.[0];
+  if (first && first.t >= from - 60_000 && first.t < cut) pts.push({ t: first.t, p: first.o });
   for (const c of candles ?? []) {
     const t = Math.min(c.t + 60_000, now);
     if (t >= from - 60_000 && t < cut) pts.push({ t, p: c.c });

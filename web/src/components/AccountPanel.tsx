@@ -8,6 +8,7 @@ import { act, useFeed } from "../queries";
 import type { AccountView, MarketView, PositionView } from "../types";
 import { useToast } from "./ui";
 import { FieldError, FormError, invalid, positive, useServerError } from "./form";
+import { RiskList } from "./RiskFeed";
 import { Roll } from "./Roll";
 import { WhoPaid } from "./WhoPaid";
 
@@ -16,7 +17,8 @@ type Tab = "positions" | "orders" | "fills" | "whopaid" | "holders";
 interface Props {
   account: AccountView | undefined;
   markets: Record<string, MarketView>;
-  current: MarketView;
+  /** The market on screen. Without one (the portfolio), Who paid is the account's own risk history. */
+  current?: MarketView;
   signedIn: boolean;
 }
 
@@ -24,13 +26,13 @@ export function AccountPanel({ account, markets, current, signedIn }: Props) {
   const [tab, setTab] = useState<Tab>("positions");
   const feed = useFeed();
   const open = account?.positions.filter((p) => p.side !== "flat") ?? [];
-  const incidents = feed.filter((e) => e.market === current.id && (e.kind === "bankrupt" || e.kind === "liquidation")).length;
+  const incidents = current ? feed.filter((e) => e.market === current.id && (e.kind === "bankrupt" || e.kind === "liquidation")).length : (account?.risk.length ?? 0);
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: "positions", label: "Positions", count: open.length + (account?.spot.length ?? 0) },
     { id: "orders", label: "Open orders", count: account?.orders.length },
     { id: "fills", label: "Fills" },
     { id: "whopaid", label: "Who paid", count: incidents },
-    { id: "holders", label: "Holders" },
+    ...(current ? [{ id: "holders" as const, label: "Holders" }] : []),
   ];
   return (
     <div className="panel account-panel" style={{ minHeight: 260 }}>
@@ -47,9 +49,9 @@ export function AccountPanel({ account, markets, current, signedIn }: Props) {
         {tab === "orders" && account && account.orders.length > 0 && <CancelAll />}
       </div>
       <div className="scroll" style={{ flex: 1, maxHeight: 420 }}>
-        {tab === "whopaid" ? (
+        {tab === "whopaid" && current ? (
           <WhoPaid market={current} feed={feed} account={account} />
-        ) : tab === "holders" ? (
+        ) : tab === "holders" && current ? (
           <Holders market={current} />
         ) : !signedIn ? (
           <div className="empty">Sign up to get $10,000 of paper USDC and start trading.</div>
@@ -57,6 +59,8 @@ export function AccountPanel({ account, markets, current, signedIn }: Props) {
           <div className="empty">Loading…</div>
         ) : tab === "positions" ? (
           <Positions account={account} markets={markets} />
+        ) : tab === "whopaid" ? (
+          <AccountRisk account={account} />
         ) : tab === "orders" ? (
           <Orders account={account} markets={markets} />
         ) : (
@@ -178,6 +182,30 @@ function Positions({ account, markets }: { account: AccountView; markets: Record
         ))}
       </tbody>
     </table>
+  );
+}
+
+/** The account's own side of ADL: what it paid for others, what others covered for it, and its risk events. */
+function AccountRisk({ account }: { account: AccountView }) {
+  const l = account.ledger;
+  return (
+    <div>
+      <div className="whopaid-summary">
+        <span title="ADL haircuts: your profit (or principal) used to cover someone else's negative equity">
+          Haircuts you paid: <b className="mono down">{usd(l.adlPaid)}</b>
+        </span>
+        <span>
+          Your shortfalls others covered: <b className="mono up">{usd(l.adlCovered)}</b>
+        </span>
+        <span>
+          Net funding: <b className={`mono ${tone(num(l.funding))}`}>{usd(l.funding, { sign: true })}</b>
+        </span>
+        <span>
+          Realized trading PnL: <b className={`mono ${tone(num(l.realized))}`}>{usd(l.realized, { sign: true })}</b>
+        </span>
+      </div>
+      <RiskList events={account.risk} />
+    </div>
   );
 }
 

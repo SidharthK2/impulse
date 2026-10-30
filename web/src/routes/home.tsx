@@ -82,7 +82,7 @@ function MarketCard({ market: m, now }: { market: MarketView; now: number }) {
         <StatusChip market={m} now={now} />
       </div>
       <div className="mcard-price">
-        <Roll className="mono big" text={price(px, Math.max(m.priceDecimals, m.mark ? 0 : 6))} value={num(px)} />
+        <Roll className="mono big" text={price(px, Math.max(m.priceDecimals, m.snipe ? 6 : 0))} value={num(px)} />
         {sniping ? <span className="faint small">projected open</span> : <span className={`mono ${tone(ch)}`}>{pct(ch)}</span>}
       </div>
       <dl className="mcard-stats">

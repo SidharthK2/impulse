@@ -86,8 +86,8 @@ export function MarketBar({ market, markets, onPick }: { market: MarketView; mar
     <div className="mbar">
       <MarketPicker markets={markets} current={market} onPick={onPick} />
       <div className="col" style={{ gap: 0 }}>
-        <Roll className="big" text={price(headline(market), Math.max(market.priceDecimals, market.mark ? 0 : 6))} value={num(headline(market))} />
-        {!market.mark && market.snipe && <span className="faint small">projected open</span>}
+        <Roll className="big" text={price(headline(market), Math.max(market.priceDecimals, market.snipe ? 6 : 0))} value={num(headline(market))} />
+        {market.snipe && <span className="faint small">projected open</span>}
       </div>
       <div className="mbar-stats">
         <BookPricedBadge market={market} />

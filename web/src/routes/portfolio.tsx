@@ -10,7 +10,6 @@ export function PortfolioPage() {
   const signedIn = useCanTrade();
   const open = useUi((s) => s.open);
   const byId = useMemo(() => Object.fromEntries(markets.map((m) => [m.id, m])), [markets]);
-  const first = markets[0];
   if (!signedIn)
     return (
       <div className="page">
@@ -44,7 +43,7 @@ export function PortfolioPage() {
           </div>
         </div>
       )}
-      {first && <AccountPanel account={account} markets={byId} current={first} signedIn={signedIn} />}
+      <AccountPanel account={account} markets={byId} signedIn={signedIn} />
     </div>
   );
 }
