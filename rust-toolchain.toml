@@ -1,0 +1,7 @@
+# The one Rust version for this repo: rustup uses it locally and in CI, so `make lint` and CI run the same clippy
+# (with -D warnings, a newer clippy's new lints would otherwise fail one and not the other). The Dockerfile's
+# rust:1.96 image is the same version; bump both together.
+[toolchain]
+channel = "1.96"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

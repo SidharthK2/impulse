@@ -17,13 +17,19 @@ concurrency:
   group: fly-deploy
   cancel-in-progress: false
 
+# The deploy authenticates with FLY_API_TOKEN, not the GitHub token, so the token only needs to read the code.
+permissions:
+  contents: read
+
 jobs:
   # A deploy only goes out if the commit passes the same Rust checks as CI (this runs alongside CI, not after it).
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
-      - run: rustup toolchain install 1.96 --profile minimal --component rustfmt,clippy && rustup default 1.96
+      # The version in rust-toolchain.toml.
+      - run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --check
       - run: cargo clippy --all-targets --locked -- -D warnings
@@ -32,6 +38,8 @@ jobs:
   deploy:
     needs: test
     runs-on: ubuntu-latest
+    # Fly's remote builder; a cold build takes a few minutes.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
       # A release tag, not @master, so a deploy never picks up an unreleased change to the action.

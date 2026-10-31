@@ -9,18 +9,25 @@ on:
   pull_request:
   workflow_dispatch:
 
-# A newer push to the same branch makes the older run pointless.
+# A newer push to a PR branch makes the older run pointless. On main every commit finishes its run, so each one
+# has a result.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+# Checks only read the code.
+permissions:
+  contents: read
 
 jobs:
   rust:
     runs-on: ubuntu-latest
+    # The tests start real servers; a hang fails in 20 minutes instead of GitHub's 6-hour default.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
-      # The same toolchain as the Dockerfile (rust:1.96).
-      - run: rustup toolchain install 1.96 --profile minimal --component rustfmt,clippy && rustup default 1.96
+      # Installs the version and components in rust-toolchain.toml (the same as the Dockerfile's rust:1.96).
+      - run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --check
       # -D warnings: any clippy warning fails the build.
@@ -30,6 +37,7 @@ jobs:
 
   web:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: web
