@@ -12,8 +12,13 @@ export function useFlash<T extends HTMLElement>(value: number) {
     const el = ref.current;
     if (!el || !Number.isFinite(before) || !Number.isFinite(value) || before === value) return;
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const bg = getComputedStyle(el).getPropertyValue(value > before ? "--up-bg" : "--down-bg").trim();
-    el.animate([{ backgroundColor: bg }, { backgroundColor: "transparent" }], { duration: 900, easing: "ease-out" });
+    const bg = getComputedStyle(el)
+      .getPropertyValue(value > before ? "--up-bg" : "--down-bg")
+      .trim();
+    el.animate([{ backgroundColor: bg }, { backgroundColor: "transparent" }], {
+      duration: 900,
+      easing: "ease-out",
+    });
   }, [value]);
   return ref;
 }
@@ -23,7 +28,17 @@ export function useFlash<T extends HTMLElement>(value: number) {
  * right so the units digit stays the same element when the number gets longer. The rolling strip is CSS generated
  * content, so selecting, copying or reading the number gives its real text.
  */
-export function Roll({ text, value, className = "", flash = true }: { text: string; value?: number; className?: string; flash?: boolean }) {
+export function Roll({
+  text,
+  value,
+  className = "",
+  flash = true,
+}: {
+  text: string;
+  value?: number;
+  className?: string;
+  flash?: boolean;
+}) {
   const v = value ?? Number(text.replace(/[^0-9.\-−]/g, "").replace("−", "-"));
   const ref = useFlash<HTMLSpanElement>(flash ? v : NaN);
   const chars = [...text];

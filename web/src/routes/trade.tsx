@@ -33,7 +33,8 @@ export function TradePage() {
     if (market) document.title = `${market.mark ?? ""} ${market.id} · Impulse`;
   }, [market?.mark, market?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!market) return <div className="empty">No market called {id}. Pick one from the markets page.</div>;
+  if (!market)
+    return <div className="empty">No market called {id}. Pick one from the markets page.</div>;
   const position = account?.positions.find((p) => p.market === market.id && p.side !== "flat");
   // Until the snipe opens there is no price, book or perp: the snipe panel takes the chart's place.
   const sniping = !!market.snipe;
@@ -55,11 +56,23 @@ export function TradePage() {
   return (
     <div className="trade" key={market.id}>
       <MarketBar market={market} markets={markets} onPick={onPick} />
-      {sniping ? <SnipePanel market={market} account={account} canTrade={signedIn} onSignUp={() => openModal("signup")} /> : <Chart market={market} position={position} />}
+      {sniping ? (
+        <SnipePanel
+          market={market}
+          account={account}
+          canTrade={signedIn}
+          onSignUp={() => openModal("signup")}
+        />
+      ) : (
+        <Chart market={market} position={position} />
+      )}
       <div className="book-col">
         {sniping ? (
           <div className="panel grow">
-            <div className="empty">The book and the perp open with the coin. Until then, every bid waits in the snipe pool.</div>
+            <div className="empty">
+              The book and the perp open with the coin. Until then, every bid waits in the snipe
+              pool.
+            </div>
           </div>
         ) : (
           <>
@@ -68,8 +81,18 @@ export function TradePage() {
         )}
       </div>
       <div className="form-col scroll">
-        {!sniping && <OrderForm market={market} account={account} signedIn={signedIn} picked={picked} onSignUp={() => openModal("signup")} />}
-        {!sniping && market.curve && <SpotPanel market={market} account={account} signedIn={signedIn} />}
+        {!sniping && (
+          <OrderForm
+            market={market}
+            account={account}
+            signedIn={signedIn}
+            picked={picked}
+            onSignUp={() => openModal("signup")}
+          />
+        )}
+        {!sniping && market.curve && (
+          <SpotPanel market={market} account={account} signedIn={signedIn} />
+        )}
         {market.launch && <LaunchPanel market={market} />}
         {market.preipo && <PreIpoPanel market={market} />}
         <InfoPanel market={market} />
@@ -112,17 +135,29 @@ function PhoneTrade(props: {
       <MarketBar market={market} markets={markets} onPick={onPick} />
       <div className="m-tabs" role="tablist">
         {panes.map(([id, label]) => (
-          <button key={id} role="tab" aria-selected={pane === id} className={pane === id ? "on" : ""} onClick={() => setPane(id)}>
+          <button
+            key={id}
+            role="tab"
+            aria-selected={pane === id}
+            className={pane === id ? "on" : ""}
+            onClick={() => setPane(id)}
+          >
             {label}
           </button>
         ))}
       </div>
       <div className={`m-pane m-pane-${pane}`}>
         {pane === "chart" &&
-          (sniping ? <SnipePanel market={market} account={account} canTrade={signedIn} onSignUp={onSignUp} /> : <Chart market={market} position={position} />)}
+          (sniping ? (
+            <SnipePanel market={market} account={account} canTrade={signedIn} onSignUp={onSignUp} />
+          ) : (
+            <Chart market={market} position={position} />
+          ))}
         {pane === "book" &&
           (sniping ? (
-            <div className="empty">The book opens with the coin. Until then, every bid waits in the snipe pool.</div>
+            <div className="empty">
+              The book opens with the coin. Until then, every bid waits in the snipe pool.
+            </div>
           ) : (
             <OrderBook
               market={market}
@@ -145,29 +180,52 @@ function PhoneTrade(props: {
 
       {!sniping && market.status === "open" && (
         <div className="m-actions">
-          <button className="btn buy" onClick={() => (signedIn ? setSheet({ side: "buy", kind: "perp" }) : onSignUp())}>
+          <button
+            className="btn buy"
+            onClick={() => (signedIn ? setSheet({ side: "buy", kind: "perp" }) : onSignUp())}
+          >
             Long
           </button>
-          <button className="btn sell" onClick={() => (signedIn ? setSheet({ side: "sell", kind: "perp" }) : onSignUp())}>
+          <button
+            className="btn sell"
+            onClick={() => (signedIn ? setSheet({ side: "sell", kind: "perp" }) : onSignUp())}
+          >
             Short
           </button>
         </div>
       )}
 
       {sheet && (
-        <Sheet title={`${market.id} · ${sheet.kind === "spot" ? "spot" : "perp"}`} onClose={() => (setSheet(null), setPicked(null))}>
+        <Sheet
+          title={`${market.id} · ${sheet.kind === "spot" ? "spot" : "perp"}`}
+          onClose={() => (setSheet(null), setPicked(null))}
+        >
           {market.curve && (
             <div className="seg sheet-switch">
-              <button className={sheet.kind === "perp" ? "on" : ""} onClick={() => setSheet({ ...sheet, kind: "perp" })}>
+              <button
+                className={sheet.kind === "perp" ? "on" : ""}
+                onClick={() => setSheet({ ...sheet, kind: "perp" })}
+              >
                 Perp
               </button>
-              <button className={sheet.kind === "spot" ? "on" : ""} onClick={() => setSheet({ ...sheet, kind: "spot" })}>
+              <button
+                className={sheet.kind === "spot" ? "on" : ""}
+                onClick={() => setSheet({ ...sheet, kind: "spot" })}
+              >
                 Spot
               </button>
             </div>
           )}
           {sheet.kind === "perp" ? (
-            <OrderForm market={market} account={account} signedIn={signedIn} picked={picked} onSignUp={onSignUp} initialSide={sheet.side} onDone={() => setSheet(null)} />
+            <OrderForm
+              market={market}
+              account={account}
+              signedIn={signedIn}
+              picked={picked}
+              onSignUp={onSignUp}
+              initialSide={sheet.side}
+              onDone={() => setSheet(null)}
+            />
           ) : (
             <SpotPanel market={market} account={account} signedIn={signedIn} />
           )}

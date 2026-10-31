@@ -11,22 +11,39 @@ import { Roll } from "./Roll";
 import { headline } from "./status";
 import { Stat, useToast } from "./ui";
 
-const KIND_LABEL: Record<string, string> = { attention: "Creator coins", preipo: "Pre-IPO", perp: "Crypto and equities", binary: "Prediction markets" };
+const KIND_LABEL: Record<string, string> = {
+  attention: "Creator coins",
+  preipo: "Pre-IPO",
+  perp: "Crypto and equities",
+  binary: "Prediction markets",
+};
 
-export const change24h = (m: MarketView) => (m.open24h && m.mark ? num(m.mark) / num(m.open24h) - 1 : NaN);
+export const change24h = (m: MarketView) =>
+  m.open24h && m.mark ? num(m.mark) / num(m.open24h) - 1 : NaN;
 
-export function MarketPicker({ markets, current, onPick }: { markets: MarketView[]; current: MarketView; onPick: (id: string) => void }) {
+export function MarketPicker({
+  markets,
+  current,
+  onPick,
+}: {
+  markets: MarketView[];
+  current: MarketView;
+  onPick: (id: string) => void;
+}) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const on = (e: MouseEvent) => ref.current && !ref.current.contains(e.target as Node) && setOpen(false);
+    const on = (e: MouseEvent) =>
+      ref.current && !ref.current.contains(e.target as Node) && setOpen(false);
     document.addEventListener("mousedown", on);
     return () => document.removeEventListener("mousedown", on);
   }, []);
   const groups = useMemo(() => {
     const f = markets.filter((m) => (m.id + m.name).toLowerCase().includes(q.toLowerCase()));
-    return (["attention", "preipo", "perp", "binary"] as const).map((k) => ({ kind: k, items: f.filter((m) => m.kind === k) })).filter((g) => g.items.length);
+    return (["attention", "preipo", "perp", "binary"] as const)
+      .map((k) => ({ kind: k, items: f.filter((m) => m.kind === k) }))
+      .filter((g) => g.items.length);
   }, [markets, q]);
   return (
     <div className="picker" ref={ref}>
@@ -37,7 +54,13 @@ export function MarketPicker({ markets, current, onPick }: { markets: MarketView
       {open && (
         <div className="picker-menu">
           <div style={{ padding: 10, display: "flex", gap: 8 }}>
-            <input className="input" autoFocus placeholder="Search markets" value={q} onChange={(e) => setQ(e.target.value)} />
+            <input
+              className="input"
+              autoFocus
+              placeholder="Search markets"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
             <Link className="btn" to="/" hash="launch" onClick={() => setOpen(false)}>
               + Launch
             </Link>
@@ -60,7 +83,11 @@ export function MarketPicker({ markets, current, onPick }: { markets: MarketView
                       >
                         <td className="picker-name">
                           <b>{m.kind === "binary" ? m.name : m.id}</b>
-                          {m.status === "resolved" && <span className="badge info" style={{ marginLeft: 6 }}>resolved</span>}
+                          {m.status === "resolved" && (
+                            <span className="badge info" style={{ marginLeft: 6 }}>
+                              resolved
+                            </span>
+                          )}
                         </td>
                         <td className="right mono">{price(headline(m), m.priceDecimals)}</td>
                         <td className={`right mono ${tone(ch)}`}>{pct(ch)}</td>
@@ -78,7 +105,15 @@ export function MarketPicker({ markets, current, onPick }: { markets: MarketView
   );
 }
 
-export function MarketBar({ market, markets, onPick }: { market: MarketView; markets: MarketView[]; onPick: (id: string) => void }) {
+export function MarketBar({
+  market,
+  markets,
+  onPick,
+}: {
+  market: MarketView;
+  markets: MarketView[];
+  onPick: (id: string) => void;
+}) {
   const now = useNow(1000);
   const ch = change24h(market);
   const f = market.funding.ratePerHour;
@@ -86,7 +121,11 @@ export function MarketBar({ market, markets, onPick }: { market: MarketView; mar
     <div className="mbar">
       <MarketPicker markets={markets} current={market} onPick={onPick} />
       <div className="col" style={{ gap: 0 }}>
-        <Roll className="big" text={price(headline(market), Math.max(market.priceDecimals, market.snipe ? 6 : 0))} value={num(headline(market))} />
+        <Roll
+          className="big"
+          text={price(headline(market), Math.max(market.priceDecimals, market.snipe ? 6 : 0))}
+          value={num(headline(market))}
+        />
         {market.snipe && <span className="faint small">projected open</span>}
       </div>
       <div className="mbar-stats">
@@ -99,46 +138,62 @@ export function MarketBar({ market, markets, onPick }: { market: MarketView; mar
             <Stat label="Seed">{price(market.preipo.seedPrice, market.priceDecimals)}</Stat>
             <Stat label="Status">
               {market.preipo.status === "public" ? (
-                <span className="info-text">public · IPO {price(market.preipo.ipoPrice, market.priceDecimals)}</span>
+                <span className="info-text">
+                  public · IPO {price(market.preipo.ipoPrice, market.priceDecimals)}
+                </span>
               ) : (
                 "private"
               )}
             </Stat>
           </>
         )}
-      {market.launch && (
-        <>
-          <Stat label="Open price" title={`Opened ${new Date(market.launch.openedAt).toLocaleString()}`}>
-            {price(market.launch.openPrice, market.priceDecimals)}
-          </Stat>
-          <Stat label="Launch reserve" title="USDC the snipe pool left in the curve">
-            {usd(market.launch.reserve, { compact: true })}
-          </Stat>
-        </>
-      )}
-      <Stat label="24h">
-        <span className={tone(ch)}>{pct(ch)}</span>
-      </Stat>
-      <Stat label="Max leverage" title={`Graduation tier ${market.tier}`}>
-        {market.maxLeverage}× <span className="faint">tier {market.tier}</span>
-      </Stat>
-      <Stat label="Funding / h" title="Positive: longs pay shorts. Base rate falls as the market graduates.">
-        <span className={f > 0 ? "down" : f < 0 ? "up" : ""}>{(f * 100).toFixed(4)}%</span>
-      </Stat>
-      <Stat label="Open interest">{usd(market.openInterestUsd, { compact: true })}</Stat>
-      <Stat label="24h volume">{usd(market.volume24h, { compact: true })}</Stat>
-      <Stat label="ADL rule" title={market.adl === "pnl" ? "Shortfalls are charged pro-rata to opposing profit first (principal protected while profit lasts)" : "Shortfalls are charged pro-rata by opposing position size"}>
-        {market.adl === "pnl" ? "capped PnL" : "size pro-rata"}
-      </Stat>
-      {market.resolvesAt && (
-        <Stat label="Resolves in">{countdown(market.resolvesAt - now)}</Stat>
-      )}
-      {market.heldUntil && market.heldUntil > now && (
-        <span className="badge warn" title="An admin override is holding the oracle; the live feed is ignored until it expires">
-          oracle held {countdown(market.heldUntil - now)}
-        </span>
-      )}
-      {market.status === "resolved" && <span className="badge info">resolved</span>}
+        {market.launch && (
+          <>
+            <Stat
+              label="Open price"
+              title={`Opened ${new Date(market.launch.openedAt).toLocaleString()}`}
+            >
+              {price(market.launch.openPrice, market.priceDecimals)}
+            </Stat>
+            <Stat label="Launch reserve" title="USDC the snipe pool left in the curve">
+              {usd(market.launch.reserve, { compact: true })}
+            </Stat>
+          </>
+        )}
+        <Stat label="24h">
+          <span className={tone(ch)}>{pct(ch)}</span>
+        </Stat>
+        <Stat label="Max leverage" title={`Graduation tier ${market.tier}`}>
+          {market.maxLeverage}× <span className="faint">tier {market.tier}</span>
+        </Stat>
+        <Stat
+          label="Funding / h"
+          title="Positive: longs pay shorts. Base rate falls as the market graduates."
+        >
+          <span className={f > 0 ? "down" : f < 0 ? "up" : ""}>{(f * 100).toFixed(4)}%</span>
+        </Stat>
+        <Stat label="Open interest">{usd(market.openInterestUsd, { compact: true })}</Stat>
+        <Stat label="24h volume">{usd(market.volume24h, { compact: true })}</Stat>
+        <Stat
+          label="ADL rule"
+          title={
+            market.adl === "pnl"
+              ? "Shortfalls are charged pro-rata to opposing profit first (principal protected while profit lasts)"
+              : "Shortfalls are charged pro-rata by opposing position size"
+          }
+        >
+          {market.adl === "pnl" ? "capped PnL" : "size pro-rata"}
+        </Stat>
+        {market.resolvesAt && <Stat label="Resolves in">{countdown(market.resolvesAt - now)}</Stat>}
+        {market.heldUntil && market.heldUntil > now && (
+          <span
+            className="badge warn"
+            title="An admin override is holding the oracle; the live feed is ignored until it expires"
+          >
+            oracle held {countdown(market.heldUntil - now)}
+          </span>
+        )}
+        {market.status === "resolved" && <span className="badge info">resolved</span>}
       </div>
     </div>
   );
@@ -156,10 +211,22 @@ export function InfoPanel({ market }: { market: MarketView }) {
       </div>
       <div className="panel-body col" style={{ gap: 12 }}>
         {market.kind === "binary" && <div style={{ fontWeight: 600 }}>{market.name}</div>}
-        {market.description && <div className="muted" style={{ fontSize: 12 }}>{market.description}</div>}
+        {market.description && (
+          <div className="muted" style={{ fontSize: 12 }}>
+            {market.description}
+          </div>
+        )}
         <dl className="kv">
           <dt>Oracle</dt>
-          <dd style={{ fontFamily: "var(--sans)" }}>{market.url ? <a href={market.url} target="_blank" rel="noreferrer">{market.source.label}</a> : market.source.label}</dd>
+          <dd style={{ fontFamily: "var(--sans)" }}>
+            {market.url ? (
+              <a href={market.url} target="_blank" rel="noreferrer">
+                {market.source.label}
+              </a>
+            ) : (
+              market.source.label
+            )}
+          </dd>
           <dt>Maintenance</dt>
           <dd>{(100 / market.maintenanceLeverage).toFixed(1)}% of notional</dd>
           <dt>Base funding</dt>
@@ -187,7 +254,10 @@ export function InfoPanel({ market }: { market: MarketView }) {
                   <dd>
                     {s.value}{" "}
                     {s.ours ? (
-                      <span className="badge ours" title="A parameter we chose; Mirror publishes none for this">
+                      <span
+                        className="badge ours"
+                        title="A parameter we chose; Mirror publishes none for this"
+                      >
                         our setting
                       </span>
                     ) : (
@@ -203,8 +273,10 @@ export function InfoPanel({ market }: { market: MarketView }) {
         )}
         {Math.abs(market.funding.ratePerHour - market.funding.baseRatePerHour) >= 0.005 && (
           <div className="note warn" style={{ fontSize: 11 }}>
-            Funding is {(market.funding.ratePerHour * 100).toFixed(2)}%/h because the last trade ({price(market.last, market.priceDecimals)}) is far from the oracle. The premium uses the last trade as the perp price,
-            so after a gap a stale print drives funding until someone trades (finding J).
+            Funding is {(market.funding.ratePerHour * 100).toFixed(2)}%/h because the last trade (
+            {price(market.last, market.priceDecimals)}) is far from the oracle. The premium uses the
+            last trade as the perp price, so after a gap a stale print drives funding until someone
+            trades (finding J).
           </div>
         )}
         {g && (
@@ -218,7 +290,9 @@ export function InfoPanel({ market }: { market: MarketView }) {
                   </span>
                 </div>
                 <div className="row" style={{ fontSize: 11 }}>
-                  <span className="muted" style={{ width: 52 }}>volume</span>
+                  <span className="muted" style={{ width: 52 }}>
+                    volume
+                  </span>
                   <div className="bar grow">
                     <i style={{ width: `${progress(g.volume, g.next.volume) * 100}%` }} />
                   </div>
@@ -227,7 +301,9 @@ export function InfoPanel({ market }: { market: MarketView }) {
                   </span>
                 </div>
                 <div className="row" style={{ fontSize: 11 }}>
-                  <span className="muted" style={{ width: 52 }}>depth</span>
+                  <span className="muted" style={{ width: 52 }}>
+                    depth
+                  </span>
                   <div className="bar grow">
                     <i style={{ width: `${progress(g.depth, g.next.depth) * 100}%` }} />
                   </div>
@@ -236,7 +312,9 @@ export function InfoPanel({ market }: { market: MarketView }) {
                   </span>
                 </div>
                 <div className="faint" style={{ fontSize: 11 }}>
-                  Depth is proxied by open interest{market.curve ? " plus USDC in the curve" : ""}. Tiers never go back down (finding H: leverage outlives the liquidity that earned it).
+                  Depth is proxied by open interest{market.curve ? " plus USDC in the curve" : ""}.
+                  Tiers never go back down (finding H: leverage outlives the liquidity that earned
+                  it).
                 </div>
               </>
             ) : (
@@ -251,7 +329,8 @@ export function InfoPanel({ market }: { market: MarketView }) {
               <i style={{ width: `${market.taper.progress * 100}%`, background: "var(--warn)" }} />
             </div>
             <div className="faint" style={{ fontSize: 11 }}>
-              Over the last {Math.round(market.taper.seconds / 60)} minutes, margin rises to full collateral against max loss, so nobody is levered into the resolution gap.
+              Over the last {Math.round(market.taper.seconds / 60)} minutes, margin rises to full
+              collateral against max loss, so nobody is levered into the resolution gap.
             </div>
           </div>
         )}
@@ -260,7 +339,15 @@ export function InfoPanel({ market }: { market: MarketView }) {
   );
 }
 
-export function SpotPanel({ market, account, signedIn }: { market: MarketView; account: AccountView | undefined; signedIn: boolean }) {
+export function SpotPanel({
+  market,
+  account,
+  signedIn,
+}: {
+  market: MarketView;
+  account: AccountView | undefined;
+  signedIn: boolean;
+}) {
   const toast = useToast();
   const server = useServerError();
   const [selling, setSelling] = useState(false);
@@ -300,7 +387,9 @@ export function SpotPanel({ market, account, signedIn }: { market: MarketView; a
       <div className="panel-head">
         <h3>Spot · buy on the curve</h3>
         <span className="spacer" />
-        <span className={`badge ${c.oracleWindow === 0 ? "down" : "info"}`}>{c.oracleWindow === 0 ? "instant oracle" : `${c.oracleWindow / 60}m TWAP oracle`}</span>
+        <span className={`badge ${c.oracleWindow === 0 ? "down" : "info"}`}>
+          {c.oracleWindow === 0 ? "instant oracle" : `${c.oracleWindow / 60}m TWAP oracle`}
+        </span>
       </div>
       <div className="panel-body col" style={{ gap: 10 }}>
         <dl className="kv">
@@ -329,12 +418,23 @@ export function SpotPanel({ market, account, signedIn }: { market: MarketView; a
               onChange: ({ value }) => {
                 const bad = positive(value, "Amount");
                 if (bad) return bad;
-                if (wallet !== null && num(value) > num(wallet)) return `More than your wallet (${usd(wallet)})`;
+                if (wallet !== null && num(value) > num(wallet))
+                  return `More than your wallet (${usd(wallet)})`;
                 return undefined;
               },
             }}
           >
-            {(f) => <Input field={f} className="mono" inputMode="decimal" placeholder="USDC" aria-label="USDC to spend" transform={(v) => v.trim()} wrap={{ flex: 1 }} />}
+            {(f) => (
+              <Input
+                field={f}
+                className="mono"
+                inputMode="decimal"
+                placeholder="USDC"
+                aria-label="USDC to spend"
+                transform={(v) => v.trim()}
+                wrap={{ flex: 1 }}
+              />
+            )}
           </buy.Field>
           <button type="submit" className="btn buy" disabled={!signedIn || busy}>
             {buying ? "Buying…" : "Buy"}
@@ -347,12 +447,19 @@ export function SpotPanel({ market, account, signedIn }: { market: MarketView; a
               key={f}
               className="btn small sell"
               disabled={!signedIn || busy || !held}
-              onClick={() => held && sell(String(Math.floor(num(held.tokens) * f)), `Sold ${f * 100}% of ${market.id}`)}
+              onClick={() =>
+                held &&
+                sell(String(Math.floor(num(held.tokens) * f)), `Sold ${f * 100}% of ${market.id}`)
+              }
             >
               {f * 100}%
             </button>
           ))}
-          <button className="btn small sell" disabled={!signedIn || busy || !held} onClick={() => sell("all", `Sold all ${market.id}`)}>
+          <button
+            className="btn small sell"
+            disabled={!signedIn || busy || !held}
+            onClick={() => sell("all", `Sold all ${market.id}`)}
+          >
             All
           </button>
         </div>

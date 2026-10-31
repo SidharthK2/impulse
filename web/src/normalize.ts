@@ -42,5 +42,7 @@ export function normalizeAccount(raw: unknown): AccountView | null {
   };
 }
 
-export const normalizeMarkets = (xs: unknown) => (Array.isArray(xs) ? xs.map((m) => normalizeMarket(m as Loose<MarketView>)) : []);
-export const normalizeEvents = (xs: unknown) => (Array.isArray(xs) ? xs.map((e) => normalizeEvent(e as Loose<RiskEvent>)) : []);
+export const normalizeMarkets = (xs: unknown) =>
+  Array.isArray(xs) ? xs.map((m) => normalizeMarket(m as Loose<MarketView>)) : [];
+export const normalizeEvents = (xs: unknown) =>
+  Array.isArray(xs) ? xs.map((e) => normalizeEvent(e as Loose<RiskEvent>)) : [];

@@ -27,7 +27,11 @@ export function AccountPanel({ account, markets, current, signedIn }: Props) {
   const [tab, setTab] = useState<Tab>("positions");
   const feed = useFeed();
   const open = account?.positions.filter((p) => p.side !== "flat") ?? [];
-  const incidents = current ? feed.filter((e) => e.market === current.id && (e.kind === "bankrupt" || e.kind === "liquidation")).length : (account?.risk.length ?? 0);
+  const incidents = current
+    ? feed.filter(
+        (e) => e.market === current.id && (e.kind === "bankrupt" || e.kind === "liquidation"),
+      ).length
+    : (account?.risk.length ?? 0);
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: "positions", label: "Positions", count: open.length + (account?.spot.length ?? 0) },
     { id: "orders", label: "Open orders", count: account?.orders.length },
@@ -88,16 +92,30 @@ function CancelAll() {
   );
 }
 
-function Positions({ account, markets }: { account: AccountView; markets: Record<string, MarketView> }) {
+function Positions({
+  account,
+  markets,
+}: {
+  account: AccountView;
+  markets: Record<string, MarketView>;
+}) {
   const toast = useToast();
   const [marginFor, setMarginFor] = useState<string | null>(null);
   const phone = useMediaQuery("(max-width: 760px)");
   const open = account.positions.filter((p) => p.side !== "flat");
-  if (open.length === 0 && account.spot.length === 0) return <div className="empty">No open positions.</div>;
+  if (open.length === 0 && account.spot.length === 0)
+    return <div className="empty">No open positions.</div>;
 
   const close = (p: PositionView) =>
-    act<{ status: string; reason: string | null }>("POST", "/api/positions/close", { market: p.market })
-      .then((r) => toast(r.status === "filled" ? `Closed ${p.market}` : `Close ${r.status}: ${r.reason ?? ""}`, r.status === "filled" ? "up" : "warn"))
+    act<{ status: string; reason: string | null }>("POST", "/api/positions/close", {
+      market: p.market,
+    })
+      .then((r) =>
+        toast(
+          r.status === "filled" ? `Closed ${p.market}` : `Close ${r.status}: ${r.reason ?? ""}`,
+          r.status === "filled" ? "up" : "warn",
+        ),
+      )
       .catch((e) => toast((e as Error).message, "down"));
 
   // Phones: one card per position instead of a twelve-column table.
@@ -117,7 +135,11 @@ function Positions({ account, markets }: { account: AccountView; markets: Record
                   {p.side} {p.leverage ? `${p.leverage.toFixed(1)}×` : ""}
                 </span>
                 <span className="spacer" />
-                <Roll className={`mono ${tone(num(p.pnl))}`} text={usd(p.pnl, { sign: true })} value={num(p.pnl)} />
+                <Roll
+                  className={`mono ${tone(num(p.pnl))}`}
+                  text={usd(p.pnl, { sign: true })}
+                  value={num(p.pnl)}
+                />
               </div>
               <dl className="pos-card-figs">
                 <div>
@@ -134,7 +156,9 @@ function Positions({ account, markets }: { account: AccountView; markets: Record
                 </div>
                 <div>
                   <dt>Liq.</dt>
-                  <dd className="warn">{p.liquidationPrice ? price(p.liquidationPrice, d) : "—"}</dd>
+                  <dd className="warn">
+                    {p.liquidationPrice ? price(p.liquidationPrice, d) : "—"}
+                  </dd>
                 </div>
                 <div>
                   <dt>Margin</dt>
@@ -146,14 +170,23 @@ function Positions({ account, markets }: { account: AccountView; markets: Record
                 </div>
               </dl>
               <div className="pos-card-actions">
-                <button className="btn small" onClick={() => setMarginFor(marginFor === p.market ? null : p.market)}>
+                <button
+                  className="btn small"
+                  onClick={() => setMarginFor(marginFor === p.market ? null : p.market)}
+                >
                   Margin
                 </button>
                 <button className="btn small danger" onClick={() => close(p)}>
                   Close
                 </button>
               </div>
-              {marginFor === p.market && <MarginForm position={p} wallet={account.wallet} onDone={() => setMarginFor(null)} />}
+              {marginFor === p.market && (
+                <MarginForm
+                  position={p}
+                  wallet={account.wallet}
+                  onDone={() => setMarginFor(null)}
+                />
+              )}
             </div>
           );
         })}
@@ -190,12 +223,26 @@ function Positions({ account, markets }: { account: AccountView; markets: Record
           <th className="right">Size</th>
           <th className="right">Entry</th>
           <th className="right">Mark</th>
-          <th className="right" title="Approximate price where equity hits maintenance margin">Liq.</th>
+          <th className="right" title="Approximate price where equity hits maintenance margin">
+            Liq.
+          </th>
           <th className="right">Margin</th>
           <th className="right">Unrealized</th>
-          <th className="right" title="Funding paid (−) or received (+)">Funding</th>
-          <th className="right" title="ADL transfers: − haircuts you paid for someone else's shortfall, + shortfall covered for you">ADL</th>
-          <th className="right" title="Equity minus net margin posted: trading, funding and ADL together">Total PnL</th>
+          <th className="right" title="Funding paid (−) or received (+)">
+            Funding
+          </th>
+          <th
+            className="right"
+            title="ADL transfers: − haircuts you paid for someone else's shortfall, + shortfall covered for you"
+          >
+            ADL
+          </th>
+          <th
+            className="right"
+            title="Equity minus net margin posted: trading, funding and ADL together"
+          >
+            Total PnL
+          </th>
           <th className="right">Lev.</th>
           <th />
         </tr>
@@ -216,20 +263,29 @@ function Positions({ account, markets }: { account: AccountView; markets: Record
                 <td className="right mono">{size(p.size, m?.szDecimals ?? 4)}</td>
                 <td className="right mono">{price(p.entry, d)}</td>
                 <td className="right mono">{price(p.mark, d)}</td>
-                <td className="right mono warn">{p.liquidationPrice ? price(p.liquidationPrice, d) : "—"}</td>
+                <td className="right mono warn">
+                  {p.liquidationPrice ? price(p.liquidationPrice, d) : "—"}
+                </td>
                 <td className="right mono">{usd(p.collateral)}</td>
                 <td className={`right mono ${tone(num(p.unrealized))}`}>
                   <Roll text={usd(p.unrealized, { sign: true })} value={num(p.unrealized)} />
                 </td>
-                <td className={`right mono ${tone(num(p.funding))}`}>{usd(p.funding, { sign: true })}</td>
-                <td className={`right mono ${tone(num(p.adl))}`}>{num(p.adl) === 0 ? "—" : usd(p.adl, { sign: true })}</td>
+                <td className={`right mono ${tone(num(p.funding))}`}>
+                  {usd(p.funding, { sign: true })}
+                </td>
+                <td className={`right mono ${tone(num(p.adl))}`}>
+                  {num(p.adl) === 0 ? "—" : usd(p.adl, { sign: true })}
+                </td>
                 <td className={`right mono ${tone(num(p.pnl))}`}>
                   <Roll text={usd(p.pnl, { sign: true })} value={num(p.pnl)} />
                 </td>
                 <td className="right mono">{p.leverage ? `${p.leverage.toFixed(1)}×` : "—"}</td>
                 <td className="right">
                   <div className="row" style={{ justifyContent: "flex-end", gap: 4 }}>
-                    <button className="btn small" onClick={() => setMarginFor(marginFor === p.market ? null : p.market)}>
+                    <button
+                      className="btn small"
+                      onClick={() => setMarginFor(marginFor === p.market ? null : p.market)}
+                    >
                       Margin
                     </button>
                     <button className="btn small danger" onClick={() => close(p)}>
@@ -241,7 +297,11 @@ function Positions({ account, markets }: { account: AccountView; markets: Record
               {marginFor === p.market && (
                 <tr>
                   <td colSpan={12}>
-                    <MarginForm position={p} wallet={account.wallet} onDone={() => setMarginFor(null)} />
+                    <MarginForm
+                      position={p}
+                      wallet={account.wallet}
+                      onDone={() => setMarginFor(null)}
+                    />
                   </td>
                 </tr>
               )}
@@ -282,10 +342,12 @@ function AccountRisk({ account }: { account: AccountView }) {
           Your shortfalls others covered: <b className="mono up">{usd(l.adlCovered)}</b>
         </span>
         <span>
-          Net funding: <b className={`mono ${tone(num(l.funding))}`}>{usd(l.funding, { sign: true })}</b>
+          Net funding:{" "}
+          <b className={`mono ${tone(num(l.funding))}`}>{usd(l.funding, { sign: true })}</b>
         </span>
         <span>
-          Realized trading PnL: <b className={`mono ${tone(num(l.realized))}`}>{usd(l.realized, { sign: true })}</b>
+          Realized trading PnL:{" "}
+          <b className={`mono ${tone(num(l.realized))}`}>{usd(l.realized, { sign: true })}</b>
         </span>
       </div>
       <RiskList events={account.risk} />
@@ -294,7 +356,15 @@ function AccountRisk({ account }: { account: AccountView }) {
 }
 
 /** Add or remove isolated margin. The button pressed sets `dir`, which the amount is checked against. */
-function MarginForm({ position: p, wallet, onDone }: { position: PositionView; wallet: string; onDone: () => void }) {
+function MarginForm({
+  position: p,
+  wallet,
+  onDone,
+}: {
+  position: PositionView;
+  wallet: string;
+  onDone: () => void;
+}) {
   const toast = useToast();
   const server = useServerError();
   const form = useForm({
@@ -302,8 +372,14 @@ function MarginForm({ position: p, wallet, onDone }: { position: PositionView; w
     onSubmit: async ({ value }) => {
       server.clear();
       try {
-        await act("POST", "/api/margin", { market: p.market, amount: `${value.dir === "remove" ? "-" : ""}${value.amount}` });
-        toast(`${value.dir === "add" ? "Added" : "Removed"} $${value.amount} margin on ${p.market}`, "up");
+        await act("POST", "/api/margin", {
+          market: p.market,
+          amount: `${value.dir === "remove" ? "-" : ""}${value.amount}`,
+        });
+        toast(
+          `${value.dir === "add" ? "Added" : "Removed"} $${value.amount} margin on ${p.market}`,
+          "up",
+        );
         onDone();
       } catch (e) {
         server.fail(e);
@@ -330,8 +406,10 @@ function MarginForm({ position: p, wallet, onDone }: { position: PositionView; w
           onChange: ({ value, fieldApi }) => {
             const bad = positive(value, "Amount");
             if (bad) return bad;
-            if (fieldApi.form.getFieldValue("dir") === "remove" && num(value) > num(p.releasable)) return `At most ${usd(p.releasable)} can be removed`;
-            if (fieldApi.form.getFieldValue("dir") === "add" && num(value) > num(wallet)) return `More than your wallet (${usd(wallet)})`;
+            if (fieldApi.form.getFieldValue("dir") === "remove" && num(value) > num(p.releasable))
+              return `At most ${usd(p.releasable)} can be removed`;
+            if (fieldApi.form.getFieldValue("dir") === "add" && num(value) > num(wallet))
+              return `More than your wallet (${usd(wallet)})`;
             return undefined;
           },
         }}
@@ -353,10 +431,20 @@ function MarginForm({ position: p, wallet, onDone }: { position: PositionView; w
           </div>
         )}
       </form.Field>
-      <button type="submit" className="btn small" disabled={pending} onClick={() => form.setFieldValue("dir", "add")}>
+      <button
+        type="submit"
+        className="btn small"
+        disabled={pending}
+        onClick={() => form.setFieldValue("dir", "add")}
+      >
         Add
       </button>
-      <button type="submit" className="btn small" disabled={pending} onClick={() => form.setFieldValue("dir", "remove")}>
+      <button
+        type="submit"
+        className="btn small"
+        disabled={pending}
+        onClick={() => form.setFieldValue("dir", "remove")}
+      >
         Remove
       </button>
       <FormError error={server.error} />
@@ -364,7 +452,13 @@ function MarginForm({ position: p, wallet, onDone }: { position: PositionView; w
   );
 }
 
-function Orders({ account, markets }: { account: AccountView; markets: Record<string, MarketView> }) {
+function Orders({
+  account,
+  markets,
+}: {
+  account: AccountView;
+  markets: Record<string, MarketView>;
+}) {
   const toast = useToast();
   if (account.orders.length === 0) return <div className="empty">No open orders.</div>;
   return (
@@ -390,15 +484,30 @@ function Orders({ account, markets }: { account: AccountView; markets: Record<st
               <td>{o.market}</td>
               <td className={o.side === "buy" ? "up" : "down"}>
                 {o.side}
-                {o.reduceOnly && <span className="badge" style={{ marginLeft: 6 }}>reduce</span>}
-                {o.tif === "alo" && <span className="badge" style={{ marginLeft: 6 }}>post</span>}
+                {o.reduceOnly && (
+                  <span className="badge" style={{ marginLeft: 6 }}>
+                    reduce
+                  </span>
+                )}
+                {o.tif === "alo" && (
+                  <span className="badge" style={{ marginLeft: 6 }}>
+                    post
+                  </span>
+                )}
               </td>
               <td className="right mono">{price(o.price, m?.priceDecimals ?? 4)}</td>
               <td className="right mono">{size(o.size, m?.szDecimals ?? 4)}</td>
               <td className="right mono muted">{size(o.filled, m?.szDecimals ?? 4)}</td>
               <td className="right mono">{o.leverage}×</td>
               <td className="right">
-                <button className="btn small" onClick={() => api("DELETE", `/api/orders/${o.id}`).catch((e) => toast((e as Error).message, "down"))}>
+                <button
+                  className="btn small"
+                  onClick={() =>
+                    api("DELETE", `/api/orders/${o.id}`).catch((e) =>
+                      toast((e as Error).message, "down"),
+                    )
+                  }
+                >
                   Cancel
                 </button>
               </td>
@@ -410,7 +519,13 @@ function Orders({ account, markets }: { account: AccountView; markets: Record<st
   );
 }
 
-function Fills({ account, markets }: { account: AccountView; markets: Record<string, MarketView> }) {
+function Fills({
+  account,
+  markets,
+}: {
+  account: AccountView;
+  markets: Record<string, MarketView>;
+}) {
   if (account.fills.length === 0) return <div className="empty">No fills yet.</div>;
   return (
     <table className="grid">
@@ -434,7 +549,11 @@ function Fills({ account, markets }: { account: AccountView; markets: Record<str
               <td className="mono faint">{clock(f.time)}</td>
               <td>
                 {f.market}
-                {f.kind === "spot" && <span className="badge info" style={{ marginLeft: 6 }}>spot</span>}
+                {f.kind === "spot" && (
+                  <span className="badge info" style={{ marginLeft: 6 }}>
+                    spot
+                  </span>
+                )}
               </td>
               <td className={f.mySide === "buy" ? "up" : "down"}>{f.mySide}</td>
               <td className="right mono">{price(f.price, m?.priceDecimals ?? 4)}</td>
@@ -494,9 +613,13 @@ function Holders({ market }: { market: MarketView }) {
             {sorted.map((p) => (
               <tr key={p.account}>
                 <td>{p.account}</td>
-                <td className={`right mono ${tone(num(p.size))}`}>{size(p.size, market.szDecimals)}</td>
+                <td className={`right mono ${tone(num(p.size))}`}>
+                  {size(p.size, market.szDecimals)}
+                </td>
                 <td className="right mono">{usd(p.collateral)}</td>
-                <td className={`right mono ${tone(num(p.adl))}`}>{num(p.adl) === 0 ? "—" : usd(p.adl, { sign: true })}</td>
+                <td className={`right mono ${tone(num(p.adl))}`}>
+                  {num(p.adl) === 0 ? "—" : usd(p.adl, { sign: true })}
+                </td>
               </tr>
             ))}
           </tbody>

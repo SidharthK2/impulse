@@ -47,7 +47,12 @@ export function PulseField({ className = "" }: { className?: string }) {
     const ctx = el.getContext("2d")!;
     const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
     const css = getComputedStyle(document.documentElement);
-    const ink = { grain: css.getPropertyValue("--line").trim(), dim: css.getPropertyValue("--line-2").trim(), mid: css.getPropertyValue("--faint").trim(), hot: css.getPropertyValue("--accent").trim() };
+    const ink = {
+      grain: css.getPropertyValue("--line").trim(),
+      dim: css.getPropertyValue("--line-2").trim(),
+      mid: css.getPropertyValue("--faint").trim(),
+      hot: css.getPropertyValue("--accent").trim(),
+    };
     // A true monospace: the rows are space-padded strings, so every character must be one cell wide (the app's
     // number font is proportional Inter).
     const font = '12px ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace';
@@ -83,14 +88,17 @@ export function PulseField({ className = "" }: { className?: string }) {
       const body = blank();
       const hot = blank();
       const k = Math.floor(t * 0.6);
-      for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) if (grain(c, r, k) < 0.06) bg[r]![c] = "·";
+      for (let r = 0; r < rows; r++)
+        for (let c = 0; c < cols; c++) if (grain(c, r, k) < 0.06) bg[r]![c] = "·";
       for (const wv of WAVES) {
         const base = wv.y * rows;
         for (let c = 0; c < cols; c++) {
           const u = ((((c + wv.phase - wv.speed * t) / wv.period) % 1) + 1) % 1;
           const y = base + shape(u) * wv.amp;
           // Flat stretches are a thin faint dash; the spike (where the line is moving) is a dense glyph band.
-          const steep = Math.abs(shape(Math.min(1, u + 0.01)) - shape(Math.max(0, u - 0.01))) > 0.02 || Math.abs(shape(u)) > 0.05;
+          const steep =
+            Math.abs(shape(Math.min(1, u + 0.01)) - shape(Math.max(0, u - 0.01))) > 0.02 ||
+            Math.abs(shape(u)) > 0.05;
           if (!steep) {
             const r = Math.round(y);
             if (r >= 0 && r < rows && (c & 1) === 0) flat[r]![c] = "-";

@@ -31,7 +31,9 @@ export function PortfolioPage() {
           </div>
           <div className="card">
             <span className="label">Total PnL</span>
-            <span className={`v ${tone(num(account.pnl))}`}>{usd(account.pnl, { sign: true })}</span>
+            <span className={`v ${tone(num(account.pnl))}`}>
+              {usd(account.pnl, { sign: true })}
+            </span>
           </div>
           <div className="card">
             <span className="label">Wallet</span>

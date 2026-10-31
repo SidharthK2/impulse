@@ -2,7 +2,14 @@ import { type AnyFieldApi, useForm, useSelector } from "@tanstack/react-form";
 import { useNavigate } from "@tanstack/react-router";
 import { type ReactNode, useEffect, useState } from "react";
 import { api, getAdminToken, setAdminToken } from "../api";
-import { FieldError, FormError, Input, invalid, positive, useServerError } from "../components/form";
+import {
+  FieldError,
+  FormError,
+  Input,
+  invalid,
+  positive,
+  useServerError,
+} from "../components/form";
 import { useToast } from "../components/ui";
 import { num, price, toInput, usd } from "../format";
 import { act, useMarkets } from "../queries";
@@ -10,12 +17,16 @@ import type { MarketView } from "../types";
 
 // ---------- admin ----------
 
-type Status = { bots: { enabled: boolean; accounts: { id: string; wallet: string }[] } | null } | null;
+type Status = {
+  bots: { enabled: boolean; accounts: { id: string; wallet: string }[] } | null;
+} | null;
 
-const adminPost = <T = unknown,>(path: string, body: Record<string, unknown>) => act<T>("POST", path, body, { admin: true });
+const adminPost = <T = unknown,>(path: string, body: Record<string, unknown>) =>
+  act<T>("POST", path, body, { admin: true });
 
 /** The chosen market if it's still in the list, else the first one. */
-const pick = (id: string, list: MarketView[]) => (list.some((m) => m.id === id) ? id : (list[0]?.id ?? ""));
+const pick = (id: string, list: MarketView[]) =>
+  list.some((m) => m.id === id) ? id : (list[0]?.id ?? "");
 
 const HANDLE = /^@?[A-Za-z0-9_]{2,20}$/;
 
@@ -53,19 +64,26 @@ export function AdminPage() {
   };
 
   const hold = useForm({ defaultValues: { seconds: "120" } });
-  const holdSeconds = useSelector(hold.store, (s) => (holdError(s.values.seconds) ? 0 : Number(s.values.seconds)));
+  const holdSeconds = useSelector(hold.store, (s) =>
+    holdError(s.values.seconds) ? 0 : Number(s.values.seconds),
+  );
 
   const gap = (m: MarketView, factor: number) => {
     const p = num(m.mark) * factor;
     const v = m.kind === "binary" ? Math.min(1, Math.max(0, p)) : p;
-    void call("/api/admin/price", { market: m.id, price: toInput(v, 9), holdSeconds }, `${m.id} → ${toInput(v, m.priceDecimals)}`);
+    void call(
+      "/api/admin/price",
+      { market: m.id, price: toInput(v, 9), holdSeconds },
+      `${m.id} → ${toInput(v, m.priceDecimals)}`,
+    );
   };
 
   return (
     <div className="page">
       <h1>Admin</h1>
       <p className="lead">
-        Force oracle gaps, resolve markets, list markets and run the house bots. The server prints its admin token at startup (default <code>impulse-admin</code>).
+        Force oracle gaps, resolve markets, list markets and run the house bots. The server prints
+        its admin token at startup (default <code>impulse-admin</code>).
       </p>
       <TokenForm authorized={!!status} onSaved={() => void refresh()} />
 
@@ -75,7 +93,15 @@ export function AdminPage() {
       <div className="row hold-row">
         <span>Set a price and hold the feed for</span>
         <hold.Field name="seconds" validators={{ onChange: ({ value }) => holdError(value) }}>
-          {(f) => <Input field={f} className="mono" style={{ width: 70 }} inputMode="numeric" aria-label="Hold seconds" />}
+          {(f) => (
+            <Input
+              field={f}
+              className="mono"
+              style={{ width: 70 }}
+              inputMode="numeric"
+              aria-label="Hold seconds"
+            />
+          )}
         </hold.Field>
         <span>seconds (0 = the feed takes over on its next poll).</span>
       </div>
@@ -99,13 +125,31 @@ export function AdminPage() {
                   {m.status === "resolved" && <span className="badge info"> resolved</span>}
                 </td>
                 <td className="right mono">{price(m.mark, m.priceDecimals)}</td>
-                <td>{m.curve ? <span className="faint">curve-priced: pump it with spot buys</span> : <PriceForm market={m} holdSeconds={holdSeconds} onRelease={() => call("/api/admin/release", { market: m.id }, `${m.id} released to feed`)} />}</td>
+                <td>
+                  {m.curve ? (
+                    <span className="faint">curve-priced: pump it with spot buys</span>
+                  ) : (
+                    <PriceForm
+                      market={m}
+                      holdSeconds={holdSeconds}
+                      onRelease={() =>
+                        call("/api/admin/release", { market: m.id }, `${m.id} released to feed`)
+                      }
+                    />
+                  )}
+                </td>
                 <td>
                   {!m.curve && m.status === "open" && (
                     <div className="row" style={{ gap: 4 }}>
                       {(m.kind === "binary" ? [0.2, 0.5, 1.5] : [0.7, 0.85, 1.15, 1.4]).map((f) => (
-                        <button key={f} className={`btn small ${f < 1 ? "danger" : ""}`} onClick={() => gap(m, f)}>
-                          {f < 1 ? `−${Math.round((1 - f) * 100)}%` : `+${Math.round((f - 1) * 100)}%`}
+                        <button
+                          key={f}
+                          className={`btn small ${f < 1 ? "danger" : ""}`}
+                          onClick={() => gap(m, f)}
+                        >
+                          {f < 1
+                            ? `−${Math.round((1 - f) * 100)}%`
+                            : `+${Math.round((f - 1) * 100)}%`}
                         </button>
                       ))}
                     </div>
@@ -114,10 +158,30 @@ export function AdminPage() {
                 <td>
                   {m.resolvable && m.status === "open" && (
                     <div className="row" style={{ gap: 4 }}>
-                      <button className="btn small" onClick={() => confirm(`Resolve ${m.id} at 0?`) && call("/api/admin/resolve", { market: m.id, price: "0" }, `${m.id} resolved 0`)}>
+                      <button
+                        className="btn small"
+                        onClick={() =>
+                          confirm(`Resolve ${m.id} at 0?`) &&
+                          call(
+                            "/api/admin/resolve",
+                            { market: m.id, price: "0" },
+                            `${m.id} resolved 0`,
+                          )
+                        }
+                      >
                         → 0
                       </button>
-                      <button className="btn small" onClick={() => confirm(`Resolve ${m.id} at 1?`) && call("/api/admin/resolve", { market: m.id, price: "1" }, `${m.id} resolved 1`)}>
+                      <button
+                        className="btn small"
+                        onClick={() =>
+                          confirm(`Resolve ${m.id} at 1?`) &&
+                          call(
+                            "/api/admin/resolve",
+                            { market: m.id, price: "1" },
+                            `${m.id} resolved 1`,
+                          )
+                        }
+                      >
                         → 1
                       </button>
                     </div>
@@ -137,15 +201,35 @@ export function AdminPage() {
       {status?.bots ? (
         <div className="col">
           <div className="row">
-            <span>Bots are {status.bots.enabled ? <b className="up">running</b> : <b className="muted">paused</b>}</span>
-            <button className="btn small" onClick={() => call("/api/admin/bots", { enabled: !status.bots!.enabled }, status.bots!.enabled ? "bots paused" : "bots running")}>
+            <span>
+              Bots are{" "}
+              {status.bots.enabled ? (
+                <b className="up">running</b>
+              ) : (
+                <b className="muted">paused</b>
+              )}
+            </span>
+            <button
+              className="btn small"
+              onClick={() =>
+                call(
+                  "/api/admin/bots",
+                  { enabled: !status.bots!.enabled },
+                  status.bots!.enabled ? "bots paused" : "bots running",
+                )
+              }
+            >
               {status.bots.enabled ? "Pause" : "Resume"}
             </button>
           </div>
-          <div className="faint">{status.bots.accounts.map((a) => `${a.id} ${usd(a.wallet)}`).join(" · ")}</div>
+          <div className="faint">
+            {status.bots.accounts.map((a) => `${a.id} ${usd(a.wallet)}`).join(" · ")}
+          </div>
         </div>
       ) : (
-        <p>{status ? "Bots are disabled on this server (BOTS=0)." : "Authorize to see bot status."}</p>
+        <p>
+          {status ? "Bots are disabled on this server (BOTS=0)." : "Authorize to see bot status."}
+        </p>
       )}
 
       <Deposit />
@@ -154,7 +238,15 @@ export function AdminPage() {
 }
 
 /** A form element that submits through TanStack Form. */
-function FormBox({ form, className, children }: { form: { handleSubmit: () => Promise<void> }; className?: string; children: ReactNode }) {
+function FormBox({
+  form,
+  className,
+  children,
+}: {
+  form: { handleSubmit: () => Promise<void> };
+  className?: string;
+  children: ReactNode;
+}) {
   return (
     <form
       className={className}
@@ -169,10 +261,26 @@ function FormBox({ form, className, children }: { form: { handleSubmit: () => Pr
   );
 }
 
-function Select({ field, list, empty, label }: { field: AnyFieldApi; list: MarketView[]; empty: string; label?: (m: MarketView) => string }) {
+function Select({
+  field,
+  list,
+  empty,
+  label,
+}: {
+  field: AnyFieldApi;
+  list: MarketView[];
+  empty: string;
+  label?: (m: MarketView) => string;
+}) {
   return (
     <div className="field-wrap">
-      <select className={`input ${invalid(field) ? "bad" : ""}`} value={pick(field.state.value as string, list)} onChange={(e) => field.handleChange(e.target.value)} onBlur={field.handleBlur} disabled={!list.length}>
+      <select
+        className={`input ${invalid(field) ? "bad" : ""}`}
+        value={pick(field.state.value as string, list)}
+        onChange={(e) => field.handleChange(e.target.value)}
+        onBlur={field.handleBlur}
+        disabled={!list.length}
+      >
         {list.length === 0 && <option value="">{empty}</option>}
         {list.map((m) => (
           <option key={m.id} value={m.id}>
@@ -195,18 +303,42 @@ function TokenForm({ authorized, onSaved }: { authorized: boolean; onSaved: () =
   });
   return (
     <FormBox form={form} className="row token-form">
-      <form.Field name="token" validators={{ onChange: ({ value }) => (value.trim() ? undefined : "Enter the admin token") }}>
-        {(f) => <Input field={f} className="mono" type="password" placeholder="admin token" aria-label="Admin token" wrap={{ flex: 1 }} />}
+      <form.Field
+        name="token"
+        validators={{
+          onChange: ({ value }) => (value.trim() ? undefined : "Enter the admin token"),
+        }}
+      >
+        {(f) => (
+          <Input
+            field={f}
+            className="mono"
+            type="password"
+            placeholder="admin token"
+            aria-label="Admin token"
+            wrap={{ flex: 1 }}
+          />
+        )}
       </form.Field>
       <button type="submit" className="btn">
         Save
       </button>
-      <span className={authorized ? "up" : "muted"}>{authorized ? "authorized" : "not authorized"}</span>
+      <span className={authorized ? "up" : "muted"}>
+        {authorized ? "authorized" : "not authorized"}
+      </span>
     </FormBox>
   );
 }
 
-function PriceForm({ market: m, holdSeconds, onRelease }: { market: MarketView; holdSeconds: number; onRelease: () => void }) {
+function PriceForm({
+  market: m,
+  holdSeconds,
+  onRelease,
+}: {
+  market: MarketView;
+  holdSeconds: number;
+  onRelease: () => void;
+}) {
   const toast = useToast();
   const server = useServerError();
   const form = useForm({
@@ -230,14 +362,24 @@ function PriceForm({ market: m, holdSeconds, onRelease }: { market: MarketView; 
         validators={{
           onChange: ({ value }) => {
             if (m.kind === "binary") {
-              if (!value.trim() || !(Number(value) >= 0 && Number(value) <= 1)) return "Between 0 and 1";
+              if (!value.trim() || !(Number(value) >= 0 && Number(value) <= 1))
+                return "Between 0 and 1";
               return undefined;
             }
             return positive(value, "Price");
           },
         }}
       >
-        {(f) => <Input field={f} className="mono" style={{ width: 110 }} placeholder={m.mark ?? ""} inputMode="decimal" aria-label={`New price for ${m.id}`} />}
+        {(f) => (
+          <Input
+            field={f}
+            className="mono"
+            style={{ width: 110 }}
+            placeholder={m.mark ?? ""}
+            inputMode="decimal"
+            aria-label={`New price for ${m.id}`}
+          />
+        )}
       </form.Field>
       <button type="submit" className="btn small" disabled={pending || m.status !== "open"}>
         Set
@@ -287,11 +429,28 @@ function MirrorMarket() {
   return (
     <>
       <h2>Mirror a live market</h2>
-      <p>List any Polymarket market (paste its market URL, slug or id) or any Hyperliquid perp (a coin, or <code>xyz:TSLA</code> for a HIP-3 market). The venue's price becomes the oracle; the order book here is Impulse's own.</p>
+      <p>
+        List any Polymarket market (paste its market URL, slug or id) or any Hyperliquid perp (a
+        coin, or <code>xyz:TSLA</code> for a HIP-3 market). The venue's price becomes the oracle;
+        the order book here is Impulse's own.
+      </p>
       <div className="row mirror-forms">
         <FormBox form={pm} className="row grow">
-          <pm.Field name="ref" validators={{ onChange: ({ value }) => (value.trim() ? undefined : "Paste a market URL, slug or id") }}>
-            {(f) => <Input field={f} placeholder="polymarket.com/market/… or id" aria-label="Polymarket market" wrap={{ flex: "2 1 260px" }} />}
+          <pm.Field
+            name="ref"
+            validators={{
+              onChange: ({ value }) =>
+                value.trim() ? undefined : "Paste a market URL, slug or id",
+            }}
+          >
+            {(f) => (
+              <Input
+                field={f}
+                placeholder="polymarket.com/market/… or id"
+                aria-label="Polymarket market"
+                wrap={{ flex: "2 1 260px" }}
+              />
+            )}
           </pm.Field>
           <button type="submit" className="btn" disabled={pmPending}>
             Mirror Polymarket
@@ -299,8 +458,24 @@ function MirrorMarket() {
           <FormError error={pmServer.error} />
         </FormBox>
         <FormBox form={hl} className="row grow">
-          <hl.Field name="coin" validators={{ onChange: ({ value }) => (/^[A-Za-z0-9:]{1,24}$/.test(value.trim()) ? undefined : "A coin like DOGE, or xyz:TSLA") }}>
-            {(f) => <Input field={f} className="mono" placeholder="DOGE or xyz:TSLA" aria-label="Hyperliquid coin" wrap={{ flex: "1 1 140px" }} />}
+          <hl.Field
+            name="coin"
+            validators={{
+              onChange: ({ value }) =>
+                /^[A-Za-z0-9:]{1,24}$/.test(value.trim())
+                  ? undefined
+                  : "A coin like DOGE, or xyz:TSLA",
+            }}
+          >
+            {(f) => (
+              <Input
+                field={f}
+                className="mono"
+                placeholder="DOGE or xyz:TSLA"
+                aria-label="Hyperliquid coin"
+                wrap={{ flex: "1 1 140px" }}
+              />
+            )}
           </hl.Field>
           <button type="submit" className="btn" disabled={hlPending}>
             Mirror Hyperliquid
@@ -316,7 +491,16 @@ function CreateMarket() {
   const toast = useToast();
   const server = useServerError();
   const form = useForm({
-    defaultValues: { id: "", name: "", kind: "binary" as "binary" | "perp", price: "0.5", resolvesInMinutes: "30", taperMinutes: "10", adl: "pnl" as "pnl" | "size", volBps: "20" },
+    defaultValues: {
+      id: "",
+      name: "",
+      kind: "binary" as "binary" | "perp",
+      price: "0.5",
+      resolvesInMinutes: "30",
+      taperMinutes: "10",
+      adl: "pnl" as "pnl" | "size",
+      volBps: "20",
+    },
     onSubmit: async ({ value: f, formApi }) => {
       server.clear();
       try {
@@ -327,7 +511,13 @@ function CreateMarket() {
           price: f.price,
           adl: f.adl,
           ...(f.kind === "binary"
-            ? { ...(num(f.resolvesInMinutes) > 0 && { resolvesInMinutes: num(f.resolvesInMinutes) }), ...(num(f.taperMinutes) > 0 && num(f.resolvesInMinutes) > 0 && { taperMinutes: num(f.taperMinutes) }) }
+            ? {
+                ...(num(f.resolvesInMinutes) > 0 && {
+                  resolvesInMinutes: num(f.resolvesInMinutes),
+                }),
+                ...(num(f.taperMinutes) > 0 &&
+                  num(f.resolvesInMinutes) > 0 && { taperMinutes: num(f.taperMinutes) }),
+              }
             : { szDecimals: 2, volBps: num(f.volBps) }),
         });
         toast(`listed ${f.id}`, "up");
@@ -339,13 +529,25 @@ function CreateMarket() {
   });
   const kind = useSelector(form.store, (s) => s.values.kind);
   const pending = useSelector(form.store, (s) => s.isSubmitting);
-  const minutes = (v: string, what: string) => (v.trim() === "" || (Number(v) >= 0 && Number.isFinite(Number(v))) ? undefined : `${what} must be 0 or more minutes`);
+  const minutes = (v: string, what: string) =>
+    v.trim() === "" || (Number(v) >= 0 && Number.isFinite(Number(v)))
+      ? undefined
+      : `${what} must be 0 or more minutes`;
   return (
     <>
       <h2>List a market</h2>
-      <p>Binary markets move only when you set the price here, and can resolve on a schedule with a taper. Perps follow a random walk.</p>
+      <p>
+        Binary markets move only when you set the price here, and can resolve on a schedule with a
+        taper. Perps follow a random walk.
+      </p>
       <FormBox form={form} className="panel panel-body create-market">
-        <form.Field name="id" validators={{ onChange: ({ value }) => (/^[A-Za-z0-9_-]{2,32}$/.test(value) ? undefined : "2–32 letters, digits, - or _") }}>
+        <form.Field
+          name="id"
+          validators={{
+            onChange: ({ value }) =>
+              /^[A-Za-z0-9_-]{2,32}$/.test(value) ? undefined : "2–32 letters, digits, - or _",
+          }}
+        >
           {(f) => (
             <div className="field">
               <label>Id</label>
@@ -365,7 +567,11 @@ function CreateMarket() {
           {(f) => (
             <div className="field">
               <label>Kind</label>
-              <select className="input" value={f.state.value} onChange={(e) => f.handleChange(e.target.value as "binary" | "perp")}>
+              <select
+                className="input"
+                value={f.state.value}
+                onChange={(e) => f.handleChange(e.target.value as "binary" | "perp")}
+              >
                 <option value="binary">binary</option>
                 <option value="perp">perp (random walk)</option>
               </select>
@@ -379,7 +585,8 @@ function CreateMarket() {
             onChange: ({ value, fieldApi }) => {
               const bad = positive(value, "Start price");
               if (bad) return bad;
-              if (fieldApi.form.getFieldValue("kind") === "binary" && !(Number(value) < 1)) return "A binary starts between 0 and 1";
+              if (fieldApi.form.getFieldValue("kind") === "binary" && !(Number(value) < 1))
+                return "A binary starts between 0 and 1";
               return undefined;
             },
           }}
@@ -393,11 +600,19 @@ function CreateMarket() {
         </form.Field>
         {kind === "binary" ? (
           <>
-            <form.Field name="resolvesInMinutes" validators={{ onChange: ({ value }) => minutes(value, "Resolution") }}>
+            <form.Field
+              name="resolvesInMinutes"
+              validators={{ onChange: ({ value }) => minutes(value, "Resolution") }}
+            >
               {(f) => (
                 <div className="field">
                   <label>Resolves in (min)</label>
-                  <Input field={f} className="mono" placeholder="blank = whenever" inputMode="decimal" />
+                  <Input
+                    field={f}
+                    className="mono"
+                    placeholder="blank = whenever"
+                    inputMode="decimal"
+                  />
                 </div>
               )}
             </form.Field>
@@ -409,7 +624,8 @@ function CreateMarket() {
                   const bad = minutes(value, "Taper");
                   if (bad) return bad;
                   const r = num(fieldApi.form.getFieldValue("resolvesInMinutes"));
-                  if (num(value) > 0 && r > 0 && num(value) > r) return "Taper can't be longer than the time to resolution";
+                  if (num(value) > 0 && r > 0 && num(value) > r)
+                    return "Taper can't be longer than the time to resolution";
                   return undefined;
                 },
               }}
@@ -423,7 +639,10 @@ function CreateMarket() {
             </form.Field>
           </>
         ) : (
-          <form.Field name="volBps" validators={{ onChange: ({ value }) => positive(value, "Volatility") }}>
+          <form.Field
+            name="volBps"
+            validators={{ onChange: ({ value }) => positive(value, "Volatility") }}
+          >
             {(f) => (
               <div className="field">
                 <label>Volatility / step (bps)</label>
@@ -436,7 +655,11 @@ function CreateMarket() {
           {(f) => (
             <div className="field">
               <label>ADL rule</label>
-              <select className="input" value={f.state.value} onChange={(e) => f.handleChange(e.target.value as "pnl" | "size")}>
+              <select
+                className="input"
+                value={f.state.value}
+                onChange={(e) => f.handleChange(e.target.value as "pnl" | "size")}
+              >
                 <option value="pnl">capped PnL</option>
                 <option value="size">size pro-rata</option>
               </select>
@@ -464,7 +687,10 @@ function Deposit() {
     onSubmit: async ({ value, formApi }) => {
       server.clear();
       try {
-        await adminPost("/api/admin/deposit", { account: value.account.trim(), amount: value.amount });
+        await adminPost("/api/admin/deposit", {
+          account: value.account.trim(),
+          amount: value.amount,
+        });
         toast(`deposited $${value.amount} to ${value.account}`, "up");
         formApi.reset();
       } catch (e) {
@@ -477,11 +703,25 @@ function Deposit() {
     <>
       <h2>Deposit paper USDC</h2>
       <FormBox form={form} className="row deposit-form">
-        <form.Field name="account" validators={{ onChange: ({ value }) => (value.trim() ? undefined : "Which account?") }}>
+        <form.Field
+          name="account"
+          validators={{ onChange: ({ value }) => (value.trim() ? undefined : "Which account?") }}
+        >
           {(f) => <Input field={f} placeholder="account" aria-label="Account" />}
         </form.Field>
-        <form.Field name="amount" validators={{ onChange: ({ value }) => positive(value, "Amount") }}>
-          {(f) => <Input field={f} className="mono" placeholder="amount" inputMode="decimal" aria-label="Amount" />}
+        <form.Field
+          name="amount"
+          validators={{ onChange: ({ value }) => positive(value, "Amount") }}
+        >
+          {(f) => (
+            <Input
+              field={f}
+              className="mono"
+              placeholder="amount"
+              inputMode="decimal"
+              aria-label="Amount"
+            />
+          )}
         </form.Field>
         <button type="submit" className="btn" disabled={pending}>
           Deposit
@@ -519,7 +759,11 @@ function DemoControls({ markets }: { markets: MarketView[] }) {
     onSubmit: async ({ value, formApi }) => {
       coinServer.clear();
       try {
-        const m = await run<MarketView>("Demo coin listed", "/api/admin/demo-coin", value.handle ? { handle: value.handle } : {});
+        const m = await run<MarketView>(
+          "Demo coin listed",
+          "/api/admin/demo-coin",
+          value.handle ? { handle: value.handle } : {},
+        );
         formApi.reset();
         if (m?.id) void navigate({ to: "/trade/$market", params: { market: m.id } });
       } catch (e) {
@@ -535,7 +779,10 @@ function DemoControls({ markets }: { markets: MarketView[] }) {
       pumpServer.clear();
       const id = pick(value.market, live);
       try {
-        await run(`${value.dir === "up" ? "Pumped" : "Dumped"} ${id}`, "/api/admin/pump", { market: id, usdc: `${value.dir === "down" ? "-" : ""}${value.usdc}` });
+        await run(`${value.dir === "up" ? "Pumped" : "Dumped"} ${id}`, "/api/admin/pump", {
+          market: id,
+          usdc: `${value.dir === "down" ? "-" : ""}${value.usdc}`,
+        });
       } catch (e) {
         pumpServer.fail(e);
       }
@@ -552,7 +799,11 @@ function DemoControls({ markets }: { markets: MarketView[] }) {
       const p = num(m.mark) * value.factor;
       const v = m.kind === "binary" ? Math.min(1, Math.max(0, p)) : p;
       try {
-        await run(`${m.id} → ${toInput(v, m.priceDecimals)}`, "/api/admin/price", { market: m.id, price: toInput(v, 9), holdSeconds: 60 });
+        await run(`${m.id} → ${toInput(v, m.priceDecimals)}`, "/api/admin/price", {
+          market: m.id,
+          price: toInput(v, 9),
+          holdSeconds: 60,
+        });
       } catch (e) {
         crashServer.fail(e);
       }
@@ -565,7 +816,12 @@ function DemoControls({ markets }: { markets: MarketView[] }) {
     onSubmit: async ({ value, formApi }) => {
       preServer.clear();
       try {
-        await run<MarketView>(`Listed ${value.id}`, "/api/admin/preipo", { id: value.id, name: value.name || value.id, price: value.price, ...(value.description && { description: value.description }) });
+        await run<MarketView>(`Listed ${value.id}`, "/api/admin/preipo", {
+          id: value.id,
+          name: value.name || value.id,
+          price: value.price,
+          ...(value.description && { description: value.description }),
+        });
         formApi.reset();
       } catch (e) {
         preServer.fail(e);
@@ -580,7 +836,10 @@ function DemoControls({ markets }: { markets: MarketView[] }) {
       ipoServer.clear();
       const id = pick(value.market, privates);
       try {
-        await run(`${id} IPO at ${value.price}`, "/api/admin/ipo", { market: id, price: value.price });
+        await run(`${id} IPO at ${value.price}`, "/api/admin/ipo", {
+          market: id,
+          price: value.price,
+        });
         formApi.reset();
       } catch (e) {
         ipoServer.fail(e);
@@ -596,7 +855,10 @@ function DemoControls({ markets }: { markets: MarketView[] }) {
       const id = pick(value.market, binaries);
       if (!confirm(`Resolve ${id} at ${value.outcome}?`)) return;
       try {
-        await run(`${id} resolved ${value.outcome}`, "/api/admin/resolve", { market: id, price: value.outcome });
+        await run(`${id} resolved ${value.outcome}`, "/api/admin/resolve", {
+          market: id,
+          price: value.outcome,
+        });
       } catch (e) {
         resolveServer.fail(e);
       }
@@ -612,7 +874,10 @@ function DemoControls({ markets }: { markets: MarketView[] }) {
     resolve: useSelector(resolve.store, (s) => s.isSubmitting),
   };
   const usdc = useSelector(pump.store, (s) => s.values.usdc);
-  const marketRequired = (list: MarketView[], what: string) => ({ value }: { value: string }) => (pick(value, list) ? undefined : `No ${what} to pick`);
+  const marketRequired =
+    (list: MarketView[], what: string) =>
+    ({ value }: { value: string }) =>
+      pick(value, list) ? undefined : `No ${what} to pick`;
 
   return (
     <>
@@ -622,8 +887,23 @@ function DemoControls({ markets }: { markets: MarketView[] }) {
           <h3>Launch a demo coin</h3>
           <p className="small">Lists a creator coin with a snipe window and a few house snipes.</p>
           <div className="row top">
-            <coin.Field name="handle" validators={{ onChange: ({ value }) => (value.trim() === "" || HANDLE.test(value.trim()) ? undefined : "2–20 letters, digits or _") }}>
-              {(f) => <Input field={f} placeholder="@handle (blank = random)" aria-label="Demo coin handle" wrap={{ flex: 1 }} />}
+            <coin.Field
+              name="handle"
+              validators={{
+                onChange: ({ value }) =>
+                  value.trim() === "" || HANDLE.test(value.trim())
+                    ? undefined
+                    : "2–20 letters, digits or _",
+              }}
+            >
+              {(f) => (
+                <Input
+                  field={f}
+                  placeholder="@handle (blank = random)"
+                  aria-label="Demo coin handle"
+                  wrap={{ flex: 1 }}
+                />
+              )}
             </coin.Field>
             <button type="submit" className="btn primary" disabled={pending.coin}>
               Launch
@@ -639,15 +919,36 @@ function DemoControls({ markets }: { markets: MarketView[] }) {
             <pump.Field name="market" validators={{ onSubmit: marketRequired(live, "live coin") }}>
               {(f) => <Select field={f} list={live} empty="no live coins" />}
             </pump.Field>
-            <pump.Field name="usdc" validators={{ onChange: ({ value }) => positive(value, "Amount") }}>
-              {(f) => <Input field={f} className="mono" inputMode="decimal" aria-label="USDC" wrap={{ width: 120 }} />}
+            <pump.Field
+              name="usdc"
+              validators={{ onChange: ({ value }) => positive(value, "Amount") }}
+            >
+              {(f) => (
+                <Input
+                  field={f}
+                  className="mono"
+                  inputMode="decimal"
+                  aria-label="USDC"
+                  wrap={{ width: 120 }}
+                />
+              )}
             </pump.Field>
           </div>
           <div className="row">
-            <button type="submit" className="btn buy grow" disabled={pending.pump} onClick={() => pump.setFieldValue("dir", "up")}>
+            <button
+              type="submit"
+              className="btn buy grow"
+              disabled={pending.pump}
+              onClick={() => pump.setFieldValue("dir", "up")}
+            >
               Pump +${usdc}
             </button>
-            <button type="submit" className="btn sell grow" disabled={pending.pump} onClick={() => pump.setFieldValue("dir", "down")}>
+            <button
+              type="submit"
+              className="btn sell grow"
+              disabled={pending.pump}
+              onClick={() => pump.setFieldValue("dir", "down")}
+            >
               Dump −${usdc}
             </button>
           </div>
@@ -656,13 +957,29 @@ function DemoControls({ markets }: { markets: MarketView[] }) {
 
         <FormBox form={crash} className="panel panel-body col">
           <h3>Crash a market</h3>
-          <p className="small">Forces the oracle and holds it for 60 s. Longs past their bankruptcy price go bust and the shorts pay.</p>
+          <p className="small">
+            Forces the oracle and holds it for 60 s. Longs past their bankruptcy price go bust and
+            the shorts pay.
+          </p>
           <crash.Field name="market" validators={{ onSubmit: marketRequired(crashable, "market") }}>
-            {(f) => <Select field={f} list={crashable} empty="no markets" label={(m) => (m.kind === "binary" ? `${m.id} · ${m.name}` : m.id)} />}
+            {(f) => (
+              <Select
+                field={f}
+                list={crashable}
+                empty="no markets"
+                label={(m) => (m.kind === "binary" ? `${m.id} · ${m.name}` : m.id)}
+              />
+            )}
           </crash.Field>
           <div className="row">
             {[0.5, 0.7, 1.3, 1.6].map((f) => (
-              <button key={f} type="submit" className={`btn small grow ${f < 1 ? "danger" : ""}`} disabled={pending.crash} onClick={() => crash.setFieldValue("factor", f)}>
+              <button
+                key={f}
+                type="submit"
+                className={`btn small grow ${f < 1 ? "danger" : ""}`}
+                disabled={pending.crash}
+                onClick={() => crash.setFieldValue("factor", f)}
+              >
                 {f < 1 ? `−${Math.round((1 - f) * 100)}%` : `+${Math.round((f - 1) * 100)}%`}
               </button>
             ))}
@@ -673,17 +990,53 @@ function DemoControls({ markets }: { markets: MarketView[] }) {
         <FormBox form={pre} className="panel panel-body col">
           <h3>List a pre-IPO market</h3>
           <div className="row top">
-            <pre.Field name="id" validators={{ onChange: ({ value }) => (/^[A-Z0-9_-]{2,32}$/.test(value) ? undefined : "2–32 capitals, digits, - or _") }}>
-              {(f) => <Input field={f} className="mono" placeholder="ID-PRE" aria-label="Market id" transform={(v) => v.toUpperCase().trim()} wrap={{ flex: 1 }} />}
+            <pre.Field
+              name="id"
+              validators={{
+                onChange: ({ value }) =>
+                  /^[A-Z0-9_-]{2,32}$/.test(value) ? undefined : "2–32 capitals, digits, - or _",
+              }}
+            >
+              {(f) => (
+                <Input
+                  field={f}
+                  className="mono"
+                  placeholder="ID-PRE"
+                  aria-label="Market id"
+                  transform={(v) => v.toUpperCase().trim()}
+                  wrap={{ flex: 1 }}
+                />
+              )}
             </pre.Field>
-            <pre.Field name="price" validators={{ onChange: ({ value }) => positive(value, "Seed price") }}>
-              {(f) => <Input field={f} className="mono" placeholder="seed price" inputMode="decimal" aria-label="Seed price" wrap={{ flex: 1 }} />}
+            <pre.Field
+              name="price"
+              validators={{ onChange: ({ value }) => positive(value, "Seed price") }}
+            >
+              {(f) => (
+                <Input
+                  field={f}
+                  className="mono"
+                  placeholder="seed price"
+                  inputMode="decimal"
+                  aria-label="Seed price"
+                  wrap={{ flex: 1 }}
+                />
+              )}
             </pre.Field>
           </div>
-          <pre.Field name="name" validators={{ onChange: ({ value }) => (value.trim() ? undefined : "Name the company") }}>
+          <pre.Field
+            name="name"
+            validators={{
+              onChange: ({ value }) => (value.trim() ? undefined : "Name the company"),
+            }}
+          >
             {(f) => <Input field={f} placeholder="Company name" aria-label="Company name" />}
           </pre.Field>
-          <pre.Field name="description">{(f) => <Input field={f} placeholder="Description (optional)" aria-label="Description" />}</pre.Field>
+          <pre.Field name="description">
+            {(f) => (
+              <Input field={f} placeholder="Description (optional)" aria-label="Description" />
+            )}
+          </pre.Field>
           <button type="submit" className="btn primary" disabled={pending.pre}>
             List pre-IPO
           </button>
@@ -692,13 +1045,30 @@ function DemoControls({ markets }: { markets: MarketView[] }) {
 
         <FormBox form={ipo} className="panel panel-body col">
           <h3>IPO a pre-IPO market</h3>
-          <p className="small">Reprices it in one step to the IPO price. Whoever is on the wrong side of the gap pays.</p>
+          <p className="small">
+            Reprices it in one step to the IPO price. Whoever is on the wrong side of the gap pays.
+          </p>
           <div className="row top">
-            <ipo.Field name="market" validators={{ onSubmit: marketRequired(privates, "private market") }}>
+            <ipo.Field
+              name="market"
+              validators={{ onSubmit: marketRequired(privates, "private market") }}
+            >
               {(f) => <Select field={f} list={privates} empty="no private markets" />}
             </ipo.Field>
-            <ipo.Field name="price" validators={{ onChange: ({ value }) => positive(value, "IPO price") }}>
-              {(f) => <Input field={f} className="mono" placeholder={privates[0]?.mark ?? "price"} inputMode="decimal" aria-label="IPO price" wrap={{ width: 120 }} />}
+            <ipo.Field
+              name="price"
+              validators={{ onChange: ({ value }) => positive(value, "IPO price") }}
+            >
+              {(f) => (
+                <Input
+                  field={f}
+                  className="mono"
+                  placeholder={privates[0]?.mark ?? "price"}
+                  inputMode="decimal"
+                  aria-label="IPO price"
+                  wrap={{ width: 120 }}
+                />
+              )}
             </ipo.Field>
           </div>
           <button type="submit" className="btn primary" disabled={pending.ipo || !privates.length}>
@@ -709,12 +1079,28 @@ function DemoControls({ markets }: { markets: MarketView[] }) {
 
         <FormBox form={resolve} className="panel panel-body col">
           <h3>Resolve a binary</h3>
-          <resolve.Field name="market" validators={{ onSubmit: marketRequired(binaries, "open binary") }}>
-            {(f) => <Select field={f} list={binaries} empty="no open binaries" label={(m) => `${m.id} · ${m.name}`} />}
+          <resolve.Field
+            name="market"
+            validators={{ onSubmit: marketRequired(binaries, "open binary") }}
+          >
+            {(f) => (
+              <Select
+                field={f}
+                list={binaries}
+                empty="no open binaries"
+                label={(m) => `${m.id} · ${m.name}`}
+              />
+            )}
           </resolve.Field>
           <div className="row">
             {(["0", "1"] as const).map((p) => (
-              <button key={p} type="submit" className="btn grow" disabled={pending.resolve || !binaries.length} onClick={() => resolve.setFieldValue("outcome", p)}>
+              <button
+                key={p}
+                type="submit"
+                className="btn grow"
+                disabled={pending.resolve || !binaries.length}
+                onClick={() => resolve.setFieldValue("outcome", p)}
+              >
                 {p === "1" ? "YES → 1" : "NO → 0"}
               </button>
             ))}

@@ -8,13 +8,13 @@
   "assets": {
     "directory": "./dist",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*", "/ws"]
+    "run_worker_first": ["/api/*", "/ws"],
   },
   "routes": [{ "pattern": "impulse.sidkap.xyz", "custom_domain": true }],
   // Only the custom domain: no impulse-web.<subdomain>.workers.dev copy, no per-version preview URLs.
   "workers_dev": false,
   "preview_urls": false,
   "vars": {
-    "API_ORIGIN": "https://impulse-sid.fly.dev"
-  }
+    "API_ORIGIN": "https://impulse-sid.fly.dev",
+  },
 }

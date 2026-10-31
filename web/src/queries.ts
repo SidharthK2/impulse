@@ -4,18 +4,37 @@
 import { QueryClient, type QueryKey, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo } from "react";
 import { ApiError, api, live } from "./api";
-import { fixtureCall, fixtureCandles, isFixtureMarket, setRealMarketIds, useFixtureWorld } from "./fixtures";
+import {
+  fixtureCall,
+  fixtureCandles,
+  isFixtureMarket,
+  setRealMarketIds,
+  useFixtureWorld,
+} from "./fixtures";
 import { normalizeAccount, normalizeEvents, normalizeMarkets } from "./normalize";
 import { paced } from "./pacing";
 import { useSession } from "./store";
-import type { AccountView, BookView, Candle, FillView, LeaderRow, MarketView, RiskEvent } from "./types";
+import type {
+  AccountView,
+  BookView,
+  Candle,
+  FillView,
+  LeaderRow,
+  MarketView,
+  RiskEvent,
+} from "./types";
 
 export const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: Infinity, retry: 1, refetchOnWindowFocus: false } },
 });
 
 /** A query whose REST answer seeds the cache and whose websocket channel keeps it current. */
-function useLive<T>(key: QueryKey, ch: string | null, path: string | null, shape: (raw: unknown) => T) {
+function useLive<T>(
+  key: QueryKey,
+  ch: string | null,
+  path: string | null,
+  shape: (raw: unknown) => T,
+) {
   const qc = useQueryClient();
   const hash = JSON.stringify(key);
   useEffect(() => {
@@ -30,10 +49,14 @@ function useLive<T>(key: QueryKey, ch: string | null, path: string | null, shape
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ch, hash]);
   // Channels without a REST route (book, trades) just wait for their first push.
-  return useQuery({ queryKey: key, queryFn: async () => (path ? shape(await api("GET", path)) : new Promise<T>(() => {})), enabled: !!ch });
+  return useQuery({
+    queryKey: key,
+    queryFn: async () => (path ? shape(await api("GET", path)) : new Promise<T>(() => {})),
+    enabled: !!ch,
+  });
 }
 
-const same = <T,>(x: unknown) => x as T;
+const same = <T>(x: unknown) => x as T;
 
 export function useMarkets(): MarketView[] | undefined {
   const real = useLive(["markets"], "markets", "/api/markets", normalizeMarkets).data;
@@ -57,7 +80,12 @@ export function useFeed(): RiskEvent[] {
 
 export function useAccount(): AccountView | undefined {
   const key = useSession((s) => s.key);
-  const real = useLive(["account", key], key ? "account" : null, "/api/account", normalizeAccount).data;
+  const real = useLive(
+    ["account", key],
+    key ? "account" : null,
+    "/api/account",
+    normalizeAccount,
+  ).data;
   const snap = useFixtureWorld((s) => s.snap);
   return useMemo(() => {
     if (!snap) return real ?? undefined;
@@ -99,7 +127,12 @@ export function useBook(id: string): BookView | undefined {
 
 export function useTrades(id: string): FillView[] {
   const fixture = isFixtureMarket(id);
-  const real = useLive(["trades", id], fixture ? null : `trades:${id}`, null, same<FillView[]>).data;
+  const real = useLive(
+    ["trades", id],
+    fixture ? null : `trades:${id}`,
+    null,
+    same<FillView[]>,
+  ).data;
   const fx = useFixtureWorld((s) => (fixture ? s.snap?.trades[id] : undefined));
   return (fixture ? fx : real) ?? [];
 }
@@ -111,11 +144,20 @@ export function useCandles(id: string, enabled = true): Candle[] | undefined {
   const qc = useQueryClient();
   useEffect(() => {
     if (fixture || !enabled) return;
-    return live.subscribe(`candles:${id}`, (raw) => qc.setQueryData<Candle[]>(["candles", id], (old) => mergeCandles(old, raw as Candle[])));
+    return live.subscribe(`candles:${id}`, (raw) =>
+      qc.setQueryData<Candle[]>(["candles", id], (old) => mergeCandles(old, raw as Candle[])),
+    );
   }, [id, fixture, qc, enabled]);
-  const real = useQuery({ queryKey: ["candles", id], queryFn: () => api<Candle[]>("GET", `/api/markets/${encodeURIComponent(id)}/candles`), enabled: enabled && !fixture }).data;
+  const real = useQuery({
+    queryKey: ["candles", id],
+    queryFn: () => api<Candle[]>("GET", `/api/markets/${encodeURIComponent(id)}/candles`),
+    enabled: enabled && !fixture,
+  }).data;
   const snap = useFixtureWorld((s) => (fixture && enabled ? s.snap : null));
-  const fx = useMemo(() => (fixture && snap ? (fixtureCandles(id) ?? undefined) : undefined), [fixture, id, snap]);
+  const fx = useMemo(
+    () => (fixture && snap ? (fixtureCandles(id) ?? undefined) : undefined),
+    [fixture, id, snap],
+  );
   return fixture ? fx : real;
 }
 
@@ -138,7 +180,12 @@ export function useLeaderboard(): LeaderRow[] {
  * Send a request. Fixture markets are handled in the browser; with fixtures on, a contract endpoint the server
  * doesn't have yet (404), or one sent while signed out (401), falls through to the fixtures too.
  */
-export async function act<T = unknown>(method: string, path: string, body?: Record<string, unknown>, opts: { admin?: boolean } = {}): Promise<T> {
+export async function act<T = unknown>(
+  method: string,
+  path: string,
+  body?: Record<string, unknown>,
+  opts: { admin?: boolean } = {},
+): Promise<T> {
   const local = fixtureCall(method, path, body);
   if (local) return local.value as T;
   try {

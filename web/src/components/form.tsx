@@ -18,7 +18,9 @@ export function FieldError({ field }: { field: AnyFieldApi }) {
 }
 
 /** Whether a field should render as invalid (red border). */
-export const invalid = (field: AnyFieldApi) => field.state.meta.errors.some(Boolean) && (field.state.meta.isTouched || field.form.state.submissionAttempts > 0);
+export const invalid = (field: AnyFieldApi) =>
+  field.state.meta.errors.some(Boolean) &&
+  (field.state.meta.isTouched || field.form.state.submissionAttempts > 0);
 
 /**
  * A form-level error from the server. Kept outside the form's own error map, which would make `canSubmit`
@@ -26,7 +28,10 @@ export const invalid = (field: AnyFieldApi) => field.state.meta.errors.some(Bool
  */
 export function useServerError() {
   const [error, setError] = useState<string | null>(null);
-  const fail = useCallback((e: unknown) => setError(e instanceof ApiError || e instanceof Error ? e.message : String(e)), []);
+  const fail = useCallback(
+    (e: unknown) => setError(e instanceof ApiError || e instanceof Error ? e.message : String(e)),
+    [],
+  );
   const clear = useCallback(() => setError(null), []);
   return { error, fail, clear };
 }
@@ -70,7 +75,16 @@ export function multipleOf(v: string, step: string): boolean {
 }
 
 /** A text input bound to a field, with its inline error underneath. */
-export function Input({ field, className = "", wrap, transform, ...rest }: { field: AnyFieldApi; wrap?: CSSProperties; transform?: (v: string) => string } & Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange" | "onBlur">) {
+export function Input({
+  field,
+  className = "",
+  wrap,
+  transform,
+  ...rest
+}: { field: AnyFieldApi; wrap?: CSSProperties; transform?: (v: string) => string } & Omit<
+  InputHTMLAttributes<HTMLInputElement>,
+  "value" | "onChange" | "onBlur"
+>) {
   return (
     <div className="field-wrap" style={wrap}>
       <input

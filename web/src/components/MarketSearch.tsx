@@ -10,9 +10,16 @@ import { SearchIcon } from "./icons";
 import { change24h } from "./Market";
 import { displayName, headline } from "./status";
 
-const KIND: Record<MarketView["kind"], string> = { attention: "coin", preipo: "pre-IPO", perp: "perp", binary: "prediction" };
+const KIND: Record<MarketView["kind"], string> = {
+  attention: "coin",
+  preipo: "pre-IPO",
+  perp: "perp",
+  binary: "prediction",
+};
 
-const typing = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName));
+const typing = (t: EventTarget | null) =>
+  t instanceof HTMLElement &&
+  (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName));
 
 /** Global shortcuts that open the search. Mount once. */
 export function useSearchShortcut() {
@@ -50,7 +57,12 @@ function Palette({ onClose }: { onClose: () => void }) {
     const hit = (m: MarketView) => `${m.id} ${m.name} ${m.base}`.toLowerCase();
     return markets
       .filter((m) => !t || hit(m).includes(t))
-      .sort((a, b) => (t ? Number(!a.id.toLowerCase().startsWith(t)) - Number(!b.id.toLowerCase().startsWith(t)) : 0) || Number(b.volume24h) - Number(a.volume24h))
+      .sort(
+        (a, b) =>
+          (t
+            ? Number(!a.id.toLowerCase().startsWith(t)) - Number(!b.id.toLowerCase().startsWith(t))
+            : 0) || Number(b.volume24h) - Number(a.volume24h),
+      )
       .slice(0, 50);
   }, [markets, q]);
   useEffect(() => setSel(0), [q]);
@@ -65,7 +77,10 @@ function Palette({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="overlay palette-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div
+      className="overlay palette-overlay"
+      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    >
       <div className="palette" role="dialog" aria-modal="true" aria-label="Search markets">
         <div className="palette-input">
           <SearchIcon />
@@ -109,8 +124,12 @@ function Palette({ onClose }: { onClose: () => void }) {
                   <b>{displayName(m)}</b>
                   <span className="badge">{KIND[m.kind]}</span>
                 </span>
-                <span className="mono">{price(headline(m), Math.max(m.priceDecimals, m.snipe ? 6 : 0))}</span>
-                <span className={`mono palette-ch ${m.snipe ? "faint" : tone(ch)}`}>{m.snipe ? "sniping" : pct(ch)}</span>
+                <span className="mono">
+                  {price(headline(m), Math.max(m.priceDecimals, m.snipe ? 6 : 0))}
+                </span>
+                <span className={`mono palette-ch ${m.snipe ? "faint" : tone(ch)}`}>
+                  {m.snipe ? "sniping" : pct(ch)}
+                </span>
               </button>
             );
           })}

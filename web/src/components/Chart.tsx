@@ -8,7 +8,11 @@ import { type Range, usePrefs } from "../store";
 import type { Candle, MarketView, PositionView, RiskEvent } from "../types";
 import { type Incident, IncidentCard, incidents } from "./WhoPaid";
 
-const RANGES: Record<Range, number> = { "5m": 5 * 60_000, "1h": 60 * 60_000, "1d": 24 * 60 * 60_000 };
+const RANGES: Record<Range, number> = {
+  "5m": 5 * 60_000,
+  "1h": 60 * 60_000,
+  "1d": 24 * 60 * 60_000,
+};
 const MARKER_KINDS = new Set(["liquidation", "bankrupt", "haircut", "adl", "open", "ipo"]);
 const PAD = { top: 18, right: 72, bottom: 24, left: 8 };
 const HIT = 12;
@@ -43,7 +47,19 @@ interface Colors {
 function readColors(): Colors {
   const cs = getComputedStyle(document.documentElement);
   const v = (n: string) => cs.getPropertyValue(n).trim();
-  return { up: v("--up"), down: v("--down"), warn: v("--warn"), info: v("--info"), accent: v("--accent"), text: v("--text"), muted: v("--muted"), faint: v("--faint"), line: v("--line"), panel: v("--panel"), mono: v("--mono") };
+  return {
+    up: v("--up"),
+    down: v("--down"),
+    warn: v("--warn"),
+    info: v("--info"),
+    accent: v("--accent"),
+    text: v("--text"),
+    muted: v("--muted"),
+    faint: v("--faint"),
+    line: v("--line"),
+    panel: v("--panel"),
+    mono: v("--mono"),
+  };
 }
 
 /** 1, 2 or 5 × a power of ten, giving about `n` steps over `span`. */
@@ -55,7 +71,12 @@ function niceStep(span: number, n: number): number {
 }
 
 /** Candle closes (at the end of each minute) where there are no live samples, live samples where there are. */
-function buildSeries(candles: Candle[] | undefined, samples: Pt[], from: number, now: number): Pt[] {
+function buildSeries(
+  candles: Candle[] | undefined,
+  samples: Pt[],
+  from: number,
+  now: number,
+): Pt[] {
   const s0 = samples.find((s) => s.t >= from);
   const cut = s0?.t ?? Infinity;
   const pts: Pt[] = [];
@@ -89,9 +110,21 @@ function alpha(color: string, a: number): string {
 }
 
 const markerKind = (i: Incident): Marker["kind"] =>
-  i.other.some((e) => e.kind === "open") ? "open" : i.other.some((e) => e.kind === "ipo") ? "ipo" : i.bankrupt.length || i.haircuts.length || i.closes.length ? "adl" : "liq";
+  i.other.some((e) => e.kind === "open")
+    ? "open"
+    : i.other.some((e) => e.kind === "ipo")
+      ? "ipo"
+      : i.bankrupt.length || i.haircuts.length || i.closes.length
+        ? "adl"
+        : "liq";
 
-const hhmm = (t: number, secs = false) => new Date(t).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", ...(secs && { second: "2-digit" }) });
+const hhmm = (t: number, secs = false) =>
+  new Date(t).toLocaleTimeString("en-US", {
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+    ...(secs && { second: "2-digit" }),
+  });
 
 export function Chart({ market, position }: { market: MarketView; position?: PositionView }) {
   const wrap = useRef<HTMLDivElement>(null);
@@ -104,7 +137,11 @@ export function Chart({ market, position }: { market: MarketView; position?: Pos
   const samples = useRef<Pt[]>([]);
   const [hover, setHover] = useState<{ marker: Marker; left: number; top: number } | null>(null);
 
-  const events = useMemo(() => incidents(feed.filter((e: RiskEvent) => e.market === market.id && MARKER_KINDS.has(e.kind))), [feed, market.id]);
+  const events = useMemo(
+    () =>
+      incidents(feed.filter((e: RiskEvent) => e.market === market.id && MARKER_KINDS.has(e.kind))),
+    [feed, market.id],
+  );
 
   // Live marks between candles, for the short ranges.
   useEffect(() => {
@@ -121,8 +158,24 @@ export function Chart({ market, position }: { market: MarketView; position?: Pos
   }, [market.mark]);
 
   // Everything the frame loop reads, refreshed on every render without restarting the loop.
-  const input = useRef({ candles, events, range, decimals: market.priceDecimals, entry: num(position?.entry), liq: num(position?.liquidationPrice), mark: num(market.mark) });
-  input.current = { candles, events, range, decimals: market.priceDecimals, entry: num(position?.entry), liq: num(position?.liquidationPrice), mark: num(market.mark) };
+  const input = useRef({
+    candles,
+    events,
+    range,
+    decimals: market.priceDecimals,
+    entry: num(position?.entry),
+    liq: num(position?.liquidationPrice),
+    mark: num(market.mark),
+  });
+  input.current = {
+    candles,
+    events,
+    range,
+    decimals: market.priceDecimals,
+    entry: num(position?.entry),
+    liq: num(position?.liquidationPrice),
+    mark: num(market.mark),
+  };
   const colors = useRef<Colors | null>(null);
   useEffect(() => {
     colors.current = readColors();
@@ -183,7 +236,10 @@ export function Chart({ market, position }: { market: MarketView; position?: Pos
       ctx.clearRect(0, 0, w, h);
       ctx.font = `11px ${c.mono}`;
       // The price axis is as wide as its widest label (tiny creator coin prices run long).
-      const R = Math.max(PAD.right, Math.ceil(ctx.measureText(fmtPrice(markTarget ?? 0, inp.decimals)).width) + 22);
+      const R = Math.max(
+        PAD.right,
+        Math.ceil(ctx.measureText(fmtPrice(markTarget ?? 0, inp.decimals)).width) + 22,
+      );
       const pw = w - PAD.left - R;
       const ph = h - PAD.top - PAD.bottom;
       if (pts.length < 2 || pw < 20 || ph < 20) {
@@ -322,7 +378,14 @@ export function Chart({ market, position }: { market: MarketView; position?: Pos
         markers.push({ incident: i, x: X(i.time), y: Y(p), kind: markerKind(i), approx: !exact });
       }
       for (const m of markers) {
-        const col = m.kind === "adl" ? c.down : m.kind === "liq" ? c.warn : m.kind === "open" ? c.accent : c.info;
+        const col =
+          m.kind === "adl"
+            ? c.down
+            : m.kind === "liq"
+              ? c.warn
+              : m.kind === "open"
+                ? c.accent
+                : c.info;
         const on = hovered?.incident.key === m.incident.key;
         if (m.kind === "open" || m.kind === "ipo") {
           ctx.setLineDash([3, 3]);
@@ -333,7 +396,16 @@ export function Chart({ market, position }: { market: MarketView; position?: Pos
           ctx.stroke();
           ctx.setLineDash([]);
         }
-        const label = m.kind === "adl" ? (m.incident.bankrupt.length ? "ADL" : "HC") : m.kind === "liq" ? "L" : m.kind === "open" ? "OPEN" : "IPO";
+        const label =
+          m.kind === "adl"
+            ? m.incident.bankrupt.length
+              ? "ADL"
+              : "HC"
+            : m.kind === "liq"
+              ? "L"
+              : m.kind === "open"
+                ? "OPEN"
+                : "IPO";
         ctx.font = `600 10px ${c.mono}`;
         const tw = ctx.measureText(label).width + 8;
         const above = m.y - PAD.top > 30;
@@ -365,7 +437,13 @@ export function Chart({ market, position }: { market: MarketView; position?: Pos
       }
 
       // Crosshair.
-      if (mouse.in && mouse.x >= PAD.left && mouse.x <= PAD.left + pw && mouse.y >= PAD.top && mouse.y <= PAD.top + ph) {
+      if (
+        mouse.in &&
+        mouse.x >= PAD.left &&
+        mouse.x <= PAD.left + pw &&
+        mouse.y >= PAD.top &&
+        mouse.y <= PAD.top + ph
+      ) {
         ctx.strokeStyle = c.muted;
         ctx.setLineDash([3, 3]);
         ctx.beginPath();
@@ -470,7 +548,15 @@ export function Chart({ market, position }: { market: MarketView; position?: Pos
   );
 }
 
-function HoverCard({ hover, market, box }: { hover: { marker: Marker; left: number; top: number }; market: MarketView; box: HTMLDivElement | null }) {
+function HoverCard({
+  hover,
+  market,
+  box,
+}: {
+  hover: { marker: Marker; left: number; top: number };
+  market: MarketView;
+  box: HTMLDivElement | null;
+}) {
   const W = 280;
   const bw = box?.clientWidth ?? 600;
   const bh = box?.clientHeight ?? 400;
@@ -480,7 +566,14 @@ function HoverCard({ hover, market, box }: { hover: { marker: Marker; left: numb
   return (
     <div className="chart-hover" style={{ left, top, width: W }}>
       <div className="faint small">
-        {new Date(i.time).toLocaleString("en-US", { hour12: false, month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+        {new Date(i.time).toLocaleString("en-US", {
+          hour12: false,
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        })}
         {hover.marker.approx && " · price approximate (event has none)"}
       </div>
       <IncidentCard incident={i} market={market} />

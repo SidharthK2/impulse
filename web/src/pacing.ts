@@ -12,7 +12,10 @@ const WAIT_MS: Record<string, number> = {
 };
 
 /** Wrap a channel listener in its throttle (or return it as is for channels without one). */
-export function paced<T>(ch: string, listener: (data: T) => void): { push: (data: T) => void; cancel: () => void } {
+export function paced<T>(
+  ch: string,
+  listener: (data: T) => void,
+): { push: (data: T) => void; cancel: () => void } {
   const wait = WAIT_MS[ch.split(":")[0]!];
   if (!wait) return { push: listener, cancel: () => {} };
   const t = new Throttler(listener, { wait, leading: true, trailing: true });

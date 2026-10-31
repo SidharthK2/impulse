@@ -56,7 +56,8 @@ const safeStorage = createJSONStorage(() => ({
   },
 }));
 
-const prefersLight = typeof matchMedia === "function" && matchMedia("(prefers-color-scheme: light)").matches;
+const prefersLight =
+  typeof matchMedia === "function" && matchMedia("(prefers-color-scheme: light)").matches;
 
 export const usePrefs = create<Prefs>()(
   persist(
@@ -108,7 +109,12 @@ export const useSession = create<Session>()((set) => ({
 
 type Modal = "signup" | null;
 
-export const useUi = create<{ modal: Modal; open: (m: Modal) => void; search: boolean; setSearch: (open: boolean) => void }>()((set) => ({
+export const useUi = create<{
+  modal: Modal;
+  open: (m: Modal) => void;
+  search: boolean;
+  setSearch: (open: boolean) => void;
+}>()((set) => ({
   modal: null,
   open: (modal) => set({ modal }),
   /** The ⌘K market search. */

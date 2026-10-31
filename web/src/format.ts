@@ -1,12 +1,25 @@
-const usdFmt = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const compactFmt = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 2 });
+const usdFmt = new Intl.NumberFormat("en-US", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+const compactFmt = new Intl.NumberFormat("en-US", {
+  notation: "compact",
+  maximumFractionDigits: 2,
+});
 
-export const num = (s: string | number | null | undefined) => (s === null || s === undefined || s === "" ? NaN : Number(s));
+export const num = (s: string | number | null | undefined) =>
+  s === null || s === undefined || s === "" ? NaN : Number(s);
 
-export function usd(s: string | number | null | undefined, opts: { sign?: boolean; compact?: boolean } = {}): string {
+export function usd(
+  s: string | number | null | undefined,
+  opts: { sign?: boolean; compact?: boolean } = {},
+): string {
   const v = num(s);
   if (!Number.isFinite(v)) return "—";
-  const body = opts.compact && Math.abs(v) >= 10_000 ? compactFmt.format(Math.abs(v)) : usdFmt.format(Math.abs(v));
+  const body =
+    opts.compact && Math.abs(v) >= 10_000
+      ? compactFmt.format(Math.abs(v))
+      : usdFmt.format(Math.abs(v));
   const sign = v < 0 ? "−" : opts.sign && v > 0 ? "+" : "";
   return `${sign}$${body}`;
 }
@@ -41,7 +54,9 @@ export function price(s: string | number | null | undefined, decimals: number): 
   const v = num(s);
   if (!Number.isFinite(v)) return "—";
   const d = Math.min(decimals, sigDecimals(v));
-  return compressZeros(v.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d }));
+  return compressZeros(
+    v.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d }),
+  );
 }
 
 /** A size in coins, to the market's lot. From 100,000 up it goes compact with two decimals: 213.34M, 9.52M. */
@@ -52,7 +67,10 @@ export function size(s: string | number | null | undefined, decimals: number): s
   return v.toLocaleString("en-US", { maximumFractionDigits: decimals });
 }
 
-const sizeCompactFmt = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 2 });
+const sizeCompactFmt = new Intl.NumberFormat("en-US", {
+  notation: "compact",
+  maximumFractionDigits: 2,
+});
 
 export function pct(v: number, digits = 2): string {
   if (!Number.isFinite(v)) return "—";

@@ -4,7 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Impulse · paper-trading MicroPerps exchange</title>
-    <meta name="description" content="Paper-trade creator coins, pre-IPO perps and crypto with leverage. No insurance fund: when a position goes bust, the winners on the other side pay." />
+    <meta
+      name="description"
+      content="Paper-trade creator coins, pre-IPO perps and crypto with leverage. No insurance fund: when a position goes bust, the winners on the other side pay."
+    />
     <meta name="theme-color" content="#0a0d12" />
     <link rel="canonical" href="https://impulse.sidkap.xyz/" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
@@ -14,24 +17,35 @@
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Impulse" />
     <meta property="og:title" content="Impulse · paper-trading MicroPerps exchange" />
-    <meta property="og:description" content="Snipe creator-coin launches, trade pre-IPO perps priced by their own order book, and watch ADL decide who pays. Play money, real matching and margin." />
+    <meta
+      property="og:description"
+      content="Snipe creator-coin launches, trade pre-IPO perps priced by their own order book, and watch ADL decide who pays. Play money, real matching and margin."
+    />
     <meta property="og:url" content="https://impulse.sidkap.xyz/" />
     <meta property="og:image" content="https://impulse.sidkap.xyz/og.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="The Impulse home page: a live AAPL-PERP chart next to the impulse wordmark" />
+    <meta
+      property="og:image:alt"
+      content="The Impulse home page: a live AAPL-PERP chart next to the impulse wordmark"
+    />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Impulse · paper-trading MicroPerps exchange" />
-    <meta name="twitter:description" content="Snipe creator-coin launches, trade pre-IPO perps priced by their own order book, and watch ADL decide who pays. Play money, real matching and margin." />
+    <meta
+      name="twitter:description"
+      content="Snipe creator-coin launches, trade pre-IPO perps priced by their own order book, and watch ADL decide who pays. Play money, real matching and margin."
+    />
     <meta name="twitter:image" content="https://impulse.sidkap.xyz/og.png" />
     <script>
       // Apply the saved theme before first paint (store.ts keeps it in sync after that).
       try {
         var p = JSON.parse(localStorage.getItem("impulse.prefs") || "{}").state || {};
-        document.documentElement.dataset.theme = p.theme || (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+        document.documentElement.dataset.theme =
+          p.theme || (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
       } catch (e) {}
       // One canonical address per page: this path on impulse.sidkap.xyz, whichever host served it (localhost too).
-      document.querySelector('link[rel="canonical"]').href = "https://impulse.sidkap.xyz" + location.pathname;
+      document.querySelector('link[rel="canonical"]').href =
+        "https://impulse.sidkap.xyz" + location.pathname;
     </script>
   </head>
   <body>

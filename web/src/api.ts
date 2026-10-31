@@ -46,12 +46,21 @@ export class ApiError extends Error {
   }
 }
 
-export async function api<T = unknown>(method: string, path: string, body?: unknown, opts: { admin?: boolean } = {}): Promise<T> {
+export async function api<T = unknown>(
+  method: string,
+  path: string,
+  body?: unknown,
+  opts: { admin?: boolean } = {},
+): Promise<T> {
   const headers: Record<string, string> = {};
   if (body !== undefined) headers["content-type"] = "application/json";
   if (apiKey) headers.authorization = `Bearer ${apiKey}`;
   if (opts.admin) headers["x-admin-token"] = adminToken;
-  const res = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+  const res = await fetch(path, {
+    method,
+    headers,
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
   const data = (await res.json().catch(() => ({}))) as { error?: string };
   if (!res.ok) throw new ApiError(data.error ?? `HTTP ${res.status}`, res.status);
   return data as T;

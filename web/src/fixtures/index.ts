@@ -59,7 +59,8 @@ export const setRealMarketIds = (ids: string[]) => {
   realIds = new Set(ids);
 };
 
-export const isFixtureMarket = (id: string | undefined) => !!id && !realIds.has(id) && !!world?.markets[id] && usePrefs.getState().fixtures;
+export const isFixtureMarket = (id: string | undefined) =>
+  !!id && !realIds.has(id) && !!world?.markets[id] && usePrefs.getState().fixtures;
 
 /** 1m candles for a fixture market (null if it isn't one). */
 export function fixtureCandles(id: string): Candle[] | null {
@@ -71,7 +72,12 @@ export function fixtureCandles(id: string): Candle[] | null {
  * Try a request against the fixture world. `force` makes contract endpoints the server lacks (it answered 404)
  * land here too. Returns undefined when the real server should handle it.
  */
-export function fixtureCall(method: string, path: string, body: Record<string, unknown> | undefined, force = false): { value: unknown } | undefined {
+export function fixtureCall(
+  method: string,
+  path: string,
+  body: Record<string, unknown> | undefined,
+  force = false,
+): { value: unknown } | undefined {
   if (!usePrefs.getState().fixtures || !world) return undefined;
   const market = typeof body?.market === "string" ? body.market : undefined;
   if (market && realIds.has(market)) return undefined;

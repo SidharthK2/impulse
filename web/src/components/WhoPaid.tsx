@@ -29,7 +29,19 @@ export function incidents(events: RiskEvent[]): Incident[] {
     const key = `${e.market}@${e.time}`;
     let i = by.get(key);
     if (!i) {
-      i = { key, market: e.market, time: e.time, price: null, events: [], bankrupt: [], haircuts: [], liquidations: [], closes: [], other: [], shortfall: 0 };
+      i = {
+        key,
+        market: e.market,
+        time: e.time,
+        price: null,
+        events: [],
+        bankrupt: [],
+        haircuts: [],
+        liquidations: [],
+        closes: [],
+        other: [],
+        shortfall: 0,
+      };
       by.set(key, i);
     }
     i.events.push(e);
@@ -59,7 +71,19 @@ export function byAccount(events: RiskEvent[]): Row[] {
   const rows = new Map<string, Row>();
   const row = (a: string) => {
     let r = rows.get(a);
-    if (!r) rows.set(a, (r = { account: a, liquidations: 0, bankruptcies: 0, shortfall: 0, haircuts: 0, paid: 0, closes: 0 }));
+    if (!r)
+      rows.set(
+        a,
+        (r = {
+          account: a,
+          liquidations: 0,
+          bankruptcies: 0,
+          shortfall: 0,
+          haircuts: 0,
+          paid: 0,
+          closes: 0,
+        }),
+      );
     return r;
   };
   for (const e of events) {
@@ -77,11 +101,21 @@ export function byAccount(events: RiskEvent[]): Row[] {
     }
     if (e.kind === "adl") r.closes++;
   }
-  return [...rows.values()].sort((a, b) => b.paid - a.paid || b.shortfall - a.shortfall || b.liquidations - a.liquidations);
+  return [...rows.values()].sort(
+    (a, b) => b.paid - a.paid || b.shortfall - a.shortfall || b.liquidations - a.liquidations,
+  );
 }
 
 /** One bankruptcy and who covered it, as a compact card (also the chart's marker hover). */
-export function IncidentCard({ incident: i, market, compact = false }: { incident: Incident; market?: MarketView; compact?: boolean }) {
+export function IncidentCard({
+  incident: i,
+  market,
+  compact = false,
+}: {
+  incident: Incident;
+  market?: MarketView;
+  compact?: boolean;
+}) {
   const paid = i.haircuts.reduce((s, e) => s + num(e.amount ?? "0"), 0);
   const d = market?.priceDecimals ?? 4;
   const head = i.bankrupt[0] ?? i.liquidations[0] ?? i.other[0] ?? i.closes[0];
@@ -94,12 +128,14 @@ export function IncidentCard({ incident: i, market, compact = false }: { inciden
       </div>
       {i.bankrupt.map((e) => (
         <div key={e.id} className="incident-line">
-          <b>{e.accounts[0]}</b> went bankrupt, <span className="down mono">{usd(e.amount)}</span> short
+          <b>{e.accounts[0]}</b> went bankrupt, <span className="down mono">{usd(e.amount)}</span>{" "}
+          short
         </div>
       ))}
       {i.liquidations.map((e) => (
         <div key={e.id} className="incident-line">
-          <b>{e.accounts[0]}</b> liquidated{e.amount ? <span className="muted">, kept {usd(e.amount)}</span> : null}
+          <b>{e.accounts[0]}</b> liquidated
+          {e.amount ? <span className="muted">, kept {usd(e.amount)}</span> : null}
         </div>
       ))}
       {i.haircuts.length > 0 && (
@@ -111,7 +147,12 @@ export function IncidentCard({ incident: i, market, compact = false }: { inciden
               <div key={e.id} className="payer">
                 <span className="who">{e.accounts[0]}</span>
                 <span className="bar grow">
-                  <i style={{ width: `${paid > 0 ? (v / paid) * 100 : 0}%`, background: "var(--down)" }} />
+                  <i
+                    style={{
+                      width: `${paid > 0 ? (v / paid) * 100 : 0}%`,
+                      background: "var(--down)",
+                    }}
+                  />
                 </span>
                 <span className="mono down">{usd(v)}</span>
               </div>
@@ -119,7 +160,11 @@ export function IncidentCard({ incident: i, market, compact = false }: { inciden
           })}
         </div>
       )}
-      {i.closes.length > 0 && <div className="faint small">ADL force-closed: {i.closes.map((e) => e.accounts[0]).join(", ")}</div>}
+      {i.closes.length > 0 && (
+        <div className="faint small">
+          ADL force-closed: {i.closes.map((e) => e.accounts[0]).join(", ")}
+        </div>
+      )}
       {i.other.map((e) => (
         <div key={e.id} className="incident-line">
           {e.text}
@@ -129,13 +174,30 @@ export function IncidentCard({ incident: i, market, compact = false }: { inciden
   );
 }
 
-export function WhoPaid({ market, feed, account }: { market: MarketView; feed: RiskEvent[]; account?: AccountView }) {
+export function WhoPaid({
+  market,
+  feed,
+  account,
+}: {
+  market: MarketView;
+  feed: RiskEvent[];
+  account?: AccountView;
+}) {
   const now = useNow(5000);
-  const events = useMemo(() => feed.filter((e) => e.market === market.id && LOSS_KINDS.has(e.kind)), [feed, market.id]);
+  const events = useMemo(
+    () => feed.filter((e) => e.market === market.id && LOSS_KINDS.has(e.kind)),
+    [feed, market.id],
+  );
   const rows = useMemo(() => byAccount(events), [events]);
   const list = useMemo(() => incidents(events), [events]);
   const total = rows.reduce((s, r) => s + r.shortfall, 0);
-  if (events.length === 0) return <div className="empty">Nobody has been liquidated in {market.id} yet. When someone goes bankrupt, the accounts that paid for it show up here.</div>;
+  if (events.length === 0)
+    return (
+      <div className="empty">
+        Nobody has been liquidated in {market.id} yet. When someone goes bankrupt, the accounts that
+        paid for it show up here.
+      </div>
+    );
   return (
     <div className="whopaid">
       <div className="whopaid-summary">
@@ -159,10 +221,21 @@ export function WhoPaid({ market, feed, account }: { market: MarketView; feed: R
           <thead>
             <tr>
               <th>Account</th>
-              <th className="right" title="Liquidated with equity ≥ 0">Liq.</th>
-              <th className="right" title="Shortfall left when this account went bankrupt">Bankrupt</th>
-              <th className="right" title="ADL haircuts this account paid for other people's shortfalls">Paid</th>
-              <th className="right" title="Positions force-closed by ADL">ADL closes</th>
+              <th className="right" title="Liquidated with equity ≥ 0">
+                Liq.
+              </th>
+              <th className="right" title="Shortfall left when this account went bankrupt">
+                Bankrupt
+              </th>
+              <th
+                className="right"
+                title="ADL haircuts this account paid for other people's shortfalls"
+              >
+                Paid
+              </th>
+              <th className="right" title="Positions force-closed by ADL">
+                ADL closes
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -172,8 +245,12 @@ export function WhoPaid({ market, feed, account }: { market: MarketView; feed: R
                   {r.account} {r.account === account?.id && <span className="badge up">you</span>}
                 </td>
                 <td className="right mono">{r.liquidations || "—"}</td>
-                <td className="right mono">{r.shortfall > 0 ? <span className="down">{usd(r.shortfall)}</span> : "—"}</td>
-                <td className="right mono">{r.paid > 0 ? <span className="down">{usd(r.paid)}</span> : "—"}</td>
+                <td className="right mono">
+                  {r.shortfall > 0 ? <span className="down">{usd(r.shortfall)}</span> : "—"}
+                </td>
+                <td className="right mono">
+                  {r.paid > 0 ? <span className="down">{usd(r.paid)}</span> : "—"}
+                </td>
                 <td className="right mono">{r.closes || "—"}</td>
               </tr>
             ))}

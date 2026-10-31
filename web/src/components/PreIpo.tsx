@@ -9,7 +9,10 @@ import { Roll } from "./Roll";
 export function BookPricedBadge({ market }: { market: MarketView }) {
   if (market.source.kind !== "book") return null;
   return (
-    <span className="badge book" title="No outside oracle: the mark is the mid of this market's own order book">
+    <span
+      className="badge book"
+      title="No outside oracle: the mark is the mid of this market's own order book"
+    >
       <span className="hide-sm">price set by our order book</span>
       <span className="show-sm">our book</span>
     </span>
@@ -33,7 +36,11 @@ export function PreIpoPanel({ market }: { market: MarketView }) {
       <div className="panel-body col" style={{ gap: 10 }}>
         <div className="valuation">
           <span className="label">Implied valuation</span>
-          <Roll className="mono v" text={usd(p.impliedValuation, { compact: true })} value={num(p.impliedValuation)} />
+          <Roll
+            className="mono v"
+            text={usd(p.impliedValuation, { compact: true })}
+            value={num(p.impliedValuation)}
+          />
           <span className="faint small">mark × 1,000,000,000 shares</span>
         </div>
         <dl className="kv">

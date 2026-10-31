@@ -12,7 +12,17 @@ import { useToast } from "./ui";
 
 const QUICK = [50, 250, 1000];
 
-export function SnipePanel({ market, account, canTrade, onSignUp }: { market: MarketView; account: AccountView | undefined; canTrade: boolean; onSignUp: () => void }) {
+export function SnipePanel({
+  market,
+  account,
+  canTrade,
+  onSignUp,
+}: {
+  market: MarketView;
+  account: AccountView | undefined;
+  canTrade: boolean;
+  onSignUp: () => void;
+}) {
   const toast = useToast();
   const now = useNow(250);
   const server = useServerError();
@@ -37,10 +47,11 @@ export function SnipePanel({ market, account, canTrade, onSignUp }: { market: Ma
   const open = left <= 0;
   const window = Math.max(1, s.opensAt - market.createdAt);
   const elapsed = Math.min(1, Math.max(0, 1 - left / window));
-  const mine = (account?.snipes ?? []).filter((x) => x.market === market.id).reduce((t, x) => t + num(x.usdc), 0);
+  const mine = (account?.snipes ?? [])
+    .filter((x) => x.market === market.id)
+    .reduce((t, x) => t + num(x.usdc), 0);
   const share = num(s.total) > 0 ? mine / num(s.total) : 0;
   const d = Math.max(market.priceDecimals, 6);
-
 
   return (
     <div className="panel chart-panel snipe-panel">
@@ -59,7 +70,8 @@ export function SnipePanel({ market, account, canTrade, onSignUp }: { market: Ma
             <i style={{ width: `${elapsed * 100}%`, background: "var(--warn)" }} />
           </div>
           <div className="faint small">
-            {new Date(s.opensAt).toLocaleTimeString("en-US", { hour12: false })} · every bid fills at one open price, so being first doesn't cost more
+            {new Date(s.opensAt).toLocaleTimeString("en-US", { hour12: false })} · every bid fills
+            at one open price, so being first doesn't cost more
           </div>
         </div>
 
@@ -76,13 +88,19 @@ export function SnipePanel({ market, account, canTrade, onSignUp }: { market: Ma
             <span className="label" title="Where the curve opens once the whole pool buys">
               Projected open
             </span>
-            <Roll className="v mono" text={price(s.projectedOpenPrice, d)} value={num(s.projectedOpenPrice)} />
+            <Roll
+              className="v mono"
+              text={price(s.projectedOpenPrice, d)}
+              value={num(s.projectedOpenPrice)}
+            />
           </div>
           <div className="stat-tile">
             <span className="label">Your bid</span>
             <span className="v mono">
               {mine > 0 ? usd(mine) : "—"}
-              {mine > 0 && <small className="faint block">{(share * 100).toFixed(1)}% of the pool</small>}
+              {mine > 0 && (
+                <small className="faint block">{(share * 100).toFixed(1)}% of the pool</small>
+              )}
             </span>
           </div>
         </div>
@@ -103,7 +121,8 @@ export function SnipePanel({ market, account, canTrade, onSignUp }: { market: Ma
                 const bad = positive(value, "Amount");
                 if (bad) return bad;
                 const { wallet, opensAt } = live.current;
-                if (wallet !== null && num(value) > num(wallet)) return `More than your wallet (${usd(wallet)})`;
+                if (wallet !== null && num(value) > num(wallet))
+                  return `More than your wallet (${usd(wallet)})`;
                 if (Date.now() >= opensAt) return "The snipe window has closed";
                 return undefined;
               },
@@ -130,12 +149,24 @@ export function SnipePanel({ market, account, canTrade, onSignUp }: { market: Ma
             )}
           </form.Field>
           {QUICK.map((q) => (
-            <button key={q} type="button" className="btn small ghost" onClick={() => form.setFieldValue("usdc", String(q))} disabled={open}>
+            <button
+              key={q}
+              type="button"
+              className="btn small ghost"
+              onClick={() => form.setFieldValue("usdc", String(q))}
+              disabled={open}
+            >
               ${compact(q)}
             </button>
           ))}
           <button type="submit" className="btn primary" disabled={open || pending}>
-            {!canTrade ? "Sign up to snipe" : pending ? "Bidding…" : mine > 0 ? "Add to bid" : "Snipe"}
+            {!canTrade
+              ? "Sign up to snipe"
+              : pending
+                ? "Bidding…"
+                : mine > 0
+                  ? "Add to bid"
+                  : "Snipe"}
           </button>
           <FormError error={server.error} />
         </form>
@@ -155,19 +186,42 @@ export function SnipePanel({ market, account, canTrade, onSignUp }: { market: Ma
   );
 }
 
-function SnipeRows({ rows, total, me, now }: { rows: { account: string; usdc: string; time?: number }[]; total: number; me?: string; now?: number }) {
-  if (rows.length === 0) return <div className="faint small" style={{ padding: "8px 0" }}>No bids yet.</div>;
+function SnipeRows({
+  rows,
+  total,
+  me,
+  now,
+}: {
+  rows: { account: string; usdc: string; time?: number }[];
+  total: number;
+  me?: string;
+  now?: number;
+}) {
+  if (rows.length === 0)
+    return (
+      <div className="faint small" style={{ padding: "8px 0" }}>
+        No bids yet.
+      </div>
+    );
   return (
     <div className="snipe-rows">
       {rows.map((r, i) => (
-        <div key={`${r.account}-${r.time ?? i}`} className={`snipe-row ${r.account === me ? "me" : ""}`}>
+        <div
+          key={`${r.account}-${r.time ?? i}`}
+          className={`snipe-row ${r.account === me ? "me" : ""}`}
+        >
           <span className="who">
             {r.account}
             {r.account === me && <span className="badge up">you</span>}
           </span>
           {now === undefined ? (
             <span className="bar grow">
-              <i style={{ width: `${total > 0 ? (num(r.usdc) / total) * 100 : 0}%`, background: "var(--warn)" }} />
+              <i
+                style={{
+                  width: `${total > 0 ? (num(r.usdc) / total) * 100 : 0}%`,
+                  background: "var(--warn)",
+                }}
+              />
             </span>
           ) : (
             <span className="faint small grow right">{ago(r.time!, now)}</span>
@@ -197,7 +251,11 @@ export function LaunchPanel({ market }: { market: MarketView }) {
           <dt>Open price</dt>
           <dd>{price(l.openPrice, d)}</dd>
           <dt>Since open</dt>
-          <dd className={since > 0 ? "up" : since < 0 ? "down" : ""}>{Number.isFinite(since) ? `${since >= 0 ? "+" : "−"}${Math.abs(since * 100).toFixed(1)}%` : "—"}</dd>
+          <dd className={since > 0 ? "up" : since < 0 ? "down" : ""}>
+            {Number.isFinite(since)
+              ? `${since >= 0 ? "+" : "−"}${Math.abs(since * 100).toFixed(1)}%`
+              : "—"}
+          </dd>
           <dt>Sniped</dt>
           <dd>{usd(l.sniped)}</dd>
           <dt title="USDC the snipe pool left in the curve">Launch reserve</dt>

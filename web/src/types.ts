@@ -61,13 +61,25 @@ export interface MarketView {
   maxLeverage: number;
   maintenanceLeverage: number;
   tier: number;
-  graduation: { next: { leverage: number; volume: string; depth: string } | null; volume: string; depth: string } | null;
+  graduation: {
+    next: { leverage: number; volume: string; depth: string } | null;
+    volume: string;
+    depth: string;
+  } | null;
   funding: { enabled: boolean; ratePerHour: number; baseRatePerHour: number };
   adl: "size" | "pnl";
   resolvable: boolean;
   resolvesAt: number | null;
   taper: { seconds: number; progress: number } | null;
-  curve: { price: string | null; usdcIn: string; tokensSold: string; supply: string; feeBps: number; oracleWindow: number; marketCap: string } | null;
+  curve: {
+    price: string | null;
+    usdcIn: string;
+    tokensSold: string;
+    supply: string;
+    feeBps: number;
+    oracleWindow: number;
+    marketCap: string;
+  } | null;
   heldUntil: number | null;
   createdAt: number;
   positions: number;
@@ -142,7 +154,17 @@ export interface PositionView {
   releasable: string;
 }
 
-export type RiskKind = "liquidation" | "bankrupt" | "haircut" | "adl" | "settlement" | "graduation" | "gap" | "listing" | "open" | "ipo";
+export type RiskKind =
+  | "liquidation"
+  | "bankrupt"
+  | "haircut"
+  | "adl"
+  | "settlement"
+  | "graduation"
+  | "gap"
+  | "listing"
+  | "open"
+  | "ipo";
 
 export interface RiskEvent {
   id: number;

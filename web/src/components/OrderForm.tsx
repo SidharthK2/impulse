@@ -5,7 +5,15 @@ import { num, price as fmtPrice, size as fmtSize, toInput, usd } from "../format
 import { act } from "../queries";
 import { usePrefs } from "../store";
 import type { AccountView, FillView, MarketView, PositionView } from "../types";
-import { FieldError, FormError, decimals, invalid, multipleOf, positive, useServerError } from "./form";
+import {
+  FieldError,
+  FormError,
+  decimals,
+  invalid,
+  multipleOf,
+  positive,
+  useServerError,
+} from "./form";
 import { useToast } from "./ui";
 
 interface Props {
@@ -45,10 +53,22 @@ function refPrice(m: MarketView, v: Pick<Values, "side" | "type" | "price">): nu
 /** Size in coins, floored to the market's lot. */
 function coins(m: MarketView, v: Values): number {
   const ref = refPrice(m, v);
-  return v.unit === "coin" ? floorTo(num(v.size), m.szDecimals) : Number.isFinite(ref) && ref > 0 ? floorTo(num(v.size) / ref, m.szDecimals) : NaN;
+  return v.unit === "coin"
+    ? floorTo(num(v.size), m.szDecimals)
+    : Number.isFinite(ref) && ref > 0
+      ? floorTo(num(v.size) / ref, m.szDecimals)
+      : NaN;
 }
 
-export function OrderForm({ market, account, signedIn, picked, onSignUp, initialSide = "buy", onDone }: Props) {
+export function OrderForm({
+  market,
+  account,
+  signedIn,
+  picked,
+  onSignUp,
+  initialSide = "buy",
+  onDone,
+}: Props) {
   const toast = useToast();
   const defaults = usePrefs((s) => s.order);
   const saveDefaults = usePrefs((s) => s.setOrder);
@@ -77,23 +97,41 @@ export function OrderForm({ market, account, signedIn, picked, onSignUp, initial
       const m = live.current.market;
       const size = coins(m, value);
       try {
-        const r = await act<{ status: string; reason: string | null; fills: FillView[] }>("POST", "/api/orders", {
-          market: m.id,
-          side: value.side,
-          type: value.type,
-          size: size.toFixed(m.szDecimals),
-          ...(value.type === "limit" && { price: value.price, tif: value.postOnly ? "alo" : "gtc" }),
-          leverage: value.leverage,
-          reduceOnly: value.reduceOnly,
-        });
+        const r = await act<{ status: string; reason: string | null; fills: FillView[] }>(
+          "POST",
+          "/api/orders",
+          {
+            market: m.id,
+            side: value.side,
+            type: value.type,
+            size: size.toFixed(m.szDecimals),
+            ...(value.type === "limit" && {
+              price: value.price,
+              tif: value.postOnly ? "alo" : "gtc",
+            }),
+            leverage: value.leverage,
+            reduceOnly: value.reduceOnly,
+          },
+        );
         saveDefaults({ type: value.type, unit: value.unit, leverage: value.leverage });
         const filled = r.fills.reduce((s, f) => s + Number(f.size), 0);
-        const avg = filled > 0 ? r.fills.reduce((s, f) => s + Number(f.size) * Number(f.price), 0) / filled : 0;
+        const avg =
+          filled > 0
+            ? r.fills.reduce((s, f) => s + Number(f.size) * Number(f.price), 0) / filled
+            : 0;
         const verb = value.side === "buy" ? "Bought" : "Sold";
-        if (r.status === "filled") toast(`${verb} ${fmtSize(filled, m.szDecimals)} ${m.base} @ ${fmtPrice(avg, m.priceDecimals)}`, "up");
+        if (r.status === "filled")
+          toast(
+            `${verb} ${fmtSize(filled, m.szDecimals)} ${m.base} @ ${fmtPrice(avg, m.priceDecimals)}`,
+            "up",
+          );
         else if (r.status === "partial")
-          toast(`${verb} ${fmtSize(filled, m.szDecimals)} @ ${fmtPrice(avg, m.priceDecimals)}; ${value.type === "limit" ? "rest is on the book" : `rest cancelled: ${r.reason}`}`, "warn");
-        else if (r.status === "resting") toast(`Order resting at ${fmtPrice(value.price, m.priceDecimals)}`, "info");
+          toast(
+            `${verb} ${fmtSize(filled, m.szDecimals)} @ ${fmtPrice(avg, m.priceDecimals)}; ${value.type === "limit" ? "rest is on the book" : `rest cancelled: ${r.reason}`}`,
+            "warn",
+          );
+        else if (r.status === "resting")
+          toast(`Order resting at ${fmtPrice(value.price, m.priceDecimals)}`, "info");
         else toast(`Not filled: ${r.reason ?? "no liquidity"}`, "warn");
         // Start the next order clean: same side, type and leverage, empty size, no leftover errors.
         if (r.status !== "cancelled") {
@@ -108,7 +146,16 @@ export function OrderForm({ market, account, signedIn, picked, onSignUp, initial
 
   // A new market starts clean, from the saved defaults.
   useEffect(() => {
-    form.reset({ ...form.state.values, price: "", size: "", reduceOnly: false, leverage: Math.min(defaults.leverage ?? market.maxLeverage, market.maxLeverage) }, { keepDefaultValues: true });
+    form.reset(
+      {
+        ...form.state.values,
+        price: "",
+        size: "",
+        reduceOnly: false,
+        leverage: Math.min(defaults.leverage ?? market.maxLeverage, market.maxLeverage),
+      },
+      { keepDefaultValues: true },
+    );
     server.clear();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [market.id]);
@@ -117,8 +164,17 @@ export function OrderForm({ market, account, signedIn, picked, onSignUp, initial
   // fields the user has touched (validateAllFields would mark every field touched and flag empty ones).
   const hasPosition = position?.side ?? "none";
   useEffect(() => {
-    for (const name of ["price", "size", "leverage", "reduceOnly"] as const) void form.getFieldInfo(name).instance?.validate("change");
-  }, [form, market.maxLeverage, market.tick, market.bounds[0], market.bounds[1], market.szDecimals, hasPosition]);
+    for (const name of ["price", "size", "leverage", "reduceOnly"] as const)
+      void form.getFieldInfo(name).instance?.validate("change");
+  }, [
+    form,
+    market.maxLeverage,
+    market.tick,
+    market.bounds[0],
+    market.bounds[1],
+    market.szDecimals,
+    hasPosition,
+  ]);
 
   useEffect(() => {
     if (!picked) return;
@@ -142,7 +198,10 @@ export function OrderForm({ market, account, signedIn, picked, onSignUp, initial
   const capped = notional / lev >= maxLoss;
   const margin = capped ? maxLoss * 1.05 : notional / lev;
   const wallet = num(account?.wallet);
-  const reducing = position && ((position.side === "long" && pv.side === "sell") || (position.side === "short" && pv.side === "buy"));
+  const reducing =
+    position &&
+    ((position.side === "long" && pv.side === "sell") ||
+      (position.side === "short" && pv.side === "buy"));
   const mmLev = market.maintenanceLeverage; // liquidation is at the market's maintenance margin whatever leverage you chose
   const liq = capped
     ? null
@@ -157,12 +216,20 @@ export function OrderForm({ market, account, signedIn, picked, onSignUp, initial
     if (!Number.isFinite(wallet) || !Number.isFinite(ref) || ref <= 0) return;
     if (v.reduceOnly && position) {
       form.setFieldValue("unit", "coin");
-      form.setFieldValue("size", toInput(floorTo(Math.abs(num(position.size)) * p, market.szDecimals), market.szDecimals));
+      form.setFieldValue(
+        "size",
+        toInput(floorTo(Math.abs(num(position.size)) * p, market.szDecimals), market.szDecimals),
+      );
       return;
     }
-    const perCoin = binary ? Math.min(ref / lev, (v.side === "buy" ? ref : 1 - ref) * 1.05) : ref / lev;
+    const perCoin = binary
+      ? Math.min(ref / lev, (v.side === "buy" ? ref : 1 - ref) * 1.05)
+      : ref / lev;
     const n = floorTo(((wallet * 0.98) / perCoin) * p, market.szDecimals);
-    form.setFieldValue("size", v.unit === "coin" ? toInput(n, market.szDecimals) : toInput(n * ref, 2));
+    form.setFieldValue(
+      "size",
+      v.unit === "coin" ? toInput(n, market.szDecimals) : toInput(n * ref, 2),
+    );
   };
 
   const closed = market.status !== "open";
@@ -187,10 +254,18 @@ export function OrderForm({ market, account, signedIn, picked, onSignUp, initial
         <form.Field name="side">
           {(f) => (
             <div className="seg">
-              <button type="button" className={f.state.value === "buy" ? "on buy" : ""} onClick={() => f.handleChange("buy")}>
+              <button
+                type="button"
+                className={f.state.value === "buy" ? "on buy" : ""}
+                onClick={() => f.handleChange("buy")}
+              >
                 {binary ? `Long ${market.base}` : "Long"}
               </button>
-              <button type="button" className={f.state.value === "sell" ? "on sell" : ""} onClick={() => f.handleChange("sell")}>
+              <button
+                type="button"
+                className={f.state.value === "sell" ? "on sell" : ""}
+                onClick={() => f.handleChange("sell")}
+              >
                 {binary ? `Short ${market.base}` : "Short"}
               </button>
             </div>
@@ -199,7 +274,11 @@ export function OrderForm({ market, account, signedIn, picked, onSignUp, initial
         <form.Field name="type">
           {(f) => (
             <div className="seg">
-              <button type="button" className={f.state.value === "market" ? "on" : ""} onClick={() => f.handleChange("market")}>
+              <button
+                type="button"
+                className={f.state.value === "market" ? "on" : ""}
+                onClick={() => f.handleChange("market")}
+              >
                 Market
               </button>
               <button
@@ -207,7 +286,8 @@ export function OrderForm({ market, account, signedIn, picked, onSignUp, initial
                 className={f.state.value === "limit" ? "on" : ""}
                 onClick={() => {
                   f.handleChange("limit");
-                  if (!form.getFieldValue("price") && Number.isFinite(num(market.mark))) form.setFieldValue("price", toInput(num(market.mark), market.priceDecimals));
+                  if (!form.getFieldValue("price") && Number.isFinite(num(market.mark)))
+                    form.setFieldValue("price", toInput(num(market.mark), market.priceDecimals));
                 }}
               >
                 Limit
@@ -226,7 +306,8 @@ export function OrderForm({ market, account, signedIn, picked, onSignUp, initial
                 const m = live.current.market;
                 const bad = positive(value, "Price");
                 if (bad) return bad;
-                if (!multipleOf(value, m.tick)) return `Price must be a multiple of the tick (${m.tick})`;
+                if (!multipleOf(value, m.tick))
+                  return `Price must be a multiple of the tick (${m.tick})`;
                 const [lo, hi] = m.bounds;
                 if (lo !== null && num(value) < num(lo)) return `Price must be at least ${lo}`;
                 if (hi !== null && num(value) > num(hi)) return `Price must be at most ${hi}`;
@@ -266,12 +347,17 @@ export function OrderForm({ market, account, signedIn, picked, onSignUp, initial
               const bad = positive(value, "Size");
               if (bad) return bad;
               if (vals.unit === "coin") {
-                if (decimals(value) > m.szDecimals) return `Size must be a multiple of the lot (${m.szDecimals > 0 ? (10 ** -m.szDecimals).toFixed(m.szDecimals) : "1"} ${m.base})`;
+                if (decimals(value) > m.szDecimals)
+                  return `Size must be a multiple of the lot (${m.szDecimals > 0 ? (10 ** -m.szDecimals).toFixed(m.szDecimals) : "1"} ${m.base})`;
                 return undefined;
               }
               const c = coins(m, { ...vals, size: value });
-              if (!Number.isFinite(c)) return vals.type === "limit" ? "Set a price to size in USD" : "No price to size against yet";
-              if (!(c > 0)) return `Too small: under one lot (${m.szDecimals > 0 ? (10 ** -m.szDecimals).toFixed(m.szDecimals) : "1"} ${m.base})`;
+              if (!Number.isFinite(c))
+                return vals.type === "limit"
+                  ? "Set a price to size in USD"
+                  : "No price to size against yet";
+              if (!(c > 0))
+                return `Too small: under one lot (${m.szDecimals > 0 ? (10 ** -m.szDecimals).toFixed(m.szDecimals) : "1"} ${m.base})`;
               return undefined;
             },
           }}
@@ -284,10 +370,20 @@ export function OrderForm({ market, account, signedIn, picked, onSignUp, initial
                 <form.Field name="unit">
                   {(u) => (
                     <span className="seg" style={{ padding: 1 }}>
-                      <button type="button" className={u.state.value === "usd" ? "on" : ""} onClick={() => u.handleChange("usd")} style={{ padding: "1px 8px", fontSize: 11 }}>
+                      <button
+                        type="button"
+                        className={u.state.value === "usd" ? "on" : ""}
+                        onClick={() => u.handleChange("usd")}
+                        style={{ padding: "1px 8px", fontSize: 11 }}
+                      >
                         USD
                       </button>
-                      <button type="button" className={u.state.value === "coin" ? "on" : ""} onClick={() => u.handleChange("coin")} style={{ padding: "1px 8px", fontSize: 11 }}>
+                      <button
+                        type="button"
+                        className={u.state.value === "coin" ? "on" : ""}
+                        onClick={() => u.handleChange("coin")}
+                        style={{ padding: "1px 8px", fontSize: 11 }}
+                      >
                         {market.base.length > 10 ? "units" : market.base}
                       </button>
                     </span>
@@ -310,7 +406,13 @@ export function OrderForm({ market, account, signedIn, picked, onSignUp, initial
               <FieldError field={f} />
               <div className="row" style={{ gap: 4 }}>
                 {[0.1, 0.25, 0.5, 1].map((p) => (
-                  <button type="button" key={p} className="btn small ghost grow" onClick={() => setPct(p)} disabled={!signedIn}>
+                  <button
+                    type="button"
+                    key={p}
+                    className="btn small ghost grow"
+                    onClick={() => setPct(p)}
+                    disabled={!signedIn}
+                  >
                     {p * 100}%
                   </button>
                 ))}
@@ -339,7 +441,16 @@ export function OrderForm({ market, account, signedIn, picked, onSignUp, initial
                   {f.state.value}×
                 </span>
               </label>
-              <input type="range" min={1} max={market.maxLeverage} step={1} value={Math.min(f.state.value, market.maxLeverage)} onChange={(e) => f.handleChange(Number(e.target.value))} onBlur={f.handleBlur} aria-label="Leverage" />
+              <input
+                type="range"
+                min={1}
+                max={market.maxLeverage}
+                step={1}
+                value={Math.min(f.state.value, market.maxLeverage)}
+                onChange={(e) => f.handleChange(Number(e.target.value))}
+                onBlur={f.handleBlur}
+                aria-label="Leverage"
+              />
               <FieldError field={f} />
             </div>
           )}
@@ -355,7 +466,11 @@ export function OrderForm({ market, account, signedIn, picked, onSignUp, initial
                 const p: PositionView | undefined = live.current.position;
                 if (!p) return "Reduce-only needs an open position to reduce";
                 const side = fieldApi.form.getFieldValue("side");
-                if ((p.side === "long" && side === "buy") || (p.side === "short" && side === "sell")) return `You're ${p.side}: a reduce-only order must ${p.side === "long" ? "sell" : "buy"}`;
+                if (
+                  (p.side === "long" && side === "buy") ||
+                  (p.side === "short" && side === "sell")
+                )
+                  return `You're ${p.side}: a reduce-only order must ${p.side === "long" ? "sell" : "buy"}`;
                 return undefined;
               },
             }}
@@ -363,7 +478,13 @@ export function OrderForm({ market, account, signedIn, picked, onSignUp, initial
             {(f) => (
               <div className="col" style={{ gap: 2 }}>
                 <label className="check">
-                  <input type="checkbox" checked={f.state.value} onChange={(e) => f.handleChange(e.target.checked)} onBlur={f.handleBlur} /> Reduce only
+                  <input
+                    type="checkbox"
+                    checked={f.state.value}
+                    onChange={(e) => f.handleChange(e.target.checked)}
+                    onBlur={f.handleBlur}
+                  />{" "}
+                  Reduce only
                 </label>
                 <FieldError field={f} />
               </div>
@@ -373,7 +494,12 @@ export function OrderForm({ market, account, signedIn, picked, onSignUp, initial
             <form.Field name="postOnly">
               {(f) => (
                 <label className="check">
-                  <input type="checkbox" checked={f.state.value} onChange={(e) => f.handleChange(e.target.checked)} /> Post only
+                  <input
+                    type="checkbox"
+                    checked={f.state.value}
+                    onChange={(e) => f.handleChange(e.target.checked)}
+                  />{" "}
+                  Post only
                 </label>
               )}
             </form.Field>
@@ -382,7 +508,11 @@ export function OrderForm({ market, account, signedIn, picked, onSignUp, initial
 
         <dl className="kv">
           <dt>Size</dt>
-          <dd>{sizeCoins > 0 ? `${fmtSize(sizeCoins, market.szDecimals)} ${market.base.slice(0, 10)}` : "—"}</dd>
+          <dd>
+            {sizeCoins > 0
+              ? `${fmtSize(sizeCoins, market.szDecimals)} ${market.base.slice(0, 10)}`
+              : "—"}
+          </dd>
           <dt>Notional</dt>
           <dd>{notional > 0 ? usd(notional) : "—"}</dd>
           <dt>{reducing || pv.reduceOnly ? "Margin" : "Margin posted"}</dt>
@@ -395,25 +525,53 @@ export function OrderForm({ market, account, signedIn, picked, onSignUp, initial
           )}
           {!reducing && !pv.reduceOnly && (
             <>
-              <dt title="Approximate: ignores funding, the max-loss cap and any taper">Est. liquidation</dt>
-              <dd>{capped ? "none: fully collateralized" : liq && Number.isFinite(liq) && sizeCoins > 0 ? fmtPrice(liq, market.priceDecimals) : "—"}</dd>
+              <dt title="Approximate: ignores funding, the max-loss cap and any taper">
+                Est. liquidation
+              </dt>
+              <dd>
+                {capped
+                  ? "none: fully collateralized"
+                  : liq && Number.isFinite(liq) && sizeCoins > 0
+                    ? fmtPrice(liq, market.priceDecimals)
+                    : "—"}
+              </dd>
             </>
           )}
           <dt>Available</dt>
           <dd>{signedIn ? usd(wallet) : "—"}</dd>
         </dl>
 
-        {binary && pv.side === "sell" && effOnMaxLoss !== null && effOnMaxLoss > lev * 1.5 && !pv.reduceOnly && (
+        {binary &&
+          pv.side === "sell" &&
+          effOnMaxLoss !== null &&
+          effOnMaxLoss > lev * 1.5 &&
+          !pv.reduceOnly && (
+            <div className="note warn">
+              {lev}× on notional is <b>{effOnMaxLoss.toFixed(1)}×</b> on this short's max loss (
+              {usd(maxLoss)} if {market.base} resolves YES). If it does, the shortfall is charged to
+              the longs as ADL.
+            </div>
+          )}
+        {market.taper && market.taper.progress > 0 && (
           <div className="note warn">
-            {lev}× on notional is <b>{effOnMaxLoss.toFixed(1)}×</b> on this short's max loss ({usd(maxLoss)} if {market.base} resolves YES). If it does, the shortfall is
-            charged to the longs as ADL.
+            Pre-resolution taper is {Math.round(market.taper.progress * 100)}% in: margin
+            requirements are rising toward full max loss.
           </div>
         )}
-        {market.taper && market.taper.progress > 0 && <div className="note warn">Pre-resolution taper is {Math.round(market.taper.progress * 100)}% in: margin requirements are rising toward full max loss.</div>}
 
         <FormError error={server.error} />
-        <button type="submit" className={`btn block ${v.side === "buy" ? "buy" : "sell"}`} disabled={submitting || closed}>
-          {closed ? "Market resolved" : !signedIn ? "Sign up to trade" : submitting ? "Sending…" : `${v.side === "buy" ? "Buy / Long" : "Sell / Short"} ${v.type === "market" ? "at market" : ""}`}
+        <button
+          type="submit"
+          className={`btn block ${v.side === "buy" ? "buy" : "sell"}`}
+          disabled={submitting || closed}
+        >
+          {closed
+            ? "Market resolved"
+            : !signedIn
+              ? "Sign up to trade"
+              : submitting
+                ? "Sending…"
+                : `${v.side === "buy" ? "Buy / Long" : "Sell / Short"} ${v.type === "market" ? "at market" : ""}`}
         </button>
       </div>
     </form>

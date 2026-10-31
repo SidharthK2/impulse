@@ -25,7 +25,9 @@ export function useNow(ms = 1000): number {
 
 /** Whether a media query matches, kept current as the window changes. */
 export function useMediaQuery(query: string): boolean {
-  const [matches, setMatches] = useState(() => typeof matchMedia === "function" && matchMedia(query).matches);
+  const [matches, setMatches] = useState(
+    () => typeof matchMedia === "function" && matchMedia(query).matches,
+  );
   useEffect(() => {
     const mq = matchMedia(query);
     const on = () => setMatches(mq.matches);
