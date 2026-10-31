@@ -11,6 +11,7 @@ import { useConnected } from "./hooks";
 import { useAccount, useMarkets } from "./queries";
 import { usePrefs, useSession, useUi } from "./store";
 import type { AccountView } from "./types";
+import { UwuLayer } from "./uwu/Uwu";
 
 export function Layout() {
   useFixtureDriver();
@@ -41,6 +42,7 @@ export function Layout() {
 
       <StatusBar />
       <MarketSearch />
+      <UwuLayer />
       {modal === "signup" && (
         <SignUp onDone={(k) => (signIn(k), open(null))} onClose={() => open(null)} />
       )}

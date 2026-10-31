@@ -20,6 +20,7 @@ import {
 } from "./icons";
 import { Roll } from "./Roll";
 import { useToast } from "./ui";
+import { UwuControls } from "../uwu/Uwu";
 
 const MORE = [
   { to: "/feed", label: "Who paid", hint: "Every liquidation, bankruptcy and haircut" },
@@ -176,6 +177,7 @@ export function Header() {
       >
         {theme === "dark" ? <SunIcon /> : <MoonIcon />}
       </button>
+      <UwuControls />
       <AccountButton />
       <div className="nav-burger">
         <Menu align="right" className="icon-btn" label={<MenuIcon />}>

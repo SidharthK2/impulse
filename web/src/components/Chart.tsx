@@ -6,6 +6,9 @@ import { num, price as fmtPrice } from "../format";
 import { useCandles, useFeed } from "../queries";
 import { type Range, usePrefs } from "../store";
 import type { Candle, MarketView, PositionView, RiskEvent } from "../types";
+import { ChartScene } from "../uwu/art";
+import { useUwu } from "../uwu/store";
+import { ChartMascot } from "../uwu/Uwu";
 import { type Incident, IncidentCard, incidents } from "./WhoPaid";
 
 const RANGES: Record<Range, number> = {
@@ -55,8 +58,9 @@ function readColors(): Colors {
     accent: v("--accent"),
     text: v("--text"),
     muted: v("--muted"),
-    faint: v("--faint"),
-    line: v("--line"),
+    // A skin can give the chart its own grid and label colours (UwU draws over a sky); else the theme's.
+    faint: v("--chart-faint") || v("--faint"),
+    line: v("--chart-grid") || v("--line"),
     panel: v("--panel"),
     mono: v("--mono"),
   };
@@ -131,7 +135,9 @@ export function Chart({ market, position }: { market: MarketView; position?: Pos
   const canvas = useRef<HTMLCanvasElement>(null);
   const range = usePrefs((s) => s.range);
   const setRange = usePrefs((s) => s.setRange);
-  const theme = usePrefs((s) => s.theme);
+  const uwu = useUwu((s) => s.on);
+  // The colours depend on the theme and the skin; the frame loop re-reads them when this changes.
+  const theme = `${usePrefs((s) => s.theme)}${uwu ? "/uwu" : ""}`;
   const candles = useCandles(market.id);
   const feed = useFeed();
   const samples = useRef<Pt[]>([]);
@@ -542,7 +548,9 @@ export function Chart({ market, position }: { market: MarketView; position?: Pos
         </div>
       </div>
       <div className="chart" ref={wrap}>
+        {uwu && <ChartScene />}
         <canvas ref={canvas} aria-label={`${market.id} mark price chart`} role="img" />
+        {uwu && <ChartMascot />}
         {hover && <HoverCard hover={hover} market={market} />}
       </div>
     </div>

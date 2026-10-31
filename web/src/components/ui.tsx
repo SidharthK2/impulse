@@ -1,4 +1,5 @@
 import { type ReactNode, createContext, useCallback, useContext, useEffect, useState } from "react";
+import { TOAST_EVENT } from "../uwu/Uwu";
 
 type Tone = "up" | "down" | "warn" | "info";
 interface Toast {
@@ -17,6 +18,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const push = useCallback((text: ReactNode, tone: Tone = "info") => {
     const id = nextToast++;
     setToasts((t) => [...t.slice(-4), { id, text, tone }]);
+    // UwU mode's mascot reacts to every toast (uwu/Uwu.tsx); nothing else listens.
+    window.dispatchEvent(
+      new CustomEvent(TOAST_EVENT, {
+        detail: { tone, text: typeof text === "string" ? text : "" },
+      }),
+    );
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), tone === "down" ? 7000 : 4500);
   }, []);
   return (

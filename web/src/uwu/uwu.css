@@ -1,0 +1,802 @@
+/* UwU mode: a pastel night-sky skin over the regular app. Everything here is scoped to :root[data-skin="uwu"]
+   (set by uwu/store.ts and index.html), so the default look is untouched when it is off. Dark is a starry
+   midnight; light is a sakura afternoon. Prices stay in Inter's tabular figures so columns still line up. */
+
+:root[data-skin="uwu"] {
+  --bg: #121434;
+  --panel: #1b1d48;
+  --panel-2: #24275c;
+  --line: #31346e;
+  --line-2: #44478c;
+  --text: #f6f0ff;
+  --muted: #b6b0dc;
+  --faint: #8580b0;
+  --accent: #ffb3dd;
+  --accent-fill: #ffb3dd;
+  --accent-ink: #2a1036;
+  --accent-2: #a6f2d6;
+  --up: #8ff0c9;
+  --up-bg: rgba(143, 240, 201, 0.12);
+  --down: #ff8fb0;
+  --down-bg: rgba(255, 143, 176, 0.12);
+  --warn: #ffcf8f;
+  --warn-bg: rgba(255, 207, 143, 0.13);
+  --info: #b4c8ff;
+  --info-bg: rgba(180, 200, 255, 0.12);
+  --radius: 12px;
+  --uwu-pink: #ffb6d9;
+  --uwu-lilac: #c9b6ff;
+  --uwu-mint: #9ff0d0;
+  --uwu-glass: rgba(27, 29, 72, 0.82);
+  --uwu-glow: 0 0 0 1px rgba(201, 182, 255, 0.14), 0 8px 28px rgba(8, 6, 40, 0.45);
+  --uwu-sky: linear-gradient(180deg, #1a1650 0%, #2c2a78 48%, #5b4ba6 78%, #b98ac8 100%);
+  --chart-grid: rgba(255, 255, 255, 0.07);
+  --chart-faint: #ddd6ff;
+  --sans:
+    "M PLUS Rounded 1c", "Inter Variable", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, sans-serif;
+  color-scheme: dark;
+}
+
+:root[data-skin="uwu"][data-theme="light"] {
+  --bg: #fff3f9;
+  --panel: #ffffff;
+  --panel-2: #fdf0f8;
+  --line: #f4d8ea;
+  --line-2: #e9c2dc;
+  --text: #3d2a52;
+  --muted: #8b7299;
+  --faint: #b9a3c6;
+  --accent: #b05fd8;
+  --accent-fill: #ffb3dd;
+  --accent-ink: #3d1146;
+  --accent-2: #2fbf91;
+  --up: #17a578;
+  --up-bg: rgba(23, 165, 120, 0.1);
+  --down: #e2507f;
+  --down-bg: rgba(226, 80, 127, 0.09);
+  --warn: #d77a1c;
+  --warn-bg: rgba(215, 122, 28, 0.1);
+  --info: #5b74e0;
+  --info-bg: rgba(91, 116, 224, 0.08);
+  --uwu-glass: rgba(255, 255, 255, 0.84);
+  --uwu-glow: 0 0 0 1px rgba(233, 194, 220, 0.6), 0 8px 26px rgba(214, 140, 190, 0.18);
+  --uwu-sky: linear-gradient(180deg, #a9c8ff 0%, #c9c2ff 42%, #ffd0e8 80%, #fff0f6 100%);
+  --chart-grid: rgba(80, 40, 120, 0.08);
+  --chart-faint: #5e4a78;
+  color-scheme: light;
+}
+
+/* ---------- the room behind everything ---------- */
+
+[data-skin="uwu"] body {
+  background:
+    radial-gradient(1.4px 1.4px at 12% 18%, rgba(255, 255, 255, 0.7), transparent 60%),
+    radial-gradient(1.2px 1.2px at 78% 9%, rgba(255, 255, 255, 0.6), transparent 60%),
+    radial-gradient(1px 1px at 44% 66%, rgba(255, 255, 255, 0.5), transparent 60%),
+    radial-gradient(1.3px 1.3px at 91% 72%, rgba(255, 255, 255, 0.55), transparent 60%),
+    radial-gradient(1px 1px at 28% 88%, rgba(255, 255, 255, 0.5), transparent 60%),
+    radial-gradient(60% 50% at 8% 0%, rgba(255, 150, 210, 0.16), transparent 70%),
+    radial-gradient(50% 50% at 100% 100%, rgba(140, 240, 205, 0.1), transparent 70%),
+    radial-gradient(70% 60% at 70% 40%, rgba(150, 130, 255, 0.1), transparent 70%), var(--bg);
+  background-attachment: fixed;
+}
+[data-skin="uwu"][data-theme="light"] body {
+  background:
+    radial-gradient(60% 50% at 0% 0%, rgba(255, 182, 217, 0.45), transparent 70%),
+    radial-gradient(50% 50% at 100% 100%, rgba(159, 240, 208, 0.35), transparent 70%),
+    radial-gradient(60% 60% at 70% 30%, rgba(201, 182, 255, 0.3), transparent 70%), var(--bg);
+  background-attachment: fixed;
+}
+
+[data-skin="uwu"] ::selection {
+  background: rgba(255, 182, 217, 0.45);
+}
+[data-skin="uwu"] * {
+  scrollbar-color: color-mix(in srgb, var(--uwu-pink) 55%, transparent) transparent;
+}
+
+/* ---------- shell ---------- */
+
+[data-skin="uwu"] .header {
+  background: var(--uwu-glass);
+  border-bottom: 0;
+  box-shadow: 0 1px 0 rgba(201, 182, 255, 0.18);
+}
+[data-skin="uwu"] .header::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -2px;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    var(--uwu-pink),
+    var(--uwu-lilac),
+    var(--uwu-mint),
+    var(--uwu-pink)
+  );
+  background-size: 200% 100%;
+  animation: uwu-rainbow 8s linear infinite;
+  opacity: 0.8;
+}
+@keyframes uwu-rainbow {
+  to {
+    background-position: 200% 0;
+  }
+}
+[data-skin="uwu"] .brand-name {
+  font-weight: 800;
+  background: linear-gradient(90deg, var(--uwu-pink), var(--uwu-lilac) 60%, var(--uwu-mint));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+[data-skin="uwu"][data-theme="light"] .brand-name {
+  background-image: linear-gradient(90deg, #e2507f, #9a5bd8 60%, #17a578);
+}
+/* The base style makes the tag plain text (no padding); here it is a proper pill. */
+[data-skin="uwu"] .brand-tag {
+  color: #2a1036;
+  background: linear-gradient(90deg, var(--uwu-pink), var(--uwu-lilac));
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+}
+[data-skin="uwu"] .nav > a.active::after,
+[data-skin="uwu"] .nav .nav-more.active::after {
+  height: 3px;
+  left: 14px;
+  right: 14px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--uwu-pink), var(--uwu-lilac));
+}
+[data-skin="uwu"] .nav > a.active::before,
+[data-skin="uwu"] .nav .nav-more.active::before {
+  content: "✦";
+  position: absolute;
+  top: 7px;
+  right: 2px;
+  font-size: 8px;
+  color: var(--uwu-pink);
+  animation: uwu-twinkle 2.4s ease-in-out infinite;
+}
+[data-skin="uwu"] .menu-pop,
+[data-skin="uwu"] .picker-menu,
+[data-skin="uwu"] .palette,
+[data-skin="uwu"] .modal {
+  border-radius: 16px;
+  border-color: var(--line-2);
+}
+[data-skin="uwu"] .statusbar {
+  background: var(--uwu-glass);
+  border-top-color: rgba(201, 182, 255, 0.2);
+}
+[data-skin="uwu"] .statusbar::after {
+  content: "✧ stay cute, stay solvent ✧";
+  color: var(--faint);
+  white-space: nowrap;
+}
+@media (max-width: 760px) {
+  [data-skin="uwu"] .statusbar::after {
+    display: none;
+  }
+}
+
+/* ---------- panels and controls ---------- */
+
+[data-skin="uwu"] .panel,
+[data-skin="uwu"] .card {
+  background: var(--uwu-glass);
+  border-color: color-mix(in srgb, var(--uwu-lilac) 22%, transparent);
+  border-radius: 16px;
+  box-shadow: var(--uwu-glow);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+[data-skin="uwu"][data-theme="light"] .panel,
+[data-skin="uwu"][data-theme="light"] .card {
+  border-color: var(--line);
+}
+[data-skin="uwu"] .panel-head {
+  border-bottom-style: dashed;
+  border-bottom-color: color-mix(in srgb, var(--uwu-lilac) 25%, transparent);
+}
+[data-skin="uwu"] .panel-head h3 {
+  color: var(--accent);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+[data-skin="uwu"] .panel-head h3::before {
+  content: "✦ ";
+  color: var(--uwu-mint);
+}
+[data-skin="uwu"][data-theme="light"] .panel-head h3::before {
+  color: var(--accent-2);
+}
+[data-skin="uwu"] .stat-tile {
+  border-radius: 12px;
+}
+
+[data-skin="uwu"] .btn {
+  border-radius: 999px;
+  transition:
+    transform 0.12s,
+    box-shadow 0.12s,
+    opacity 0.12s;
+}
+[data-skin="uwu"] .btn:active:not(:disabled) {
+  transform: scale(0.96);
+}
+[data-skin="uwu"] .btn.primary,
+[data-skin="uwu"] .btn.primary:hover:not(:disabled) {
+  background: linear-gradient(100deg, #ffc2e2, #d9c6ff);
+  border-color: transparent;
+  color: #2a1036;
+  font-weight: 700;
+  box-shadow: 0 4px 16px rgba(255, 170, 215, 0.3);
+}
+[data-skin="uwu"] .btn.buy,
+[data-skin="uwu"] .btn.buy:hover:not(:disabled),
+[data-skin="uwu"] .seg button.on.buy {
+  background: linear-gradient(100deg, #a6f5d6, #8fe3f0);
+  border-color: transparent;
+  color: #0b3328;
+  font-weight: 700;
+}
+[data-skin="uwu"] .btn.sell,
+[data-skin="uwu"] .btn.sell:hover:not(:disabled),
+[data-skin="uwu"] .seg button.on.sell {
+  background: linear-gradient(100deg, #ffaccb, #ffc3a8);
+  border-color: transparent;
+  color: #4a0f26;
+  font-weight: 700;
+}
+[data-skin="uwu"] .btn.buy:hover:not(:disabled),
+[data-skin="uwu"] .btn.sell:hover:not(:disabled),
+[data-skin="uwu"] .btn.primary:hover:not(:disabled) {
+  opacity: 1;
+  box-shadow:
+    0 0 0 3px rgba(255, 255, 255, 0.12),
+    0 6px 20px rgba(255, 170, 215, 0.35);
+}
+[data-skin="uwu"] .seg {
+  border-radius: 999px;
+}
+[data-skin="uwu"] .seg button {
+  border-radius: 999px;
+}
+[data-skin="uwu"] .input {
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
+}
+[data-skin="uwu"] .input:focus {
+  border-color: var(--uwu-pink);
+  box-shadow: 0 0 0 3px rgba(255, 182, 217, 0.2);
+}
+[data-skin="uwu"] input[type="range"] {
+  accent-color: var(--uwu-pink);
+}
+[data-skin="uwu"] .badge,
+[data-skin="uwu"] .chip {
+  border-radius: 999px;
+}
+
+[data-skin="uwu"] .toast {
+  border-radius: 16px;
+  border-left-width: 1px;
+  border-color: var(--line-2);
+  background: var(--uwu-glass);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+[data-skin="uwu"] .toast::before {
+  content: "✧ ";
+  color: var(--info);
+}
+[data-skin="uwu"] .toast.up::before {
+  content: "♡ ";
+  color: var(--up);
+}
+[data-skin="uwu"] .toast.down::before {
+  content: "(╥﹏╥) ";
+  color: var(--down);
+}
+[data-skin="uwu"] .toast.warn::before {
+  content: "(°ロ°) ";
+  color: var(--warn);
+}
+
+/* ---------- chart scene ---------- */
+
+[data-skin="uwu"] .chart-panel .chart {
+  overflow: hidden;
+  border-radius: 0 0 16px 16px;
+}
+[data-skin="uwu"] .chart canvas {
+  z-index: 1;
+}
+.uwu-scene {
+  position: absolute;
+  inset: 0;
+  background: var(--uwu-sky);
+  pointer-events: none;
+  overflow: hidden;
+}
+/* A veil over the sky so the price line and labels keep their contrast. */
+.uwu-scene::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(18, 20, 52, 0.25),
+    rgba(18, 20, 52, 0.05) 60%,
+    transparent
+  );
+}
+[data-theme="light"] .uwu-scene::after {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0.1));
+}
+.uwu-stars {
+  position: absolute;
+  inset: 0;
+  fill: #fff;
+}
+[data-theme="light"] .uwu-stars {
+  opacity: 0.55;
+}
+.uwu-stars .tw {
+  animation: uwu-twinkle 3.2s ease-in-out infinite;
+}
+@keyframes uwu-twinkle {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.2;
+  }
+}
+.uwu-moon {
+  position: absolute;
+  top: 10px;
+  right: 96px;
+  filter: drop-shadow(0 0 12px rgba(255, 240, 190, 0.6));
+  animation: uwu-bob 6s ease-in-out infinite;
+}
+[data-theme="light"] .uwu-moon {
+  filter: drop-shadow(0 0 10px rgba(255, 220, 150, 0.8));
+}
+.uwu-shoot {
+  position: absolute;
+  top: 12%;
+  left: 18%;
+  width: 90px;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.95), transparent);
+  transform: rotate(-24deg) translateX(0);
+  opacity: 0;
+  animation: uwu-shoot 9s ease-in 2s infinite;
+}
+.uwu-shoot.b {
+  top: 30%;
+  left: 52%;
+  width: 60px;
+  animation-delay: 6.5s;
+  animation-duration: 13s;
+}
+@keyframes uwu-shoot {
+  0% {
+    opacity: 0;
+    transform: rotate(-24deg) translateX(0);
+  }
+  2% {
+    opacity: 1;
+  }
+  9% {
+    opacity: 0;
+    transform: rotate(-24deg) translateX(-260px);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(-24deg) translateX(-260px);
+  }
+}
+.uwu-clouds {
+  position: absolute;
+  left: 0;
+  bottom: 22px;
+  width: 200%;
+  height: 54px;
+  display: flex;
+  animation: uwu-drift 90s linear infinite;
+}
+.uwu-clouds svg {
+  width: 50%;
+  height: 100%;
+}
+.uwu-clouds.back {
+  bottom: 30px;
+  opacity: 0.45;
+  fill: #e8d4ff;
+  animation-duration: 140s;
+}
+.uwu-clouds.front {
+  bottom: 14px;
+  opacity: 0.6;
+  fill: #ffd6ec;
+}
+[data-theme="light"] .uwu-clouds.back,
+[data-theme="light"] .uwu-clouds.front {
+  fill: #fff;
+  opacity: 0.85;
+}
+@keyframes uwu-drift {
+  to {
+    transform: translateX(-50%);
+  }
+}
+/* ---------- Anya in the chart ---------- */
+
+/* Bottom-left of the plot, sitting on the clouds; above the canvas so she can be poked. */
+.uwu-mascot-wrap {
+  position: absolute;
+  left: 10px;
+  bottom: 18px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  pointer-events: none;
+}
+.uwu-mascot {
+  pointer-events: auto;
+  display: block;
+  height: 150px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  filter: drop-shadow(0 6px 12px rgba(20, 10, 60, 0.4));
+  transform-origin: 50% 100%;
+}
+.uwu-mascot img {
+  display: block;
+  height: 100%;
+  width: auto;
+  max-width: 190px;
+  object-fit: contain;
+  object-position: left bottom;
+  user-select: none;
+  animation: uwu-pose 0.28s cubic-bezier(0.3, 1.5, 0.6, 1);
+}
+@keyframes uwu-pose {
+  from {
+    transform: scale(0.85) translateY(8px);
+  }
+}
+.uwu-mascot.mood-idle img {
+  animation:
+    uwu-pose 0.28s cubic-bezier(0.3, 1.5, 0.6, 1),
+    uwu-breathe 3.6s ease-in-out 0.3s infinite;
+}
+@keyframes uwu-breathe {
+  50% {
+    transform: translateY(-3px);
+  }
+}
+.uwu-mascot.mood-happy,
+.uwu-mascot.mood-poke {
+  animation: uwu-hop 0.45s ease-out 2;
+}
+.uwu-mascot.mood-shock {
+  animation: uwu-shake 0.35s ease-in-out 2;
+}
+.uwu-mascot:focus-visible {
+  outline: 2px dashed var(--uwu-pink);
+  outline-offset: 2px;
+  border-radius: 12px;
+}
+@media (max-width: 760px) {
+  .uwu-mascot {
+    height: 96px;
+  }
+}
+@keyframes uwu-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+.pulse-chan {
+  display: block;
+}
+.pulse-chan.mood-happy,
+.pulse-chan.mood-poke {
+  animation: uwu-hop 0.5s ease-out 2;
+}
+.pulse-chan.mood-shock {
+  animation: uwu-shake 0.4s ease-in-out 2;
+}
+@keyframes uwu-hop {
+  40% {
+    transform: translateY(-10px);
+  }
+}
+@keyframes uwu-shake {
+  25% {
+    transform: translateX(-4px) rotate(-2deg);
+  }
+  75% {
+    transform: translateX(4px) rotate(2deg);
+  }
+}
+.uwu-eyes {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+}
+.mood-idle .uwu-eyes {
+  animation: uwu-blink 5s infinite;
+}
+@keyframes uwu-blink {
+  0%,
+  94%,
+  100% {
+    transform: scaleY(1);
+  }
+  97% {
+    transform: scaleY(0.1);
+  }
+}
+.uwu-tail {
+  transform-box: fill-box;
+  transform-origin: 80% 0%;
+  animation: uwu-sway 3.6s ease-in-out infinite;
+}
+.uwu-tail.r {
+  animation-delay: -1.8s;
+}
+@keyframes uwu-sway {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(5deg);
+  }
+}
+.uwu-ahoge {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: uwu-sway 2.2s ease-in-out infinite;
+}
+.uwu-tear {
+  animation: uwu-tear 1.2s ease-in infinite;
+}
+@keyframes uwu-tear {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(14px);
+    opacity: 0;
+  }
+}
+.uwu-bubble {
+  position: relative;
+  max-width: 260px;
+  margin: 0 0 4px 30px;
+  padding: 9px 13px;
+  border-radius: 16px;
+  background: #fff;
+  color: #3d2a52;
+  font-size: 12px;
+  line-height: 1.4;
+  box-shadow: 0 8px 24px rgba(20, 10, 60, 0.35);
+  border: 2px solid #ffc4e1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  animation: uwu-pop-in 0.25s cubic-bezier(0.3, 1.6, 0.6, 1);
+}
+.uwu-bubble b {
+  font-weight: 800;
+  color: #c4417e;
+}
+.uwu-bubble span {
+  color: #6c5a7c;
+  font-size: 11px;
+}
+.uwu-bubble::after {
+  content: "";
+  position: absolute;
+  left: 26px;
+  bottom: -9px;
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border-left: 2px solid #ffc4e1;
+  border-bottom: 2px solid #ffc4e1;
+  transform: rotate(-45deg);
+}
+@keyframes uwu-pop-in {
+  from {
+    transform: scale(0.6) translateY(8px);
+    opacity: 0;
+  }
+}
+/* ---------- header controls ---------- */
+
+.uwu-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.uwu-switch {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line-2);
+  background: var(--panel-2);
+  color: var(--muted);
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition:
+    transform 0.12s,
+    color 0.12s;
+}
+.uwu-switch:hover {
+  color: var(--text);
+  transform: rotate(-3deg);
+}
+.uwu-switch.on {
+  border-color: transparent;
+  background: linear-gradient(100deg, #ffc2e2, #d9c6ff, #b6f5df);
+  color: #2a1036;
+  box-shadow: 0 0 14px rgba(255, 182, 217, 0.45);
+}
+.uwu-tool {
+  position: relative;
+  border-radius: 10px;
+}
+.uwu-tool.active {
+  color: var(--uwu-pink);
+  background: color-mix(in srgb, var(--uwu-pink) 12%, transparent);
+}
+[data-theme="light"] .uwu-tool.active {
+  color: var(--accent);
+}
+.uwu-dot {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--uwu-mint);
+  box-shadow: 0 0 6px var(--uwu-mint);
+}
+.uwu-pop-wrap {
+  position: relative;
+}
+.uwu-pop {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: -8px;
+  width: 240px;
+  z-index: 50;
+  border-radius: 16px;
+  border: 1px solid var(--line-2);
+  background: var(--panel);
+  box-shadow: 0 18px 48px rgba(8, 6, 40, 0.5);
+  overflow: hidden;
+  animation: uwu-pop-in 0.2s cubic-bezier(0.3, 1.4, 0.6, 1);
+  transform-origin: 90% 0;
+}
+.uwu-vol {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.uwu-vol .icon-btn {
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+}
+.uwu-vol input[type="range"] {
+  flex: 1;
+  appearance: none;
+  -webkit-appearance: none;
+  height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--uwu-mint) var(--v), var(--line-2) var(--v));
+  outline: none;
+}
+.uwu-vol input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--uwu-mint);
+  border: 3px solid var(--panel);
+  box-shadow: 0 0 0 1px var(--uwu-mint);
+  cursor: pointer;
+}
+.uwu-vol input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--uwu-mint);
+  border: 3px solid var(--panel);
+  cursor: pointer;
+}
+.uwu-vol .mono {
+  min-width: 38px;
+  text-align: right;
+  color: var(--muted);
+}
+.uwu-check {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  font-size: 13px;
+  cursor: pointer;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+}
+.uwu-check:last-child {
+  border-bottom: 0;
+}
+.uwu-check:hover {
+  background: color-mix(in srgb, var(--uwu-pink) 6%, transparent);
+}
+.uwu-check input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.uwu-check i {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  border: 1.5px solid var(--line-2);
+  display: grid;
+  place-items: center;
+  transition: background 0.12s;
+}
+.uwu-check input:checked + i {
+  background: var(--uwu-pink);
+  border-color: var(--uwu-pink);
+}
+.uwu-check input:checked + i::after {
+  content: "♡";
+  color: #4a0f26;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+}
+.uwu-check input:focus-visible + i {
+  outline: 2px solid var(--uwu-lilac);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-skin="uwu"] *,
+  [data-skin="uwu"] *::before,
+  [data-skin="uwu"] *::after {
+    animation: none !important;
+  }
+}
