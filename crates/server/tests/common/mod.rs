@@ -41,6 +41,7 @@ pub fn spawn(data_dir: PathBuf, env: &[(&str, &str)]) -> Server {
         .env("ADMIN_TOKEN", ADMIN)
         .env("WEB_DIR", "-")
         .env("EXIT_WITH_STDIN", "1")
+        .env("VERIFY_STEPS", "1")
         .env("DATA_DIR", &data_dir);
     for (k, v) in env {
         cmd.env(k, v);

@@ -2,7 +2,7 @@
 //
 //   PORT=8787  DATA_DIR=data  WEB_DIR=web/dist  ADMIN_TOKEN=impulse-admin
 //   OFFLINE=1 (no network feeds)  BOTS=0 (no house bots)  TEST_CLOCK=1 (a clock only /api/test/* moves)
-//   EXIT_WITH_STDIN=1 (exit when stdin closes: for test harnesses)  TIMER_SPEEDUP=N (clock, bots and walk N× faster: tests)
+//   EXIT_WITH_STDIN=1 (exit when stdin closes: for test harnesses)  VERIFY_STEPS=1 (fail-stop on a missed version bump: tests)  TIMER_SPEEDUP=N (clock, bots and walk N× faster: tests)
 
 mod api;
 mod book;
@@ -132,7 +132,11 @@ async fn main() {
         }
     };
     log(&format!("database {}", store.path.display()));
-    let mut node = sequencer::Node::new(sequencer::Core::new(Some(store)), clock, bots);
+    let mut core = sequencer::Core::new(Some(store));
+    if env("VERIFY_STEPS").as_deref() == Some("1") {
+        core.verify_steps();
+    }
+    let mut node = sequencer::Node::new(core, clock, bots);
     let recovery = match node.core.recover(&data_dir) {
         Ok(r) => r,
         Err(e) => {

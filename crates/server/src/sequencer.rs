@@ -66,6 +66,8 @@ pub struct Core {
     snapshot_at: Instant,
     /// Time spent in submit (apply + journal), per step, for the throughput report.
     pub timings: Vec<Duration>,
+    /// With step verification on (VERIFY_STEPS=1, the test servers): the state hash after the last step.
+    verified: Option<String>,
 }
 
 pub enum Recovery {
@@ -105,7 +107,14 @@ impl Core {
             since_snapshot: 0,
             snapshot_at: Instant::now(),
             timings: vec![],
+            verified: None,
         }
+    }
+
+    /// Check every step: a command that leaves `version` alone must leave the whole exchange alone, or it changed
+    /// state the journal would miss. Costs a state hash per command, so it's for tests (VERIFY_STEPS=1).
+    pub fn verify_steps(&mut self) {
+        self.verified = Some(self.x.state_hash());
     }
 
     /// The sequencer: every state change enters here, with the time intake gave it. See the module comment.
@@ -126,7 +135,15 @@ impl Core {
             if let Some(s) = &self.store {
                 s.rollback();
             }
+            if let Some(before) = &self.verified {
+                if *before != self.x.state_hash() {
+                    fail_stop(&format!("command {} changed the exchange without bumping its version, so the journal would miss it", journaled.kind()));
+                }
+            }
             return r;
+        }
+        if self.verified.is_some() {
+            self.verified = Some(self.x.state_hash());
         }
         self.seq += 1;
         if let Some(s) = &self.store {
@@ -196,6 +213,9 @@ impl Core {
         self.history = HistoryMarks::of(&x);
         self.x = x;
         self.seq = seq;
+        if self.verified.is_some() {
+            self.verify_steps();
+        }
         self.snapshot();
         Ok(Recovery::Restored { replayed, imported })
     }
