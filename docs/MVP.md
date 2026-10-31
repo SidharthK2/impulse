@@ -26,6 +26,8 @@ make dev            # development: Rust server (debug) on :8787 + Vite on http:/
 make test           # cargo test: engine, golden-file parity, server unit tests, HTTP and websocket tests
 make web            # install and build the web app
 make typecheck      # the web app
+make fmt            # format everything: rustfmt for Rust, oxfmt for the web app
+make lint           # the checks CI runs besides tests: formatting, clippy, oxlint, typecheck
 ```
 
 The TypeScript engine and server that the Rust code was ported from are in [impulse-research](https://github.com/SidharthK2/impulse-research),
