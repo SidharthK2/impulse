@@ -22,7 +22,7 @@ mod views;
 mod ws;
 
 use api::App;
-use command::{Clock, Command, CommandKind, Genesis, Resume};
+use command::{Clock, Command, CommandKind, Genesis, Resume, Upgrade};
 use intake::IntakeClock;
 use logging::log;
 use std::path::PathBuf;
@@ -207,6 +207,17 @@ async fn main() {
         }
     }
     submit(&app, Clock {});
+    let pending: Vec<&str> = {
+        let x = &app.lock().core.x;
+        exchange::UPGRADES
+            .iter()
+            .copied()
+            .filter(|u| !x.upgrades.contains(*u))
+            .collect()
+    };
+    for name in pending {
+        submit(&app, Upgrade { name: name.into() });
+    }
     if bots {
         let setup = bots::Bots::setup(&app.lock().core.x);
         for cmd in setup {

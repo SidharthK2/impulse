@@ -228,11 +228,12 @@ transition runs on a clone. Bad input (e.g. an over-withdrawal) is a normal *rej
 Per market k (these never reference another market, which is what makes sharding safe):
 
 1. **Balanced exposure:** Σ q = 0.
-2. **Collateral conservation:** V_k = Σ allocated = Σ (C − B). With Σq=0 this equals Σ E at **any** mark.
+2. **Collateral conservation:** V_k = Σ allocated − Σ fees = Σ (C − B). With Σq=0 this equals Σ E at **any**
+   mark. Trading fees are the only money that leaves a market other than through releases.
 3. **Non-negative equity:** E ≥ 0 for every position.
 4. **Maintained margin:** E ≥ MM for every open position.
 5. **No unfunded claims:** releasable ≤ E, and Σ releasable ≤ V_k.
-6. **Per-position ledger:** C = allocated + realized + adlTransfer + funding.
+6. **Per-position ledger:** C = allocated + realized + adlTransfer + funding − fees, and fees ≥ 0.
 7. **Resolved market:** every q = 0 and B = 0.
 
 Global:
@@ -254,3 +255,17 @@ this numerically. Solvency means **re-allocating** D to specific accounts, not h
 
 Not planned for v1: perp trading fees, partial liquidation, liquidation penalties, order book/matching, cross
 margin, and oracle sanity checks.
+
+## Trading fees (added 2026-10-31)
+
+A market's config carries `takerFeePpm` and `makerFeePpm` (parts per million of notional, in [0, 10⁶); 0 when
+unset). A `trade` event can name its `taker` (the buyer or the seller). Each side then pays
+
+  fee = min(⌈size · price · rate / 10⁶⌉, max(0, E after the fill))
+
+from its collateral: the taker at the taker rate, the other side at the maker rate. The fee moves from the market's
+vault to the global `fees` (invariants 2, 6 and 8), and the margin check runs on equity after the fee. The cap at
+remaining equity means a fee can never create a shortfall: a closing trade with less equity than its fee pays
+what's left. A trade without a `taker`, as in every research scenario, charges nothing, so the scenarios and
+golden histories are unchanged. `setFees` changes a market's rates. The exchange lists every market at
+Hyperliquid's base tier (450 and 150 ppm: 0.045% and 0.015%).

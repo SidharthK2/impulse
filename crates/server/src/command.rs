@@ -119,6 +119,7 @@ commands! {
     FeedTick = "tick",
     Ticks = "ticks",
     Depth = "depth",
+    Upgrade = "upgrade",
     History = "history",
     BotQuote = "botQuote",
     TestReload = "testReload",
@@ -514,6 +515,19 @@ impl Apply for Depth {
             .iter()
             .filter_map(|b| x.mirror(b).err().map(|e| (b.market.clone(), e)))
             .collect())
+    }
+}
+
+/// A one-time upgrade of an exchange an older build made (exchange::UPGRADES), submitted at startup.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Upgrade {
+    pub name: String,
+}
+
+impl Apply for Upgrade {
+    type Reply = ();
+    fn apply(&self, x: &mut Exchange) -> XResult<()> {
+        x.upgrade(&self.name)
     }
 }
 

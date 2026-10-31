@@ -87,7 +87,21 @@ pub struct MarketConfig {
     pub resolves_at: Option<i128>,
     #[serde(with = "big")]
     pub taper_seconds: i128,
+    /// Perp trading fees, parts per million of a fill's notional, paid from the position's collateral into
+    /// `State::fees`. A trade that names its taker charges them (the other side pays the maker fee); one that
+    /// doesn't, as in the research scenarios, charges nothing. 0 when not set.
+    #[serde(default, skip_serializing_if = "is_zero", with = "big")]
+    pub taker_fee_ppm: i128,
+    #[serde(default, skip_serializing_if = "is_zero", with = "big")]
+    pub maker_fee_ppm: i128,
 }
+
+fn is_zero(v: &i128) -> bool {
+    *v == 0
+}
+
+/// Fees are in parts per million.
+pub const PPM: i128 = 1_000_000;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -107,6 +121,9 @@ pub struct Position {
     pub adl_transfer: i128,
     #[serde(with = "big")]
     pub funding: i128,
+    /// trading fees paid from this position's collateral
+    #[serde(default, skip_serializing_if = "is_zero", with = "big")]
+    pub fees: i128,
 }
 
 /// Mirror-style spot market: xy=k bonding curve on virtual reserves (USDC x, tokens y).
@@ -257,9 +274,16 @@ pub struct MarketEvent {
     /// curve markets only: open with a snipe window (spot and perp trading wait for `open`)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub launch: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub taker_fee_ppm: Option<Num>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub maker_fee_ppm: Option<Num>,
 }
 
 /// Amounts are decimals, or "all" where the TS engine allows it.
+// Events are made one at a time and applied at once, so a large `market` variant costs nothing; boxing it would
+// only add noise wherever one is built.
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum Event {
@@ -288,6 +312,9 @@ pub enum Event {
         seller: String,
         size: Num,
         price: Num,
+        /// the side that took liquidity (buyer or seller): it pays the taker fee and the other the maker fee
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        taker: Option<String>,
     },
     Tick {
         market: String,
@@ -324,6 +351,13 @@ pub enum Event {
     Book {
         market: String,
         mid: Option<Num>,
+    },
+    /// set a market's perp trading fees (parts per million of notional)
+    #[serde(rename_all = "camelCase")]
+    SetFees {
+        market: String,
+        taker_fee_ppm: Num,
+        maker_fee_ppm: Num,
     },
 }
 
@@ -424,6 +458,17 @@ pub enum Effect {
         #[serde(with = "big")]
         leverage: i128,
     },
+    /// a trade's fees (only when it charged any)
+    #[serde(rename_all = "camelCase")]
+    Fees {
+        market: String,
+        taker: String,
+        #[serde(with = "big")]
+        taker_fee: i128,
+        maker: String,
+        #[serde(with = "big")]
+        maker_fee: i128,
+    },
     Open {
         market: String,
         #[serde(with = "big")]
@@ -451,6 +496,7 @@ impl Effect {
             Effect::Mark { .. } => "mark",
             Effect::Funding { .. } => "funding",
             Effect::Graduation { .. } => "graduation",
+            Effect::Fees { .. } => "fees",
             Effect::Open { .. } => "open",
         }
     }
@@ -780,6 +826,8 @@ fn on_market(s: &mut State, e: &MarketEvent) -> R<()> {
     if initial_leverage < 1 || maintenance_leverage < initial_leverage {
         return rej("need 1 ≤ initialLeverage ≤ maintenanceLeverage");
     }
+    let taker_fee_ppm = fee_ppm(e.taker_fee_ppm.as_ref())?;
+    let maker_fee_ppm = fee_ppm(e.maker_fee_ppm.as_ref())?;
     let config = MarketConfig {
         lower,
         upper,
@@ -791,6 +839,8 @@ fn on_market(s: &mut State, e: &MarketEvent) -> R<()> {
         funding: e.funding.unwrap_or(true),
         resolves_at,
         taper_seconds,
+        taker_fee_ppm,
+        maker_fee_ppm,
     };
     let mut curve = None;
     let mut oracle = None;
@@ -864,6 +914,25 @@ fn on_market(s: &mut State, e: &MarketEvent) -> R<()> {
     Ok(())
 }
 
+/// A fee rate in parts per million: 0 if unset, else in [0, 1e6).
+fn fee_ppm(n: Option<&Num>) -> R<i128> {
+    let v = match n {
+        Some(n) => int(&n.0)?,
+        None => 0,
+    };
+    if !(0..PPM).contains(&v) {
+        return rej("fees must be in [0, 1000000) ppm");
+    }
+    Ok(v)
+}
+
+fn on_set_fees(s: &mut State, market: &str, taker: &Num, maker: &Num) -> R<()> {
+    let m = get_market(&mut s.markets, market)?;
+    m.config.taker_fee_ppm = fee_ppm(Some(taker))?;
+    m.config.maker_fee_ppm = fee_ppm(Some(maker))?;
+    Ok(())
+}
+
 fn on_deposit(s: &mut State, account: &str, amount: &Num) -> R<()> {
     let amt = fixed(&amount.0)?;
     if amt <= 0 {
@@ -922,6 +991,12 @@ fn on_release(s: &mut State, account: &str, market: &str, amount: &Num) -> R<()>
     Ok(())
 }
 
+/// What a fill costs one side in fees at `rate` ppm, rounded up: never more than the position's equity after the
+/// fill, so a fee can't leave a shortfall (a closing trade with less equity than its fee pays what's left).
+fn trade_fee(p: &Position, mark: Option<i128>, notional: i128, rate: i128) -> i128 {
+    ceil_div(notional * rate, PPM).min(0.max(equity(p, mark)))
+}
+
 fn on_trade(
     s: &mut State,
     market: &str,
@@ -929,7 +1004,11 @@ fn on_trade(
     seller: &str,
     size: &Num,
     price: &Num,
+    taker: Option<&str>,
 ) -> R<Vec<Effect>> {
+    if taker.is_some_and(|t| t != buyer && t != seller) {
+        return rej("the taker must be the buyer or the seller");
+    }
     let m = get_market(&mut s.markets, market)?;
     if m.status != Status::Open {
         return rej(format!("{} is resolved", m.id));
@@ -950,9 +1029,21 @@ fn on_trade(
         (get_position(m, buyer)?, size),
         (get_position(m, seller)?, -size),
     ];
-    for (p, d) in parties.iter_mut() {
+    let mut fees = [0, 0];
+    for (i, (p, d)) in parties.iter_mut().enumerate() {
         let before = p.size;
         fill(p, *d, price);
+        if let Some(t) = taker {
+            let rate = if p.account == t {
+                m.config.taker_fee_ppm
+            } else {
+                m.config.maker_fee_ppm
+            };
+            let f = trade_fee(p, m.mark, size * price, rate);
+            p.collateral -= f;
+            p.fees += f;
+            fees[i] = f;
+        }
         let reduce_only = p.size.abs() < before.abs() && sign(p.size) != -sign(before);
         let eq = equity(p, m.mark);
         let need = if reduce_only {
@@ -979,7 +1070,26 @@ fn on_trade(
     }
     m.volume += size * price;
     m.last_trade = Some(price);
-    let effects = graduate(m);
+    let mut effects = vec![];
+    let paid = fees[0] + fees[1];
+    if paid > 0 {
+        let t = taker.expect("fees need a taker");
+        let (taker_fee, maker_fee) = if t == buyer {
+            (fees[0], fees[1])
+        } else {
+            (fees[1], fees[0])
+        };
+        effects.push(Effect::Fees {
+            market: m.id.clone(),
+            taker: t.into(),
+            taker_fee,
+            maker: if t == buyer { seller } else { buyer }.into(),
+            maker_fee,
+        });
+    }
+    m.vault -= paid;
+    s.fees += paid;
+    effects.extend(graduate(m));
     update_funding_rate(m);
     Ok(effects)
 }
@@ -1600,14 +1710,19 @@ pub fn check_market(m: &Market) -> Vec<String> {
     let (
         mut net_size,
         mut allocated,
+        mut fees,
         mut collateral_minus_basis,
         mut sum_equity,
         mut sum_releasable,
-    ) = (0, 0, 0, 0, 0);
+    ) = (0, 0, 0, 0, 0, 0);
     for p in m.positions.values() {
         let id = format!("{}/{}", m.id, p.account);
         net_size += p.size;
         allocated += p.allocated;
+        fees += p.fees;
+        if p.fees < 0 {
+            errs.push(format!("{id}: negative fees"));
+        }
         collateral_minus_basis += p.collateral - p.basis;
         if p.size != 0 && m.mark.is_none() {
             errs.push(format!("{id}: position without mark"));
@@ -1626,7 +1741,7 @@ pub fn check_market(m: &Market) -> Vec<String> {
             errs.push(format!("{id}: releasable {r} > equity {eq}"));
         }
         sum_releasable += r;
-        if p.collateral != p.allocated + p.realized + p.adl_transfer + p.funding {
+        if p.collateral != p.allocated + p.realized + p.adl_transfer + p.funding - p.fees {
             errs.push(format!("{id}: ledger mismatch"));
         }
         if m.status == Status::Resolved && (p.size != 0 || p.basis != 0) {
@@ -1636,9 +1751,10 @@ pub fn check_market(m: &Market) -> Vec<String> {
     if net_size != 0 {
         errs.push(format!("{}: unbalanced exposure Σsize = {net_size}", m.id));
     }
-    if allocated != m.vault {
+    // Fees are the only money that leaves a market other than through releases.
+    if allocated - fees != m.vault {
         errs.push(format!(
-            "{}: vault {} != Σallocated {allocated}",
+            "{}: vault {} != Σallocated {allocated} − Σfees {fees}",
             m.id, m.vault
         ));
     }
@@ -1745,7 +1861,8 @@ pub fn apply(state: &State, event: &Event) -> Result<(State, Vec<Effect>), Apply
             seller,
             size,
             price,
-        } => on_trade(&mut s, market, buyer, seller, size, price),
+            taker,
+        } => on_trade(&mut s, market, buyer, seller, size, price, taker.as_deref()),
         Event::Tick { market, price } => on_tick(&mut s, market, &price.0),
         Event::Resolve { market, price } => on_resolve(&mut s, market, &price.0),
         Event::SpotBuy {
@@ -1766,6 +1883,11 @@ pub fn apply(state: &State, event: &Event) -> Result<(State, Vec<Effect>), Apply
         } => on_snipe(&mut s, account, market, amount).map(|_| vec![]),
         Event::Open { market } => on_open(&mut s, market),
         Event::Book { market, mid } => on_book(&mut s, market, mid.as_ref()).map(|_| vec![]),
+        Event::SetFees {
+            market,
+            taker_fee_ppm,
+            maker_fee_ppm,
+        } => on_set_fees(&mut s, market, taker_fee_ppm, maker_fee_ppm).map(|_| vec![]),
     }?;
     let errs = check_invariants(&s);
     if !errs.is_empty() {

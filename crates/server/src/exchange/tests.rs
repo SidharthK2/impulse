@@ -67,6 +67,42 @@ fn every_change_bumps_the_version() {
     }
 }
 
+// ---------- trading fees ----------
+
+#[test]
+fn a_fill_charges_the_taker_and_maker_fees_and_records_them() {
+    let x = session("k");
+    // alice took 2 coins from bob at $100: $200 of notional at 0.045% taker and 0.015% maker.
+    let f = x.fills.back().unwrap();
+    assert_eq!((f.taker_fee, f.maker_fee), (90_000_000, 30_000_000));
+    let m = &x.state.markets["X"];
+    assert_eq!(m.positions["alice"].fees, 90_000_000);
+    assert_eq!(m.positions["bob"].fees, 30_000_000);
+    assert_eq!(x.state.fees, 120_000_000);
+}
+
+#[test]
+fn the_fees_upgrade_gives_markets_listed_without_fees_the_default_fees_once() {
+    let mut x = session("k");
+    let c = &mut x.state.markets.get_mut("X").unwrap().config;
+    (c.taker_fee_ppm, c.maker_fee_ppm) = (0, 0);
+    x.upgrade("fees").unwrap();
+    let c = &x.state.markets["X"].config;
+    assert_eq!(
+        (c.taker_fee_ppm, c.maker_fee_ppm),
+        (TAKER_FEE_PPM, MAKER_FEE_PPM)
+    );
+    assert!(x.upgrades.contains("fees"));
+    // Once applied, it's never applied again: a market set to no fees afterwards keeps them.
+    let c = &mut x.state.markets.get_mut("X").unwrap().config;
+    (c.taker_fee_ppm, c.maker_fee_ppm) = (0, 0);
+    let v = x.version;
+    x.upgrade("fees").unwrap();
+    assert_eq!(x.version, v);
+    assert_eq!(x.state.markets["X"].config.taker_fee_ppm, 0);
+    assert!(x.upgrade("nonsense").is_err());
+}
+
 // ---------- mirrored books ----------
 
 const B: i128 = 1_000_000_000; // one coin, or $1, in nano

@@ -176,6 +176,8 @@ pub struct MarketSpec {
     pub initial_leverage: Option<f64>,
     pub maintenance_leverage: Option<f64>,
     pub snipe_seconds: Option<i64>, // attention markets: open with a snipe window this long
+    pub taker_fee_ppm: Option<f64>, // perp trading fees, ppm of notional (default TAKER_FEE_PPM, MAKER_FEE_PPM)
+    pub maker_fee_ppm: Option<f64>,
 }
 
 impl MarketSpec {
@@ -200,6 +202,8 @@ impl MarketSpec {
             initial_leverage: None,
             maintenance_leverage: None,
             snipe_seconds: None,
+            taker_fee_ppm: None,
+            maker_fee_ppm: None,
         }
     }
 }
@@ -237,6 +241,15 @@ pub struct Fill {
     pub maker: String, // "curve" for spot
     pub taker_order: Option<u64>,
     pub maker_order: Option<u64>,
+    /// perp trading fees each side paid, nano-USD (spot fees are in `price`)
+    #[serde(default, skip_serializing_if = "is_zero", with = "big")]
+    pub taker_fee: i128,
+    #[serde(default, skip_serializing_if = "is_zero", with = "big")]
+    pub maker_fee: i128,
+}
+
+fn is_zero(v: &i128) -> bool {
+    *v == 0
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

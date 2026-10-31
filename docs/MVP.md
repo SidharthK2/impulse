@@ -358,6 +358,7 @@ Each market reports these in `settings`, with `ours: true` where the number is o
 | Leverage | Starts at 3× (Mirror's published start), graduates through 5 tiers to 100× on volume and depth (thresholds ours) |
 | Creator-coin perp oracle | 10-minute TWAP of spot |
 | Spot fee | 1%, also charged on snipes |
+| Perp trading fees | 0.045% taker, 0.015% maker (Hyperliquid's base tier), from the position's margin into the fee pot |
 | Snipe window | 60 s |
 | ADL | pro-rata on profit first, then principal |
 | Funding | base 0.05%/h at launch, falling with each tier; premium (book mid − mark) / mark / 8, capped at ±4%/h (the last trade if a side of the book is empty) |
@@ -384,8 +385,9 @@ Each market reports these in `settings`, with `ours: true` where the number is o
 ## Known limitations
 
 - Paper money only: no custody, chain, signatures, KYC or rate limits. API keys sit in localStorage.
-- Liquidation closes at mark against the other side, not through the book. There are no partial liquidations,
-  liquidation fees or perp fees. The only fee is the 1% spot curve fee (and on snipes).
+- Liquidation closes at mark against the other side, not through the book. There are no partial liquidations or
+  liquidation fees. Perp fees are one flat tier (no volume discounts, no maker rebates), and they accumulate in the
+  fee pot: nothing pays them out.
 - Mirrored books are polled every 2 s, so a mirrored level can be up to about 2 s behind Hyperliquid: someone
   watching Hyperliquid live can pick off a level that has moved, on paper. Fills against a mirrored level don't
   move Hyperliquid's price. Polymarket books aren't mirrored (those markets keep the ladder).

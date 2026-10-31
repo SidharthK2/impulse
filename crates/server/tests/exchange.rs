@@ -15,14 +15,25 @@ struct Setup {
 
 /// A manual-oracle perp at $100 (0.01-coin lots) and three accounts with $1,000 each.
 async fn setup(v: &Venue) -> Setup {
+    setup_with(v, json!({})).await
+}
+
+/// No trading fees: for tests whose exact numbers are about something else (ADL, settlement).
+fn fee_free(mut spec: Value) -> Value {
+    spec["takerFeePpm"] = json!(0);
+    spec["makerFeePpm"] = json!(0);
+    spec
+}
+
+/// A $100 perp (`extra` merged into its listing) and three users with $1,000 each.
+async fn setup_with(v: &Venue, extra: Value) -> Setup {
     let s = uid();
     let x = format!("X{s}");
-    ok(v.admin(
-        "POST",
-        "/api/test/market",
-        json!({ "id": x, "kind": "perp", "price": "100", "szDecimals": 2 }),
-    )
-    .await);
+    let mut spec = json!({ "id": x, "kind": "perp", "price": "100", "szDecimals": 2 });
+    for (k, val) in extra.as_object().unwrap() {
+        spec[k] = val.clone();
+    }
+    ok(v.admin("POST", "/api/test/market", spec).await);
     let alice = v.user(&format!("al{s}"), 1000).await;
     let bob = v.user(&format!("bo{s}"), 1000).await;
     let carol = v.user(&format!("ca{s}"), 1000).await;
@@ -95,8 +106,16 @@ async fn fills_a_market_order_against_resting_liquidity_with_auto_margin() {
     assert_eq!(r["fills"].as_array().unwrap().len(), 1);
     assert_eq!(size(&v, &alice, &x).await, "4");
     assert_eq!(size(&v, &bob, &x).await, "-4");
-    // alice posted $400 / 2× = $200; bob's resting order defaults to the market max (3×): $133.34
-    assert_eq!(wallet(&v, &alice).await, "800.00");
+    // alice posted $400 / 2× = $200, plus her 0.045% taker fee ($0.18). bob's resting order defaults to the market
+    // max (3×): $133.34, plus his 0.015% maker fee ($0.06), which leaves the bucket again as it's paid.
+    assert_eq!(wallet(&v, &alice).await, "799.82");
+    let mine = &v.account(&alice).await["fills"][0];
+    assert_eq!(
+        (&mine["liquidity"], &mine["fee"]),
+        (&json!("taker"), &json!("0.18"))
+    );
+    assert_eq!(v.account(&bob).await["fills"][0]["fee"], "0.06");
+    assert_eq!(position(&v, &alice, &x).await.unwrap()["fees"], "0.18");
     assert_eq!(
         collateral(&v, &bob, &x).await.as_deref(),
         Some("133.333333334")
@@ -269,7 +288,7 @@ async fn closes_with_reduce_only_and_returns_collateral_to_the_wallet() {
     assert_eq!(filled, 2.0); // capped at the position
     assert_eq!(size(&v, &alice, &x).await, "0");
     assert_eq!(collateral(&v, &alice, &x).await, None); // flat, and the bucket is empty
-    assert_eq!(wallet(&v, &alice).await, "1000.00");
+    assert_eq!(wallet(&v, &alice).await, "999.82"); // $200 in and out at $100, less 0.045% each way
     conserved(&v).await;
 }
 
@@ -282,7 +301,7 @@ async fn a_gap_bankrupts_the_long_charges_the_shorts_and_records_who_paid() {
         bob,
         carol,
         ..
-    } = setup(&v).await;
+    } = setup_with(&v, fee_free(json!({}))).await;
     ok(v.order(
         &bob,
         json!({ "market": x, "side": "sell", "price": "100", "size": "10" }),
@@ -438,7 +457,7 @@ async fn resolves_a_binary_and_settles_every_position() {
     ok(v.admin(
         "POST",
         "/api/test/market",
-        json!({ "id": b, "kind": "binary", "price": "0.4" }),
+        fee_free(json!({ "id": b, "kind": "binary", "price": "0.4" })),
     )
     .await);
     ok(v.order(

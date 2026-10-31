@@ -24,6 +24,9 @@ const MIGRATIONS: &[&str] = &[
      CREATE TABLE candles (market TEXT NOT NULL, t INTEGER NOT NULL, o TEXT NOT NULL, h TEXT NOT NULL, l TEXT NOT NULL, c TEXT NOT NULL,
                            v TEXT NOT NULL, PRIMARY KEY (market, t));
      CREATE TABLE accounts (id TEXT PRIMARY KEY, created_at INTEGER NOT NULL, bot INTEGER NOT NULL);",
+    // 3: perp trading fees per fill (USD; NULL for spot fills and for fills from before fees)
+    "ALTER TABLE fills ADD COLUMN taker_fee TEXT;
+     ALTER TABLE fills ADD COLUMN maker_fee TEXT;",
 ];
 
 pub const BUILD: &str = concat!("impulse-server ", env!("CARGO_PKG_VERSION"));
@@ -235,10 +238,11 @@ impl Store {
     fn insert_fill(&self, seq: u64, x: &Exchange, f: &Fill) -> Result<(), String> {
         let v = serde_json::to_value(crate::views::fill_view(x, f, None))
             .expect("fill view serializes");
+        let perp = f.kind == crate::exchange::FillKind::Perp;
         self.conn
             .prepare_cached(
-                "INSERT OR REPLACE INTO fills (id, seq, ts, market, kind, price, size, notional, side, taker, maker, taker_order, maker_order)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                "INSERT OR REPLACE INTO fills (id, seq, ts, market, kind, price, size, notional, side, taker, maker, taker_order, maker_order, taker_fee, maker_fee)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
             )
             .and_then(|mut st| {
                 st.execute(params![
@@ -254,7 +258,9 @@ impl Store {
                     f.taker,
                     f.maker,
                     f.taker_order.map(|o| o as i64),
-                    f.maker_order.map(|o| o as i64)
+                    f.maker_order.map(|o| o as i64),
+                    perp.then(|| usd(f.taker_fee)),
+                    perp.then(|| usd(f.maker_fee))
                 ])
             })
             .map_err(err)

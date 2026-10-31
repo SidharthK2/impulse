@@ -1047,3 +1047,97 @@ fn funding_premium_refuses_a_mid_outside_the_bounds_or_on_a_resolved_market() {
         ]
     );
 }
+
+// ---------- trading fees ----------
+
+fn perp_with_fees(taker_ppm: i64, maker_ppm: i64) -> Event {
+    ev(
+        json!({ "type": "market", "id": M, "preset": "perp", "takerFeePpm": taker_ppm, "makerFeePpm": maker_ppm }),
+    )
+}
+
+#[allow(non_snake_case)]
+fn TT(buyer: &str, seller: &str, size: i64, price: &str, taker: &str) -> Event {
+    ev(
+        json!({ "type": "trade", "market": M, "buyer": buyer, "seller": seller, "size": size, "price": price, "taker": taker }),
+    )
+}
+
+#[test]
+fn a_trade_with_a_taker_charges_both_sides_their_fee_into_the_fee_pot() {
+    let (s, results) = run(&concat(vec![
+        vec![perp_with_fees(1000, 500), K("100", M)],
+        fund("a", "1000", M),
+        fund("b", "1000", M),
+        vec![TT("a", "b", 5, "100", "a")],
+    ]));
+    // $500 notional: 0.1% from the taker, 0.05% from the maker.
+    assert_eq!(
+        results[6],
+        Ok(vec![Effect::Fees {
+            market: M.into(),
+            taker: "a".into(),
+            taker_fee: usd("0.5"),
+            maker: "b".into(),
+            maker_fee: usd("0.25"),
+        }])
+    );
+    let m = &s.markets[M];
+    assert_eq!(m.positions["a"].fees, usd("0.5"));
+    assert_eq!(m.positions["b"].collateral, usd("999.75"));
+    assert_eq!(m.vault, usd("1999.25"));
+    assert_eq!(s.fees, usd("0.75"));
+    assert!(check_invariants(&s).is_empty());
+}
+
+#[test]
+fn a_trade_without_a_taker_charges_nothing() {
+    let (s, results) = run(&concat(vec![
+        vec![perp_with_fees(1000, 500), K("100", M)],
+        fund("a", "1000", M),
+        fund("b", "1000", M),
+        vec![T("a", "b", 5, "100", M)],
+    ]));
+    assert_eq!(results[6], Ok(vec![]));
+    assert_eq!(s.fees, 0);
+    assert_eq!(s.markets[M].positions["a"].fees, 0);
+}
+
+#[test]
+fn a_closing_fee_never_takes_more_than_the_equity_left() {
+    let (s, results) = run(&concat(vec![
+        vec![perp_with_fees(500_000, 0), K("100", M)],
+        fund("a", "100", M),
+        fund("b", "1000", M),
+        vec![
+            TT("a", "b", 2, "100", "b"),
+            K("66", M),
+            TT("b", "a", 2, "66", "a"),
+        ],
+    ]));
+    assert!(results.iter().all(|r| r.is_ok()), "{results:?}");
+    // a's equity at 66 is 100 − 2 × 34 = 32, less than half of the $132 close: the fee takes all of it.
+    let a = &s.markets[M].positions["a"];
+    assert_eq!(
+        (a.size, a.fees, equity(a, s.markets[M].mark)),
+        (0, usd("32"), 0)
+    );
+    assert_eq!(s.fees, usd("132")); // b's $100 taker fee on the open, a's $32 on the close
+    assert!(check_invariants(&s).is_empty());
+}
+
+#[test]
+fn fees_can_be_changed_and_are_validated() {
+    let set = |taker: i64, maker: i64| {
+        ev(json!({ "type": "setFees", "market": M, "takerFeePpm": taker, "makerFeePpm": maker }))
+    };
+    let (s, results) = run(&[perp(M), set(450, 150), set(1_000_000, 0), set(0, -1)]);
+    assert_eq!(results[1], Ok(vec![]));
+    assert_eq!(
+        results[2],
+        Err("fees must be in [0, 1000000) ppm".to_string())
+    );
+    assert!(results[3].is_err());
+    let c = &s.markets[M].config;
+    assert_eq!((c.taker_fee_ppm, c.maker_fee_ppm), (450, 150));
+}

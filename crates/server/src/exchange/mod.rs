@@ -35,12 +35,12 @@ use crate::units::{
 use impulse_engine::fixed::ceil_div;
 use impulse_engine::ser::{big, Num};
 use impulse_engine::{
-    apply, equity, initial_margin, initial_state, leverage_now, ApplyError, Effect, Event, Market,
-    MarketEvent, Position, State, Status,
+    apply, equity, initial_margin, initial_state, leverage_now, maintenance_margin, ApplyError,
+    Effect, Event, Market, MarketEvent, Position, State, Status, PPM,
 };
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 
 const FILL_HISTORY: usize = 5000;
 const RISK_HISTORY: usize = 2000;
@@ -49,6 +49,10 @@ pub const FAUCET_AMOUNT: i128 = 10_000 * impulse_engine::fixed::ONE;
 const FAUCET_CAP: i128 = 100_000 * impulse_engine::fixed::ONE;
 const FAUCET_COOLDOWN_MS: i64 = 60_000;
 const MAX_OPEN_ORDERS: usize = 200;
+/// Perp trading fees on every market we list, in parts per million of notional: Hyperliquid's base tier, 0.045%
+/// taker and 0.015% maker. They go to the engine's fee pot (`State::fees`).
+pub const TAKER_FEE_PPM: i128 = 450;
+pub const MAKER_FEE_PPM: i128 = 150;
 const RESERVED: [&str; 3] = ["curve", "admin", HOUSE];
 /// The account /api/admin/pump trades from.
 pub const HOUSE: &str = "house";
@@ -135,8 +139,16 @@ pub struct Exchange {
     pub bots_enabled: bool,
     /// Candles changed since the store last looked: (market, minute). Not state; the read tables' to-do list.
     #[serde(skip)]
-    pub dirty_candles: std::collections::BTreeSet<(String, i64)>,
+    pub dirty_candles: BTreeSet<(String, i64)>,
+    /// The one-time upgrades this exchange has had, by name (see `UPGRADES`).
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub upgrades: BTreeSet<String>,
 }
+
+/// One-time upgrades for an exchange an older build made, in order. At startup, main.rs submits an Upgrade command
+/// for each one the exchange hasn't had; a fresh exchange takes them too, and they find nothing to change.
+///   fees: markets listed before trading fees existed charge the default fees from then on.
+pub const UPGRADES: &[&str] = &["fees"];
 
 fn yes() -> bool {
     true
@@ -160,7 +172,37 @@ impl Exchange {
             now: genesis,
             bots_enabled: true,
             dirty_candles: Default::default(),
+            upgrades: BTreeSet::new(),
         }
+    }
+
+    /// Apply one of `UPGRADES` (once: an exchange that has had it is left alone).
+    pub fn upgrade(&mut self, name: &str) -> XResult<()> {
+        if self.upgrades.contains(name) {
+            return Ok(());
+        }
+        match name {
+            "fees" => {
+                let events: Vec<Event> = self
+                    .state
+                    .markets
+                    .values()
+                    .filter(|m| m.config.taker_fee_ppm == 0 && m.config.maker_fee_ppm == 0)
+                    .map(|m| Event::SetFees {
+                        market: m.id.clone(),
+                        taker_fee_ppm: Num(TAKER_FEE_PPM.to_string()),
+                        maker_fee_ppm: Num(MAKER_FEE_PPM.to_string()),
+                    })
+                    .collect();
+                if !events.is_empty() {
+                    self.exec(&events)?;
+                }
+            }
+            other => return Err(ExError::bad(format!("unknown upgrade {other}"))),
+        }
+        self.upgrades.insert(name.into());
+        self.version += 1;
+        Ok(())
     }
 
     /// Rebuild the indexes a snapshot doesn't carry.

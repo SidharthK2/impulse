@@ -158,6 +158,8 @@ impl Exchange {
                         maker: "curve".into(),
                         taker_order: None,
                         maker_order: None,
+                        taker_fee: 0,
+                        maker_fee: 0,
                     };
                     self.push_fill(fill);
                     let mark = self.state.markets[market].mark.unwrap_or(0);
@@ -208,6 +210,7 @@ impl Exchange {
                     self.candle(market, *price, 0, None);
                 }
                 Effect::Funding { .. } => {} // funding accrues every clock step; positions carry the running total
+                Effect::Fees { .. } => {}    // the fill that paid them records them (matching.rs)
             }
         }
     }

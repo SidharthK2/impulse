@@ -297,6 +297,17 @@ fn settings(meta: &MarketMeta, m: &Market, mirrored: bool) -> Vec<Setting> {
             true,
         ));
     }
+    if m.config.taker_fee_ppm != 0 || m.config.maker_fee_ppm != 0 {
+        out.push(setting(
+            "Trading fees",
+            format!(
+                "{}% taker, {}% maker, from the position's margin",
+                m.config.taker_fee_ppm as f64 / 1e4,
+                m.config.maker_fee_ppm as f64 / 1e4
+            ),
+            true,
+        ));
+    }
     let adl = match m.config.adl {
         AdlPolicy::Pnl => "pro-rata on profit first, then principal",
         AdlPolicy::Size => "pro-rata by position size",
@@ -522,6 +533,9 @@ pub struct FillView<'a> {
     my_side: Option<Side>,
     #[serde(skip_serializing_if = "Option::is_none")]
     liquidity: Option<&'static str>,
+    /// the viewer's trading fee on this fill (USD)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fee: Option<String>,
 }
 
 pub fn fill_view<'a>(x: &Exchange, f: &'a Fill, viewer: Option<&str>) -> FillView<'a> {
@@ -540,6 +554,9 @@ pub fn fill_view<'a>(x: &Exchange, f: &'a Fill, viewer: Option<&str>) -> FillVie
         maker: &f.maker,
         my_side: taker.map(|t| if t { f.side } else { f.side.opposite() }),
         liquidity: taker.map(|t| if t { "taker" } else { "maker" }),
+        fee: taker
+            .filter(|_| f.kind == FillKind::Perp)
+            .map(|t| usd(if t { f.taker_fee } else { f.maker_fee })),
     }
 }
 
@@ -655,9 +672,10 @@ pub struct PositionView<'a> {
     unrealized: String,
     realized: String,
     funding: String,
-    adl: String, // − haircuts paid as absorber, + shortfall covered as bankrupt
+    adl: String,  // − haircuts paid as absorber, + shortfall covered as bankrupt
+    fees: String, // trading fees paid
     allocated: String,
-    pnl: String, // everything since the bucket opened: trading, funding and ADL
+    pnl: String, // everything since the bucket opened: trading, fees, funding and ADL
     initial_margin: String,
     maintenance_margin: String,
     leverage: Option<f64>,
@@ -697,6 +715,7 @@ pub fn position_view<'a>(meta: &'a MarketMeta, m: &Market, p: &Position) -> Posi
         realized: usd(p.realized),
         funding: usd(p.funding),
         adl: usd(p.adl_transfer),
+        fees: usd(p.fees),
         allocated: usd(p.allocated),
         pnl: usd(eq - p.allocated),
         initial_margin: usd(if open { initial_margin(m, p) } else { 0 }),

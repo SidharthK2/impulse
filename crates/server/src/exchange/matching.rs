@@ -190,6 +190,7 @@ impl Exchange {
         if let Some(u) = m.config.upper {
             need = need.min(delta.abs() * u);
         }
+        need += ceil_div(delta.abs() * px * m.config.taker_fee_ppm, PPM);
         let wallet = self.wallet(account);
         let free = p.map_or(0, |p| 0.max(equity(p, m.mark) - initial_margin(m, p)));
         if need > wallet + free {
@@ -288,7 +289,13 @@ impl Exchange {
         {
             let m = &self.state.markets[&market];
             for (o, d) in [(buyer, qty), (seller, -qty)] {
-                let need = self.margin_for(m, &o.account, d, price, o.leverage);
+                let rate = if o.account == taker.account {
+                    m.config.taker_fee_ppm
+                } else {
+                    m.config.maker_fee_ppm
+                };
+                let fee = ceil_div(qty * price * rate, PPM);
+                let need = self.margin_for(m, &o.account, d, price, o.leverage, fee);
                 if need > 0 {
                     events.push(ev_allocate(&o.account, &market, dec(need)));
                 }
@@ -300,9 +307,20 @@ impl Exchange {
             seller: seller.account.clone(),
             size: qty.to_string().into(),
             price: dec(price).into(),
+            taker: Some(taker.account.clone()),
         });
-        match self.commit(&events) {
-            Ok(_) => {}
+        let (taker_fee, maker_fee) = match self.commit(&events) {
+            Ok(effects) => effects
+                .iter()
+                .find_map(|e| match e {
+                    Effect::Fees {
+                        taker_fee,
+                        maker_fee,
+                        ..
+                    } => Some((*taker_fee, *maker_fee)),
+                    _ => None,
+                })
+                .unwrap_or((0, 0)),
             Err(ExError::Http(_, reason)) => {
                 return Ok(Err(if blames(&reason, &maker.account) {
                     Blame::Maker
@@ -311,7 +329,7 @@ impl Exchange {
                 }));
             }
             Err(e) => return Err(e),
-        }
+        };
         let fill = Fill {
             id: self.bump_id(),
             time: self.now(),
@@ -324,6 +342,8 @@ impl Exchange {
             maker: maker.account.clone(),
             taker_order: Some(taker.id),
             maker_order: Some(maker.id),
+            taker_fee,
+            maker_fee,
         };
         self.push_fill(fill.clone());
         let mark = self.state.markets[&market].mark.expect("mark");
@@ -332,9 +352,10 @@ impl Exchange {
         Ok(Ok(fill))
     }
 
-    /// Auto-margin for one side of a fill: top the position's equity (after the fill, marked at the oracle) up to
-    /// the larger of the engine's initial margin and the order's chosen leverage. Capped by the wallet; if that's
-    /// not enough the engine rejects the trade and the matcher blames this side.
+    /// Auto-margin for one side of a fill: top the position's equity (after the fill and its `fee`, marked at the
+    /// oracle) up to the larger of the engine's initial margin and the order's chosen leverage; for a reduction,
+    /// only what keeps the rest above maintenance after the fee. Capped by the wallet; if that's not enough the
+    /// engine rejects the trade and the matcher blames this side.
     pub fn margin_for(
         &self,
         m: &Market,
@@ -342,23 +363,23 @@ impl Exchange {
         delta: i128,
         price: i128,
         leverage: i128,
+        fee: i128,
     ) -> i128 {
         let p = m.positions.get(account);
         let cur = p.map_or(0, |p| p.size);
         let next = cur + delta;
-        if next.abs() <= cur.abs() && next.signum() != -cur.signum() {
-            return 0; // pure reduction needs nothing new
-        }
         let mark = m.mark.expect("mark");
-        let eq_after = p.map_or(0, |p| equity(p, Some(mark))) + delta * (mark - price);
+        let eq_after = p.map_or(0, |p| equity(p, Some(mark))) + delta * (mark - price) - fee;
+        let at_size = |size: i128| Position {
+            size,
+            ..Default::default()
+        };
+        if next.abs() <= cur.abs() && next.signum() != -cur.signum() {
+            let need = maintenance_margin(m, &at_size(next)) - eq_after;
+            return need.clamp(0, self.wallet(account).max(0));
+        }
         let lev = leverage.min(leverage_now(m).0);
-        let engine_im = initial_margin(
-            m,
-            &Position {
-                size: next,
-                ..Default::default()
-            },
-        );
+        let engine_im = initial_margin(m, &at_size(next));
         let mut chosen = ceil_div(next.abs() * mark, lev);
         let cap = if next > 0 {
             Some(next * (mark - m.config.lower))

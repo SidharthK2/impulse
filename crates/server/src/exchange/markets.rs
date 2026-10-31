@@ -54,6 +54,8 @@ impl Exchange {
             initial_leverage: spec.initial_leverage.and_then(num),
             maintenance_leverage: spec.maintenance_leverage.and_then(num),
             launch: spec.snipe_seconds.map(|_| true),
+            taker_fee_ppm: num(spec.taker_fee_ppm.unwrap_or(TAKER_FEE_PPM as f64)),
+            maker_fee_ppm: num(spec.maker_fee_ppm.unwrap_or(MAKER_FEE_PPM as f64)),
             ..Default::default()
         });
         let meta = MarketMeta {

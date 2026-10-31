@@ -59,6 +59,15 @@ GET /api/admin/stats   (admin)   → {seq, n, p50_us, p99_us, max_us, mean_us}
 The journal's last sequence number, and the time each journaled command has taken since the server started
 (applying it and committing it to the journal), for watching throughput.
 
+## Additions (2026-10-31, branch `realism`)
+
+```
+PositionView   fees: string                       // trading fees paid from this position's margin
+Fill           fee?: string                       // in an account's own fills (perp): what that account paid
+MarketView     settings adds "Trading fees", and "Liquidity" on markets that mirror Hyperliquid's book
+POST /api/test/market   adds takerFeePpm?, makerFeePpm?   (test hook; default 450 and 150)
+```
+
 ## Request bodies (2026-10-31)
 
 Bodies are typed: each endpoint deserializes its JSON into a request struct, instead of reading fields with
