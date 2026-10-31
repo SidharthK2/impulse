@@ -11,45 +11,49 @@ pub(super) async fn faucet(State(app): State<App>, User(id): User) -> ApiResult 
     ok(json!({ "amount": usd(amount) }))
 }
 
-pub(super) async fn withdraw(State(app): State<App>, User(id): User, b: Body) -> ApiResult {
-    app.lock().submit(Withdraw { account: id, amount: b.amount("amount")? })?;
+#[derive(Deserialize)]
+pub(super) struct AmountReq {
+    amount: Amount,
+}
+
+pub(super) async fn withdraw(State(app): State<App>, User(id): User, Body(b): Body<AmountReq>) -> ApiResult {
+    app.lock().submit(Withdraw { account: id, amount: b.amount })?;
     ok(json!({ "ok": true }))
 }
 
-pub(super) async fn place_order(State(app): State<App>, User(id): User, b: Body) -> ApiResult {
-    let kind = match b.0.get("type") {
-        None | Some(Value::Null) => "limit".to_string(),
-        _ => b.str("type")?,
-    };
-    let input = OrderInput {
-        market: b.str("market")?,
-        side: parse_side(&b.str("side")?)?,
-        kind: match kind.as_str() {
-            "limit" => OrderType::Limit,
-            "market" => OrderType::Market,
-            _ => return Err(ExError::bad("type must be limit or market").into()),
-        },
-        size: b.dec("size")?,
-        price: match b.0.get("price") {
-            None => None,
-            Some(Value::String(s)) if s.is_empty() => None,
-            _ => Some(b.dec("price")?),
-        },
-        leverage: b.num("leverage"),
-        reduce_only: b.truthy("reduceOnly"),
-        tif: match b.0.get("tif") {
-            None => None,
-            _ => Some(match b.str("tif")?.as_str() {
-                "gtc" => Tif::Gtc,
-                "ioc" => Tif::Ioc,
-                "alo" => Tif::Alo,
-                _ => return Err(ExError::bad("tif must be gtc, ioc or alo").into()),
-            }),
-        },
-        slippage: b.num("slippage"),
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct OrderReq {
+    market: String,
+    side: Side,
+    #[serde(rename = "type", default)]
+    kind: OrderType,
+    size: Dec,
+    #[serde(default, deserialize_with = "field::dec")]
+    price: Option<Dec>,
+    #[serde(default, deserialize_with = "field::num")]
+    leverage: Option<f64>,
+    #[serde(default)]
+    reduce_only: bool,
+    tif: Option<Tif>,
+    #[serde(default, deserialize_with = "field::num")]
+    slippage: Option<f64>,
+}
+
+pub(super) async fn place_order(State(app): State<App>, User(id): User, Body(b): Body<OrderReq>) -> ApiResult {
+    let order = OrderInput {
+        market: b.market,
+        side: b.side,
+        kind: b.kind,
+        size: b.size,
+        price: b.price,
+        leverage: b.leverage,
+        reduce_only: b.reduce_only,
+        tif: b.tif,
+        slippage: b.slippage,
     };
     let mut node = app.lock();
-    let r = node.submit(PlaceOrder { account: id.clone(), order: input })?;
+    let r = node.submit(PlaceOrder { account: id.clone(), order })?;
     order_reply(&node.core.x, &id, r, true)
 }
 
@@ -58,34 +62,61 @@ pub(super) async fn cancel(State(app): State<App>, User(id): User, Path(order): 
     ok(json!({ "ok": true }))
 }
 
-pub(super) async fn cancel_all(State(app): State<App>, User(id): User, b: Body) -> ApiResult {
-    let market = match b.0.get("market") {
-        Some(Value::String(m)) => Some(m.clone()),
-        _ => None,
-    };
-    let n = app.lock().submit(CancelAll { account: id, market })?;
+#[derive(Deserialize)]
+pub(super) struct CancelAllReq {
+    #[serde(default, deserialize_with = "field::text")]
+    market: Option<String>,
+}
+
+pub(super) async fn cancel_all(State(app): State<App>, User(id): User, Body(b): Body<CancelAllReq>) -> ApiResult {
+    let n = app.lock().submit(CancelAll { account: id, market: b.market })?;
     ok(json!({ "cancelled": n }))
 }
 
-pub(super) async fn close_position(State(app): State<App>, User(id): User, b: Body) -> ApiResult {
-    let cmd = ClosePosition { account: id.clone(), market: b.str("market")?, slippage: b.num("slippage").unwrap_or(0.1) };
+#[derive(Deserialize)]
+pub(super) struct CloseReq {
+    market: String,
+    #[serde(default, deserialize_with = "field::num")]
+    slippage: Option<f64>,
+}
+
+pub(super) async fn close_position(State(app): State<App>, User(id): User, Body(b): Body<CloseReq>) -> ApiResult {
+    let cmd = ClosePosition { account: id.clone(), market: b.market, slippage: b.slippage.unwrap_or(0.1) };
     let mut node = app.lock();
     let r = node.submit(cmd)?;
     order_reply(&node.core.x, &id, r, false)
 }
 
-pub(super) async fn margin(State(app): State<App>, User(id): User, b: Body) -> ApiResult {
-    app.lock().submit(Margin { account: id, market: b.str("market")?, amount: b.dec("amount")? })?;
+#[derive(Deserialize)]
+pub(super) struct MarginReq {
+    market: String,
+    amount: Dec,
+}
+
+pub(super) async fn margin(State(app): State<App>, User(id): User, Body(b): Body<MarginReq>) -> ApiResult {
+    app.lock().submit(Margin { account: id, market: b.market, amount: b.amount })?;
     ok(json!({ "ok": true }))
 }
 
-pub(super) async fn spot_buy(State(app): State<App>, User(id): User, b: Body) -> ApiResult {
-    app.lock().submit(SpotBuy { account: id, market: b.str("market")?, usdc: b.amount("usdc")? })?;
+#[derive(Deserialize)]
+pub(super) struct UsdcReq {
+    market: String,
+    usdc: Amount,
+}
+
+pub(super) async fn spot_buy(State(app): State<App>, User(id): User, Body(b): Body<UsdcReq>) -> ApiResult {
+    app.lock().submit(SpotBuy { account: id, market: b.market, usdc: b.usdc })?;
     ok(json!({ "ok": true }))
 }
 
-pub(super) async fn spot_sell(State(app): State<App>, User(id): User, b: Body) -> ApiResult {
-    app.lock().submit(SpotSell { account: id, market: b.str("market")?, tokens: b.tokens("tokens")? })?;
+#[derive(Deserialize)]
+pub(super) struct SellReq {
+    market: String,
+    tokens: Tokens,
+}
+
+pub(super) async fn spot_sell(State(app): State<App>, User(id): User, Body(b): Body<SellReq>) -> ApiResult {
+    app.lock().submit(SpotSell { account: id, market: b.market, tokens: b.tokens })?;
     ok(json!({ "ok": true }))
 }
 
@@ -116,14 +147,24 @@ pub(super) fn coin_spec(raw: &str, window: f64, adl: &str, creator: &str) -> Res
     })
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct CoinReq {
+    handle: String,
+    #[serde(default, deserialize_with = "field::num")]
+    oracle_window: Option<f64>,
+    #[serde(default, deserialize_with = "field::text")]
+    adl: Option<String>,
+}
+
 /// Permissionless listing, Mirror's pitch: anyone can launch an attention market for a handle.
-pub(super) async fn attention(State(app): State<App>, User(id): User, b: Body) -> ApiResult {
-    let adl = if b.0.get("adl") == Some(&json!("size")) { "size" } else { "pnl" };
-    let spec = coin_spec(&b.str("handle")?, b.num("oracleWindow").unwrap_or(600.0), adl, &id)?;
+pub(super) async fn attention(State(app): State<App>, User(id): User, Body(b): Body<CoinReq>) -> ApiResult {
+    let adl = if b.adl.as_deref() == Some("size") { "size" } else { "pnl" };
+    let spec = coin_spec(&b.handle, b.oracle_window.unwrap_or(600.0), adl, &id)?;
     list(&app, spec)
 }
 
-pub(super) async fn snipe(State(app): State<App>, User(id): User, b: Body) -> ApiResult {
-    app.lock().submit(Snipe { account: id, market: b.str("market")?, usdc: b.amount("usdc")? })?;
+pub(super) async fn snipe(State(app): State<App>, User(id): User, Body(b): Body<UsdcReq>) -> ApiResult {
+    app.lock().submit(Snipe { account: id, market: b.market, usdc: b.usdc })?;
     ok(json!({ "ok": true }))
 }

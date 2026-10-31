@@ -30,7 +30,8 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use impulse_engine::{check_invariants, Effect};
-use serde::Serialize;
+use crate::money::{Amount, Dec, Tokens};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
 use std::path::{Component, PathBuf};
@@ -73,24 +74,6 @@ fn ok<T: Serialize>(v: T) -> ApiResult {
 
 fn kinds(effects: &[Effect]) -> Vec<&'static str> {
     effects.iter().map(Effect::kind).collect()
-}
-
-fn parse_side(s: &str) -> Result<Side, ExError> {
-    match s {
-        "buy" => Ok(Side::Buy),
-        "sell" => Ok(Side::Sell),
-        _ => Err(ExError::bad("side must be buy or sell")),
-    }
-}
-
-fn parse_kind(s: &str) -> Result<Kind, ExError> {
-    match s {
-        "perp" => Ok(Kind::Perp),
-        "binary" => Ok(Kind::Binary),
-        "attention" => Ok(Kind::Attention),
-        "preipo" => Ok(Kind::Preipo),
-        _ => Err(ExError::bad("kind must be perp, binary, attention or preipo")),
-    }
 }
 
 fn order_reply(x: &Exchange, id: &str, r: OrderResult, with_order: bool) -> ApiResult {

@@ -2,7 +2,7 @@
 // lot). A market's lot is 10^-szDecimals coins, Hyperliquid style: BTC trades in 0.00001 BTC lots, a binary
 // outcome or an attention token in whole units. Money is nano-USD everywhere, so lots × lot price stays exact.
 
-pub use impulse_engine::fixed::{fmt, parse_fixed, ONE};
+pub use impulse_engine::fixed::{fmt, ONE};
 
 pub fn pow10(n: u32) -> i128 {
     10i128.pow(n)
@@ -120,6 +120,7 @@ pub fn group(int: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use impulse_engine::fixed::parse_fixed;
 
     fn d(s: &str) -> crate::money::Dec {
         crate::money::Dec::parse(s).unwrap()

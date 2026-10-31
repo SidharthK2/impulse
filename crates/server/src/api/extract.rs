@@ -1,7 +1,7 @@
 // Request plumbing: the error type and the extractors for the signed-in user, the admin token and JSON bodies.
 
 use super::*;
-use crate::money::{Amount, Dec, Tokens};
+use serde::de::DeserializeOwned;
 
 pub struct ApiError(ExError);
 
@@ -48,94 +48,62 @@ impl FromRequestParts<App> for Admin {
     }
 }
 
-/// A JSON object body with the TS server's loose field rules: anything that isn't an object reads as `{}`.
-pub struct Body(pub(super) Map<String, Value>);
+/// A JSON body, deserialized into the handler's request type. An empty body (or JSON that isn't an object) reads as
+/// `{}`, so a request with no required fields needs none. Field errors are 400s naming the field when serde does.
+pub struct Body<T>(pub T);
 
-impl<S: Send + Sync> FromRequest<S> for Body {
+impl<S: Send + Sync, T: DeserializeOwned> FromRequest<S> for Body<T> {
     type Rejection = ApiError;
     async fn from_request(req: Request, _: &S) -> Result<Self, ApiError> {
-        if req.method() == Method::GET || req.method() == Method::HEAD {
-            return Ok(Body(Map::new()));
-        }
         let bytes = axum::body::to_bytes(req.into_body(), 64 * 1024).await.map_err(|_| ExError::status(413, "body too large"))?;
-        if bytes.is_empty() {
-            return Ok(Body(Map::new()));
-        }
-        match serde_json::from_slice::<Value>(&bytes) {
-            Ok(Value::Object(m)) => Ok(Body(m)),
-            Ok(_) => Ok(Body(Map::new())),
-            Err(_) => Err(ExError::bad("body must be JSON").into()),
-        }
+        let value = match serde_json::from_slice::<Value>(&bytes) {
+            Ok(v @ Value::Object(_)) => v,
+            Ok(_) => Value::Object(Map::new()),
+            Err(_) if bytes.is_empty() => Value::Object(Map::new()),
+            Err(_) => return Err(ExError::bad("body must be JSON").into()),
+        };
+        serde_json::from_value(value).map(Body).map_err(|e| field_error(&e).into())
     }
 }
 
-/// JS Number(v).
-fn js_number(v: &Value) -> f64 {
-    match v {
-        Value::Number(n) => n.as_f64().unwrap_or(f64::NAN),
-        Value::String(s) if s.trim().is_empty() => 0.0,
-        Value::String(s) => s.trim().parse().unwrap_or(f64::NAN),
-        Value::Bool(b) => f64::from(u8::from(*b)),
-        Value::Null => 0.0,
-        _ => f64::NAN,
+/// "missing field `market`" → "market is required"; anything else as serde says it, without a position.
+fn field_error(e: &serde_json::Error) -> ExError {
+    let text = e.to_string();
+    let text = text.split(" at line ").next().unwrap_or(&text);
+    match text.strip_prefix("missing field `").and_then(|t| t.strip_suffix('`')) {
+        Some(field) => ExError::bad(format!("{field} is required")),
+        None => ExError::bad(format!("invalid request: {text}")),
     }
 }
 
-impl Body {
-    /// A required string field; numbers are accepted and read as their decimal text.
-    /// A required exact decimal (USD, a price, or coins).
-    pub(super) fn dec(&self, name: &str) -> Result<Dec, ExError> {
-        Dec::parse(&self.str(name)?).map_err(|e| ExError::bad(format!("{name}: {e}")))
-    }
+/// Lenient request fields: numbers as JSON numbers or numeric strings, and null or "" as absent.
+pub(super) mod field {
+    use serde::de::Error;
+    use serde::{Deserialize, Deserializer};
+    use serde_json::Value;
 
-    /// A required wallet amount: a decimal or "all".
-    pub(super) fn amount(&self, name: &str) -> Result<Amount, ExError> {
-        Amount::parse(&self.str(name)?).map_err(|e| ExError::bad(format!("{name}: {e}")))
-    }
-
-    /// Required spot tokens: a whole number or "all".
-    pub(super) fn tokens(&self, name: &str) -> Result<Tokens, ExError> {
-        Tokens::parse(&self.str(name)?).map_err(ExError::bad)
-    }
-
-    pub(super) fn str(&self, name: &str) -> Result<String, ExError> {
-        match self.0.get(name) {
-            Some(Value::String(s)) if !s.is_empty() => Ok(s.clone()),
-            Some(Value::Number(n)) => Ok(n.as_i64().map_or_else(|| n.as_f64().unwrap_or(0.0).to_string(), |i| i.to_string())),
-            _ => Err(ExError::bad(format!("{name} is required"))),
+    /// An optional number.
+    pub fn num<'de, D: Deserializer<'de>>(d: D) -> Result<Option<f64>, D::Error> {
+        match Value::deserialize(d)? {
+            Value::Null => Ok(None),
+            Value::Number(n) => Ok(n.as_f64()),
+            Value::String(s) if s.trim().is_empty() => Ok(None),
+            Value::String(s) => s.trim().parse().map(Some).map_err(|_| D::Error::custom(format!("expected a number, got \"{s}\""))),
+            other => Err(D::Error::custom(format!("expected a number, got {other}"))),
         }
     }
 
-    /// A string field, if present and non-empty.
-    pub(super) fn opt_str(&self, name: &str) -> Option<String> {
-        match self.0.get(name) {
-            Some(Value::String(s)) if !s.is_empty() => Some(s.clone()),
-            _ => None,
+    /// An optional exact decimal; "" is absent.
+    pub fn dec<'de, D: Deserializer<'de>>(d: D) -> Result<Option<crate::money::Dec>, D::Error> {
+        match Value::deserialize(d)? {
+            Value::Null => Ok(None),
+            Value::String(s) if s.is_empty() => Ok(None),
+            v => crate::money::Dec::deserialize(v).map(Some).map_err(D::Error::custom),
         }
     }
 
-    /// undefined, null and "" are absent; anything else goes through Number().
-    pub(super) fn num(&self, name: &str) -> Option<f64> {
-        match self.0.get(name) {
-            None | Some(Value::Null) => None,
-            Some(Value::String(s)) if s.is_empty() => None,
-            Some(v) => Some(js_number(v)),
-        }
-    }
-
-    /// JS truthiness.
-    pub(super) fn truthy(&self, name: &str) -> bool {
-        match self.0.get(name) {
-            None | Some(Value::Null) => false,
-            Some(Value::Bool(b)) => *b,
-            Some(Value::Number(n)) => n.as_f64().is_some_and(|f| f != 0.0),
-            Some(Value::String(s)) => !s.is_empty(),
-            Some(_) => true,
-        }
-    }
-
-    /// A truthy field as a number (`b.x && Number(b.x)`).
-    pub(super) fn truthy_num(&self, name: &str) -> Option<f64> {
-        self.truthy(name).then(|| js_number(&self.0[name]))
+    /// An optional string; "" is absent.
+    pub fn text<'de, D: Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
+        Ok(Option::<String>::deserialize(d)?.filter(|s| !s.is_empty()))
     }
 }

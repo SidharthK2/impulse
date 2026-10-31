@@ -139,3 +139,19 @@ async fn builds_one_minute_candles_from_marks_and_trades() {
     assert_eq!((cs[1]["o"].as_f64(), cs[1]["c"].as_f64()), (Some(100.0), Some(105.0)));
     assert_eq!(cs[1]["t"].as_i64().unwrap() - cs[0]["t"].as_i64().unwrap(), 60_000);
 }
+
+#[tokio::test]
+async fn typed_requests_name_missing_fields_and_refuse_wrong_types() {
+    let (v, _g) = shared();
+    let (x, s) = perp(&v).await;
+    let u = v.user(&format!("ty{s}"), 10_000).await;
+    let (status, r) = v.order(&u, json!({ "side": "buy", "size": "1" })).await;
+    assert_eq!((status, r["error"].as_str()), (400, Some("market is required")));
+    // what the web app sends: decimals as strings, leverage a number, booleans as booleans; numeric strings work too
+    ok(v.order(&u, json!({ "market": x, "side": "buy", "price": "90", "size": "1", "leverage": "2", "reduceOnly": false })).await);
+    fails(v.order(&u, json!({ "market": x, "side": "buy", "price": "", "size": "1" })).await, "limit orders need a price"); // "" is no price
+    fails(v.order(&u, json!({ "market": x, "side": "up", "size": "1" })).await, "unknown variant `up`");
+    fails(v.order(&u, json!({ "market": x, "side": "buy", "type": "market", "size": "1", "reduceOnly": 1 })).await, "invalid request"); // no JS truthiness
+    fails(v.order(&u, json!({ "market": x, "side": "buy", "price": "abc", "size": "1" })).await, "invalid decimal");
+    fails(v.as_(&u, "POST", "/api/withdraw", json!({ "amount": "abc" })).await, "invalid decimal"); // a 400 at intake, not a 500 from the engine
+}

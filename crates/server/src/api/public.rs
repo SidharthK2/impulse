@@ -69,8 +69,13 @@ pub(super) async fn leaderboard(State(app): State<App>) -> ApiResult {
     ok(views::leaderboard_view(&app.lock().core.x))
 }
 
-pub(super) async fn signup(State(app): State<App>, b: Body) -> ApiResult {
-    let meta = app.lock().submit(Signup { name: b.str("name")?, api_key: api_key() })?;
+#[derive(Deserialize)]
+pub(super) struct SignupReq {
+    name: String,
+}
+
+pub(super) async fn signup(State(app): State<App>, Body(b): Body<SignupReq>) -> ApiResult {
+    let meta = app.lock().submit(Signup { name: b.name, api_key: api_key() })?;
     log(&format!("new account {}", meta.id));
     ok(json!({ "id": meta.id, "apiKey": meta.api_key }))
 }

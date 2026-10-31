@@ -70,6 +70,15 @@ Newest last. Each entry: the decision, why, and what it rules out.
 | 2026-10-31 | Bots and the random walk are clients that submit commands; feed polls are one `Ticks` command each | The core stays a function of its inputs, and a whole poll is one journal row instead of one per market |
 | 2026-10-31 | Read tables (fills, risk events, candles, accounts) in the command's transaction, as exact decimal strings | History beyond the in-memory caps, always consistent with the journal; SQLite is never read on the trading path |
 
+## Code structure (2026-10-31)
+
+| Date | Decision | Why / alternative rejected |
+|---|---|---|
+| 2026-10-31 | Commands are structs with a typed reply (`Apply::Reply`); the journal enum is generated from them | The compiler checks what each caller gets back; the serialized form is unchanged, so journals still replay |
+| 2026-10-31 | Amounts, prices and sizes are parsed once at intake (`money.rs`: `Dec`, `Amount`, `Tokens`) | The core works with numbers; a malformed amount is refused before it can be journaled |
+| 2026-10-31 | Typed request bodies instead of emulating JavaScript's `Number()` and truthiness | The emulation only mattered for parity with the retired TS server; malformed input now gets 400s with field names (see API-CONTRACT) |
+| 2026-10-31 | `VERIFY_STEPS=1` (every test server): a command that leaves `version` alone must leave the state hash alone | Version bumps are manual; a missed one would silently drop a change from the journal. Rejected: hashing in production (a hash per command) |
+
 ## Deliberately not done (yet)
 
 - **Order book and matching, liquidation through the book, perp fees:** the biggest realism gap.

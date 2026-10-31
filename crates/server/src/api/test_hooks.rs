@@ -1,34 +1,61 @@
-// Test hooks (TEST_CLOCK=1): a clock only tests move, and views into the node.
+// Test hooks (TEST_CLOCK=1): a clock only tests move, and views into the core.
 
 use super::*;
 
-pub(super) async fn advance(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
+#[derive(Deserialize)]
+pub(super) struct AdvanceReq {
+    #[serde(default, deserialize_with = "field::num")]
+    ms: Option<f64>,
+}
+
+pub(super) async fn advance(State(app): State<App>, _: Admin, Body(b): Body<AdvanceReq>) -> ApiResult {
     let mut node = app.lock();
-    node.intake.clock.advance(b.num("ms").unwrap_or(0.0) as i64);
+    node.intake.clock.advance(b.ms.unwrap_or(0.0) as i64);
     let r = node.submit(Clock {})?;
     ok(json!({ "effects": kinds(&r), "now": node.intake.clock.now(), "seq": node.core.seq }))
 }
 
-pub(super) async fn market(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
-    let source = match b.0.get("source") {
-        Some(v) => serde_json::from_value::<Source>(v.clone()).map_err(|e| ExError::bad(format!("source: {e}")))?,
-        None => Source::Manual,
-    };
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct TestMarketReq {
+    id: String,
+    kind: Kind,
+    source: Option<Source>,
+    #[serde(default, deserialize_with = "field::dec")]
+    price: Option<Dec>,
+    #[serde(default, deserialize_with = "field::num")]
+    sz_decimals: Option<f64>,
+    #[serde(default, deserialize_with = "field::num")]
+    oracle_window: Option<f64>,
+    #[serde(default, deserialize_with = "field::num")]
+    fee_bps: Option<f64>,
+    #[serde(default, deserialize_with = "field::text")]
+    adl: Option<String>,
+    #[serde(default, deserialize_with = "field::num")]
+    snipe_seconds: Option<f64>,
+}
+
+pub(super) async fn market(State(app): State<App>, _: Admin, Body(b): Body<TestMarketReq>) -> ApiResult {
     let spec = MarketSpec {
-        price: b.opt_str("price").map(|p| crate::money::Dec::parse(&p)).transpose().map_err(ExError::bad)?,
-        sz_decimals: b.num("szDecimals").map(|v| v as u32),
-        oracle_window: b.num("oracleWindow"),
-        fee_bps: b.num("feeBps"),
-        adl: b.opt_str("adl"),
-        snipe_seconds: b.num("snipeSeconds").map(|v| v as i64),
-        ..MarketSpec::new(b.str("id")?, parse_kind(&b.str("kind")?)?, source)
+        price: b.price,
+        sz_decimals: b.sz_decimals.map(|v| v as u32),
+        oracle_window: b.oracle_window,
+        fee_bps: b.fee_bps,
+        adl: b.adl,
+        snipe_seconds: b.snipe_seconds.map(|v| v as i64),
+        ..MarketSpec::new(b.id, b.kind, b.source.unwrap_or(Source::Manual))
     };
     list(&app, spec)
 }
 
-pub(super) async fn tick(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
-    let tick = Tick { market: b.str("market")?, price: crate::units::parse_fixed(&b.str("price")?).map_err(ExError::bad)? };
-    let effects = app.lock().submit(FeedTick { tick })?;
+#[derive(Deserialize)]
+pub(super) struct TickReq {
+    market: String,
+    price: Dec,
+}
+
+pub(super) async fn tick(State(app): State<App>, _: Admin, Body(b): Body<TickReq>) -> ApiResult {
+    let effects = app.lock().submit(FeedTick { tick: Tick { market: b.market, price: b.price.nano() } })?;
     ok(json!({ "effects": effects.map(|e| kinds(&e)) }))
 }
 
@@ -42,8 +69,15 @@ pub(super) async fn hash(State(app): State<App>, _: Admin) -> ApiResult {
 }
 
 /// Round-trip the whole exchange through a snapshot in place, then treat `downMs` as downtime.
-pub(super) async fn reload(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
-    let down = b.num("downMs").unwrap_or(0.0) as i64;
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct ReloadReq {
+    #[serde(default, deserialize_with = "field::num")]
+    down_ms: Option<f64>,
+}
+
+pub(super) async fn reload(State(app): State<App>, _: Admin, Body(b): Body<ReloadReq>) -> ApiResult {
+    let down = b.down_ms.unwrap_or(0.0) as i64;
     let mut node = app.lock();
     node.intake.clock.advance(down);
     let Reloaded { identical, effects } = node.submit(TestReload { down_ms: down })?;

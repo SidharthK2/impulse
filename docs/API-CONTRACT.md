@@ -58,3 +58,22 @@ GET /api/admin/stats   (admin)   → {seq, n, p50_us, p99_us, max_us, mean_us}
 
 The journal's last sequence number, and the time each journaled command has taken since the server started
 (applying it and committing it to the journal), for watching throughput.
+
+## Request bodies (2026-10-31)
+
+Bodies are typed: each endpoint deserializes its JSON into a request struct, instead of reading fields with
+JavaScript's loose rules (a leftover of the TypeScript server).
+
+- Decimals (amounts, prices, sizes) are strings or JSON numbers: `"12.5"` or `12.5`; at most 9 decimals.
+  `"all"` where the endpoint allows it (withdraw, spot buy and sell, snipe).
+- Other numbers (leverage, slippage, holdSeconds, minutes) are JSON numbers or numeric strings. `null` or `""` means
+  absent.
+- Booleans (`reduceOnly`, `enabled`) are JSON booleans. `1`, `"yes"` and the like are refused (they used to count
+  as true).
+- Enums are their exact names: `side` buy | sell, `type` limit | market, `tif` gtc | ioc | alo.
+- A missing required field is `400 {"error": "<field> is required"}`; a wrong type or bad value is
+  `400 {"error": "invalid request: …"}` in serde's words; a malformed decimal is a 400 before anything changes (it
+  used to reach the engine for some endpoints and come back as a 500). Invalid JSON is still
+  `400 "body must be JSON"`, an empty body still reads as `{}`.
+
+What the web app sends is unchanged and accepted.
