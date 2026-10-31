@@ -178,6 +178,7 @@ pub struct MarketSpec {
     pub snipe_seconds: Option<i64>, // attention markets: open with a snipe window this long
     pub taker_fee_ppm: Option<f64>, // perp trading fees, ppm of notional (default TAKER_FEE_PPM, MAKER_FEE_PPM)
     pub maker_fee_ppm: Option<f64>,
+    pub liquidation_fee_ppm: Option<f64>, // default LIQUIDATION_FEE_PPM
 }
 
 impl MarketSpec {
@@ -204,6 +205,7 @@ impl MarketSpec {
             snipe_seconds: None,
             taker_fee_ppm: None,
             maker_fee_ppm: None,
+            liquidation_fee_ppm: None,
         }
     }
 }

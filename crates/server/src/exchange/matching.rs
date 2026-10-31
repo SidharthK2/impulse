@@ -132,7 +132,7 @@ impl Exchange {
             tif,
             time: self.now(),
         };
-        let (fills, stop) = self.match_order(&mut order)?;
+        let (fills, stop) = self.match_order(&mut order, false)?;
         let status = if order.size == 0 {
             OrderStatus::Filled
         } else if tif != Tif::Ioc && stop.is_none() {
@@ -203,7 +203,12 @@ impl Exchange {
         Ok(())
     }
 
-    fn match_order(&mut self, o: &mut Order) -> XResult<(Vec<Fill>, Option<String>)> {
+    /// Match `o` against the book. `liquidation`: it is a liquidation order (liquidation.rs).
+    pub(super) fn match_order(
+        &mut self,
+        o: &mut Order,
+        liquidation: bool,
+    ) -> XResult<(Vec<Fill>, Option<String>)> {
         let mut fills = vec![];
         let opp = o.side.opposite();
         while o.size > 0 {
@@ -236,7 +241,7 @@ impl Exchange {
                 }
                 qty = qty.min(r);
             }
-            match self.try_fill(o, &maker, qty)? {
+            match self.try_fill(o, &maker, qty, liquidation)? {
                 Ok(fill) => {
                     fills.push(fill);
                     o.size -= qty;
@@ -277,6 +282,7 @@ impl Exchange {
         taker: &Order,
         maker: &Order,
         qty: i128,
+        liquidation: bool,
     ) -> XResult<Result<Fill, Blame>> {
         let market = taker.market.clone();
         let price = maker.price;
@@ -295,7 +301,12 @@ impl Exchange {
                     m.config.maker_fee_ppm
                 };
                 let fee = ceil_div(qty * price * rate, PPM);
-                let need = self.margin_for(m, &o.account, d, price, o.leverage, fee);
+                // A liquidation closes what the position holds: it never draws on the wallet.
+                let need = if liquidation && o.account == taker.account {
+                    0
+                } else {
+                    self.margin_for(m, &o.account, d, price, o.leverage, fee)
+                };
                 if need > 0 {
                     events.push(ev_allocate(&o.account, &market, dec(need)));
                 }
@@ -308,19 +319,26 @@ impl Exchange {
             size: qty.to_string().into(),
             price: dec(price).into(),
             taker: Some(taker.account.clone()),
+            liquidation,
         });
         let (taker_fee, maker_fee) = match self.commit(&events) {
-            Ok(effects) => effects
-                .iter()
-                .find_map(|e| match e {
-                    Effect::Fees {
-                        taker_fee,
-                        maker_fee,
-                        ..
-                    } => Some((*taker_fee, *maker_fee)),
-                    _ => None,
-                })
-                .unwrap_or((0, 0)),
+            Ok(effects) => {
+                let fees = effects
+                    .iter()
+                    .find_map(|e| match e {
+                        Effect::Fees {
+                            taker_fee,
+                            maker_fee,
+                            ..
+                        } => Some((*taker_fee, *maker_fee)),
+                        _ => None,
+                    })
+                    .unwrap_or((0, 0));
+                if self.liquidating {
+                    self.liquidation_effects.extend(effects);
+                }
+                fees
+            }
             Err(ExError::Http(_, reason)) => {
                 return Ok(Err(if blames(&reason, &maker.account) {
                     Blame::Maker

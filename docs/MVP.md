@@ -359,6 +359,7 @@ Each market reports these in `settings`, with `ours: true` where the number is o
 | Creator-coin perp oracle | 10-minute TWAP of spot |
 | Spot fee | 1%, also charged on snipes |
 | Perp trading fees | 0.045% taker, 0.015% maker (Hyperliquid's base tier), from the position's margin into the fee pot |
+| Liquidation | through the book first, partial where that restores initial margin, limited to the bankruptcy price; 0.5% penalty on what's closed, into the fee pot |
 | Snipe window | 60 s |
 | ADL | pro-rata on profit first, then principal |
 | Funding | base 0.05%/h at launch, falling with each tier; premium (book mid − mark) / mark / 8, capped at ±4%/h (the last trade if a side of the book is empty) |
@@ -373,7 +374,7 @@ Each market reports these in `settings`, with `ours: true` where the number is o
 | Auto-margin per fill, isolated per market; flat positions sweep back to the wallet | Mirror is isolated by default. Users never manage buckets by hand, but can add or remove margin |
 | No margin reserved for resting orders; a fill that can't be afforded cancels the maker | Simplest correct behaviour: the engine re-checks every fill anyway |
 | 5% buffer when margin hits the max-loss cap | At the cap, IM = MM, so the first funding payment would liquidate a fully collateralized binary position |
-| Liquidation and ADL stay "close at mark against the opposing side" | That's the engine's model. A real venue would go to the book first (DECISIONS: biggest realism gap) |
+| Liquidation goes through the book first (partial where that restores initial margin, limited to the bankruptcy price, 0.5% penalty); the engine's close at mark against the opposing side, with ADL, is the backstop | A real venue goes to the book first; the backstop keeps every shortfall inside the market (ACCOUNTING: "Liquidation through the book") |
 | A launch opens at one price for every bid; the excess over the curve's cost is held as a reserve | The open price formula is Mirror's; holding B − (x1 − x0) keeps every dollar accounted for |
 | The TWAP restarts at the open price over a full window | A pump right after an open must not move a 10-minute TWAP in seconds |
 | Pre-IPO marks are engine ticks from the book | Liquidation and ADL then run on book moves exactly as on oracle ticks |
@@ -385,9 +386,10 @@ Each market reports these in `settings`, with `ours: true` where the number is o
 ## Known limitations
 
 - Paper money only: no custody, chain, signatures, KYC or rate limits. API keys sit in localStorage.
-- Liquidation closes at mark against the other side, not through the book. There are no partial liquidations or
-  liquidation fees. Perp fees are one flat tier (no volume discounts, no maker rebates), and they accumulate in the
-  fee pot: nothing pays them out.
+- A liquidation through the book is one IOC order at the moment the mark moves. There is no liquidation engine
+  working the order over time, and a position the gap leaves bankrupt never reaches the book. Liquidation penalties
+  and perp fees go to the fee pot and accumulate there: nothing pays them out. Perp fees are one flat tier (no
+  volume discounts, no maker rebates).
 - Mirrored books are polled every 2 s, so a mirrored level can be up to about 2 s behind Hyperliquid: someone
   watching Hyperliquid live can pick off a level that has moved, on paper. Fills against a mirrored level don't
   move Hyperliquid's price. Polymarket books aren't mirrored (those markets keep the ladder).

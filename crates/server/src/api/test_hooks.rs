@@ -41,6 +41,8 @@ pub(super) struct TestMarketReq {
     taker_fee_ppm: Option<f64>,
     #[serde(default, deserialize_with = "field::num")]
     maker_fee_ppm: Option<f64>,
+    #[serde(default, deserialize_with = "field::num")]
+    liquidation_fee_ppm: Option<f64>,
 }
 
 pub(super) async fn market(
@@ -57,6 +59,7 @@ pub(super) async fn market(
         snipe_seconds: b.snipe_seconds.map(|v| v as i64),
         taker_fee_ppm: b.taker_fee_ppm,
         maker_fee_ppm: b.maker_fee_ppm,
+        liquidation_fee_ppm: b.liquidation_fee_ppm,
         ..MarketSpec::new(b.id, b.kind, b.source.unwrap_or(Source::Manual))
     };
     list(&app, spec)

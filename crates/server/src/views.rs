@@ -308,6 +308,21 @@ fn settings(meta: &MarketMeta, m: &Market, mirrored: bool) -> Vec<Setting> {
             true,
         ));
     }
+    out.push(setting(
+        "Liquidation",
+        format!(
+            "through the order book first, partially where that restores initial margin, limited to the bankruptcy price{}; then close at mark against the other side",
+            if m.config.liquidation_fee_ppm != 0 {
+                format!(
+                    ", for a {}% penalty",
+                    m.config.liquidation_fee_ppm as f64 / 1e4
+                )
+            } else {
+                String::new()
+            }
+        ),
+        true,
+    ));
     let adl = match m.config.adl {
         AdlPolicy::Pnl => "pro-rata on profit first, then principal",
         AdlPolicy::Size => "pro-rata by position size",

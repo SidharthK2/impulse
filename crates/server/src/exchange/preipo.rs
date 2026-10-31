@@ -82,11 +82,12 @@ impl Exchange {
             p.ipo_price = Some(coin);
         }
         let mut hit: Vec<String> = vec![];
-        let (mut busts, mut shortfall) = (0, 0);
+        let mut busted = BTreeSet::new(); // positions, not effects: a partial book liquidation can precede the backstop
+        let mut shortfall = 0;
         for e in &effects {
             match e {
-                Effect::Liquidation { account, .. } => {
-                    busts += 1;
+                Effect::Liquidation { account, .. } | Effect::BookLiquidation { account, .. } => {
+                    busted.insert(account.clone());
                     hit.push(account.clone());
                 }
                 Effect::Bankrupt {
@@ -94,7 +95,7 @@ impl Exchange {
                     shortfall: s,
                     ..
                 } => {
-                    busts += 1;
+                    busted.insert(account.clone());
                     shortfall += s;
                     hit.push(account.clone());
                 }
@@ -102,7 +103,9 @@ impl Exchange {
                 _ => {}
             }
         }
-        hit.dedup();
+        let busts = busted.len();
+        let mut seen = BTreeSet::new();
+        hit.retain(|a| seen.insert(a.clone()));
         let paid = if shortfall > 0 {
             format!(
                 "; ${} shortfall charged to the other side",

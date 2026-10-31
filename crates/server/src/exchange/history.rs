@@ -211,6 +211,35 @@ impl Exchange {
                 }
                 Effect::Funding { .. } => {} // funding accrues every clock step; positions carry the running total
                 Effect::Fees { .. } => {}    // the fill that paid them records them (matching.rs)
+                Effect::BookLiquidation {
+                    market,
+                    account,
+                    closed,
+                    price,
+                    penalty,
+                    remaining,
+                } => {
+                    let sz = self.markets[market.as_str()].sz_decimals;
+                    let left = if *remaining == 0 {
+                        "position closed".to_string()
+                    } else {
+                        format!("{} left", self.side_size(market, *remaining))
+                    };
+                    let text = format!(
+                        "{account} liquidated through the book: {} {} at {}, ${} penalty; {left}",
+                        self.side_size(market, -closed),
+                        if *closed < 0 { "sold" } else { "bought back" },
+                        fmt(coin_price(sz, *price), 0),
+                        cents(*penalty)
+                    );
+                    self.record(
+                        market,
+                        RiskKind::Liquidation,
+                        vec![account.clone()],
+                        text,
+                        Some(*penalty),
+                    );
+                }
             }
         }
     }

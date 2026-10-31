@@ -140,8 +140,10 @@ Every transition runs on a clone, so a failed assertion leaves the committed sta
 
 * **Liquidation** applies when `0 ≤ E < MM`. The account is closed at mark and keeps its
   remaining equity. Counterparties are force-reduced at mark and lose nothing. In a real
-  venue the position would go to the order book. This PoC has no book, so the opposing
-  side takes it at mark. That's a forced position reduction with zero value cost.
+  venue the position would go to the order book. The engine has no book, so the opposing
+  side takes it at mark. That's a forced position reduction with zero value cost. (The
+  exchange now sends such positions through its book first; this is the backstop. See
+  "Liquidation through the book" below.)
 * **ADL** applies when `E < 0`. Same close, plus the shortfall `−E` moves from opposing
   accounts to the bankrupt account, bringing it to exactly 0. Counterparties take **both** a
   size reduction **and** a payout haircut.
@@ -269,3 +271,27 @@ remaining equity means a fee can never create a shortfall: a closing trade with 
 what's left. A trade without a `taker`, as in every research scenario, charges nothing, so the scenarios and
 golden histories are unchanged. `setFees` changes a market's rates. The exchange lists every market at
 Hyperliquid's base tier (450 and 150 ppm: 0.045% and 0.015%).
+
+## Liquidation through the book (added 2026-10-31)
+
+A `trade` can also say `liquidation: true`. Then the taker must be named, the trade must reduce the taker's
+position (not add to it or flip it), and the taker pays the market's `liquidationFeePpm` (the penalty, 0.5% on the
+exchange's markets) instead of the taker fee, capped at its equity like any fee. The engine reports a
+`bookLiquidation` effect: what was closed, at what price, for what penalty, and what remains. The margin check is the
+usual one for a reduction (E ≥ MM at the oracle mark after the fill and fee), so every invariant above still holds.
+
+The exchange decides when to send one. Before an event that can move a mark commits (a tick, `advance`, a curve
+trade, a launch's `open`), it applies the event to a copy of the state. For each position the copy shows
+**liquidated** (0 ≤ E < MM at the new mark), it cancels that account's orders in the market and sends a
+reduce-only IOC order into the book:
+
+- **Size:** the fewest lots to close such that, at the new mark, E − penalty on the closed lots ≥ IM of what's
+  left. Found by binary search, since IM grows faster with size than the penalty shrinks. If no partial close
+  will do, the whole position.
+- **Limit:** the position's bankruptcy price, ⌈(B − C) / q⌉ for a long and ⌊(C − B) / |q|⌋ for a short, within
+  the market's bounds. A fill there or better never leaves a shortfall.
+- **Margin:** none drawn from the wallet. A liquidation only closes what the position holds.
+
+Then the event commits, and `resolve_distress` handles whatever is still under maintenance: close at mark against
+the other side, with ADL for any shortfall. A position the copy shows **bankrupt** (E < 0 at the new mark) skips
+the book, since no fill at the new mark can avoid the shortfall, and goes straight to ADL as before.

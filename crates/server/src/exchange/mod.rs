@@ -9,11 +9,12 @@
 //
 // The exchange is split by concern: types (its data), matching (orders), accounts (money), markets (listing and
 // prices), launch (creator coins), preipo (book-priced markets), mirror (a venue's real book, posted by the bot
-// maker), history (what the engine did, as records).
+// maker), liquidation (through the book, ahead of the engine's backstop), history (what the engine did, as records).
 
 mod accounts;
 mod history;
 mod launch;
+mod liquidation;
 mod markets;
 mod matching;
 mod mirror;
@@ -53,6 +54,9 @@ const MAX_OPEN_ORDERS: usize = 200;
 /// taker and 0.015% maker. They go to the engine's fee pot (`State::fees`).
 pub const TAKER_FEE_PPM: i128 = 450;
 pub const MAKER_FEE_PPM: i128 = 150;
+/// What a liquidation through the book costs the liquidated position, ppm of the notional closed (0.5%), into the
+/// same fee pot. Ours: Mirror publishes none.
+pub const LIQUIDATION_FEE_PPM: i128 = 5_000;
 const RESERVED: [&str; 3] = ["curve", "admin", HOUSE];
 /// The account /api/admin/pump trades from.
 pub const HOUSE: &str = "house";
@@ -143,11 +147,17 @@ pub struct Exchange {
     /// The one-time upgrades this exchange has had, by name (see `UPGRADES`).
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub upgrades: BTreeSet<String>,
+    /// Inside a liquidation through the book (liquidation.rs): no nested one starts, and the engine's effects
+    /// along the way are collected for the event that set it off. Not state: false between steps.
+    #[serde(skip)]
+    liquidating: bool,
+    #[serde(skip)]
+    liquidation_effects: Vec<Effect>,
 }
 
 /// One-time upgrades for an exchange an older build made, in order. At startup, main.rs submits an Upgrade command
 /// for each one the exchange hasn't had; a fresh exchange takes them too, and they find nothing to change.
-///   fees: markets listed before trading fees existed charge the default fees from then on.
+///   fees: markets listed before trading fees existed charge the default trading and liquidation fees from then on.
 pub const UPGRADES: &[&str] = &["fees"];
 
 fn yes() -> bool {
@@ -173,6 +183,8 @@ impl Exchange {
             bots_enabled: true,
             dirty_candles: Default::default(),
             upgrades: BTreeSet::new(),
+            liquidating: false,
+            liquidation_effects: vec![],
         }
     }
 
@@ -192,6 +204,7 @@ impl Exchange {
                         market: m.id.clone(),
                         taker_fee_ppm: Num(TAKER_FEE_PPM.to_string()),
                         maker_fee_ppm: Num(MAKER_FEE_PPM.to_string()),
+                        liquidation_fee_ppm: Some(Num(LIQUIDATION_FEE_PPM.to_string())),
                     })
                     .collect();
                 if !events.is_empty() {
@@ -336,11 +349,14 @@ impl Exchange {
         Ok(effects)
     }
 
-    /// exec, then record what the engine did and hand idle collateral back to wallets.
+    /// Liquidate through the book whatever the events would liquidate (liquidation.rs), exec them, then record what
+    /// the engine did and hand idle collateral back to wallets. Returns every effect, the book liquidations first.
     fn commit(&mut self, events: &[Event]) -> XResult<Vec<Effect>> {
-        let effects = self.exec(events)?;
-        self.digest(&effects);
+        let mut effects = self.liquidate_ahead(events)?;
+        let applied = self.exec(events)?;
+        self.digest(&applied);
         self.sweep();
+        effects.extend(applied);
         Ok(effects)
     }
 

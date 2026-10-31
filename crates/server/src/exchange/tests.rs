@@ -103,6 +103,126 @@ fn the_fees_upgrade_gives_markets_listed_without_fees_the_default_fees_once() {
     assert!(x.upgrade("nonsense").is_err());
 }
 
+// ---------- liquidation through the book ----------
+
+/// A $100 perp in whole coins: alice long 30 at 3× from bob, and carol bidding `bids` (price, coins).
+fn levered(bids: &[(&str, &str)]) -> Exchange {
+    let mut x = Exchange::new(1_000_000);
+    let spec = MarketSpec {
+        price: Some(d("100")),
+        ..MarketSpec::new("L", Kind::Perp, Source::Manual)
+    };
+    x.create_market(spec).unwrap();
+    for (id, cash) in [("alice", "1100"), ("bob", "100000"), ("carol", "100000")] {
+        x.create_account(id, false, &format!("{id}-key")).unwrap();
+        x.deposit(id, d(cash)).unwrap();
+    }
+    x.place_order(
+        "bob",
+        &OrderInput::limit("L", Side::Sell, d("100"), d("30")),
+    )
+    .unwrap();
+    let mut buy = OrderInput::market("L", Side::Buy, d("30"));
+    buy.leverage = Some(3.0);
+    x.place_order("alice", &buy).unwrap();
+    for (price, size) in bids {
+        x.place_order(
+            "carol",
+            &OrderInput::limit("L", Side::Buy, d(price), d(size)),
+        )
+        .unwrap();
+    }
+    x
+}
+
+fn tick(x: &mut Exchange, price: &str) -> Vec<Effect> {
+    x.tick("L", d(price).nano(), true).unwrap().unwrap()
+}
+
+// alice's bucket holds the $1,000 she posted, so her equity at price P is 30P − 2,000 against 5P of maintenance:
+// she's liquidated below $80, and bankrupt below $66.67.
+
+#[test]
+fn a_liquidation_goes_through_the_book_first_and_only_as_far_as_initial_margin() {
+    let mut x = levered(&[("79", "10"), ("78", "20")]);
+    tick(&mut x, "81");
+    assert_eq!(x.size_of("L", "alice"), 30); // $430 of equity over $405 of maintenance: fine
+                                             // At 79, equity $370 is under maintenance ($395). Keeping 13 needs $342.33 of initial margin, which what's left
+                                             // covers after the 0.5% penalty on the 17 sold: 10 at 79, then 7 at 78.
+    let effects = tick(&mut x, "79");
+    assert_eq!(x.size_of("L", "alice"), 13);
+    assert_eq!(x.size_of("L", "carol"), 17);
+    let book: Vec<_> = effects
+        .iter()
+        .filter_map(|e| match e {
+            Effect::BookLiquidation {
+                closed,
+                price,
+                penalty,
+                remaining,
+                ..
+            } => Some((*closed, *price, *penalty, *remaining)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        book,
+        vec![
+            (-10, 79 * B, 3_950_000_000, 20),
+            (-7, 78 * B, 2_730_000_000, 13)
+        ]
+    );
+    // No backstop: nothing closed at mark, nobody haircut.
+    assert!(!effects.iter().any(|e| matches!(
+        e,
+        Effect::Liquidation { .. } | Effect::ForcedClose { .. } | Effect::Haircut { .. }
+    )));
+    let feed = x.risk.back().unwrap();
+    assert_eq!(feed.kind, RiskKind::Liquidation);
+    assert!(
+        feed.text
+            .starts_with("alice liquidated through the book: long 7 L sold at 78"),
+        "{}",
+        feed.text
+    );
+    assert!(apply(
+        &x.state,
+        &Event::Advance {
+            seconds: "1".into()
+        }
+    )
+    .is_ok());
+}
+
+#[test]
+fn a_gap_past_bankruptcy_skips_the_book_and_goes_to_adl() {
+    let mut x = levered(&[("79", "10"), ("78", "20")]);
+    let effects = tick(&mut x, "60"); // equity 30 × 60 − 2,000 < 0
+    assert!(effects.iter().any(|e| matches!(e, Effect::Bankrupt { .. })));
+    assert!(effects.iter().any(|e| matches!(e, Effect::Haircut { .. })));
+    assert!(!effects
+        .iter()
+        .any(|e| matches!(e, Effect::BookLiquidation { .. })));
+    assert_eq!(x.size_of("L", "carol"), 0); // her bids were never hit
+    assert_eq!(x.size_of("L", "alice"), 0);
+}
+
+#[test]
+fn a_book_bid_only_below_the_bankruptcy_price_is_left_alone_and_the_backstop_closes_at_mark() {
+    // A fill at 60, below alice's bankruptcy price of 66.67, would leave a shortfall.
+    let mut x = levered(&[("60", "30")]);
+    tick(&mut x, "81");
+    let effects = tick(&mut x, "79");
+    assert!(effects
+        .iter()
+        .any(|e| matches!(e, Effect::Liquidation { .. })));
+    assert!(!effects
+        .iter()
+        .any(|e| matches!(e, Effect::BookLiquidation { .. })));
+    assert_eq!(x.size_of("L", "carol"), 0);
+    assert_eq!(x.size_of("L", "alice"), 0); // closed at mark against bob
+}
+
 // ---------- mirrored books ----------
 
 const B: i128 = 1_000_000_000; // one coin, or $1, in nano

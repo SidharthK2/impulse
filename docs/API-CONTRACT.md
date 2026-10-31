@@ -65,7 +65,10 @@ The journal's last sequence number, and the time each journaled command has take
 PositionView   fees: string                       // trading fees paid from this position's margin
 Fill           fee?: string                       // in an account's own fills (perp): what that account paid
 MarketView     settings adds "Trading fees", and "Liquidity" on markets that mirror Hyperliquid's book
-POST /api/test/market   adds takerFeePpm?, makerFeePpm?   (test hook; default 450 and 150)
+POST /api/test/market   adds takerFeePpm?, makerFeePpm?, liquidationFeePpm?   (test hook; default 450, 150, 5000)
+RiskEvent      kind "liquidation" also covers liquidations through the book ("… liquidated through the book: …"),
+               amount = the penalty
+effects lists  (admin price, IPO, …) can include "bookLiquidation" and "fees"
 ```
 
 ## Request bodies (2026-10-31)

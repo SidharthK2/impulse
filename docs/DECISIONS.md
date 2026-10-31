@@ -87,12 +87,14 @@ Newest last. Each entry: the decision, why, and what it rules out.
 | 2026-10-31 | Poll `l2Book` over HTTP every 2 s, 10 levels a side, rather than a websocket subscription | Every book the core sees has to be journaled. A websocket pushes a book per block per coin, so it would be coalesced to about this rate anyway; polling needs no new dependency. The cost: quotes can be up to about 2 s old, so someone watching Hyperliquid live can pick off a moved level on paper |
 | 2026-10-31 | The mirror stands aside during admin holds (the ladder quotes the forced price) and after 15 s without a book | An admin gap must still be demoable, and a dead feed mustn't leave a market without liquidity |
 | 2026-10-31 | **Perp trading fees in the engine**: per-market taker and maker rates (ppm), charged when a `trade` names its taker, from collateral into the fee pot, capped at the equity left after the fill. Hyperliquid's base tier (0.045% / 0.015%) on every market | Fees change margin and solvency, so they belong where the invariants are checked. Trades without a taker charge nothing, so the golden histories still replay exactly. Rejected: charging fees from the wallet in the exchange (isolated margin would no longer hold everything a position can lose) |
+| 2026-10-31 | **Liquidation through the book first**: before an event that can move a mark commits, the exchange dry-runs it, and each position it would liquidate sends a reduce-only IOC into the book, sized to restore initial margin (partial), limited to its bankruptcy price, for a 0.5% penalty. Then the event commits, and the engine's close at mark plus ADL is the backstop | How real venues liquidate, without giving up "solvent after every transition": every book fill is an ordinary engine trade, checked at the oracle mark, and the backstop still runs inside the same event. Rejected: letting positions sit under maintenance between steps while an order works (it breaks the invariants); sending bankrupt positions to the book (no fill at the new mark avoids the shortfall) |
+| 2026-10-31 | The penalty goes to the fee pot | With no insurance fund there's nothing else for it to fund; Mirror publishes no liquidation fee, so 0.5% is ours |
 | 2026-10-31 | One-time `upgrade` commands for exchanges an older build made (the first: `fees`, which gives existing markets the default fees), journaled at startup | The change happens through the journal, so replays stay deterministic. Rejected: deserializing old snapshots with fees on (the snapshot round trip would no longer be exact) |
 
 ## Deliberately not done (yet)
 
-- **Liquidation through the book, perp fees:** the biggest realism gap. (The order book and matching came with the
-  MVP exchange, 2026-10-25; liquidation and ADL still close at mark against the other side.)
 - **Minimax-leverage ADL** (Campbell et al., arXiv 2603.15963): planned, see INTERMEDIATES #4.
 - **Real-data replay:** planned, see INTERMEDIATES #1 and #2.
-- **Cross margin, partial liquidation, liquidation penalties, oracle sanity bands:** out of v1 scope.
+- **Cross margin, oracle sanity bands:** out of scope so far. (Order books and matching came with the MVP exchange
+  on 2026-10-25; liquidation through the book, partial liquidation, liquidation penalties and perp fees on
+  2026-10-31, branch `realism`.)

@@ -56,6 +56,9 @@ impl Exchange {
             launch: spec.snipe_seconds.map(|_| true),
             taker_fee_ppm: num(spec.taker_fee_ppm.unwrap_or(TAKER_FEE_PPM as f64)),
             maker_fee_ppm: num(spec.maker_fee_ppm.unwrap_or(MAKER_FEE_PPM as f64)),
+            liquidation_fee_ppm: num(spec
+                .liquidation_fee_ppm
+                .unwrap_or(LIQUIDATION_FEE_PPM as f64)),
             ..Default::default()
         });
         let meta = MarketMeta {
@@ -192,10 +195,17 @@ impl Exchange {
             None
         };
         let effects = self.tick(market, coin, true)?.unwrap_or_default();
+        // Positions, not effects: one can be liquidated partly through the book and then by the backstop.
         let busts = effects
             .iter()
-            .filter(|e| matches!(e, Effect::Liquidation { .. } | Effect::Bankrupt { .. }))
-            .count();
+            .filter_map(|e| match e {
+                Effect::Liquidation { account, .. }
+                | Effect::Bankrupt { account, .. }
+                | Effect::BookLiquidation { account, .. } => Some(account),
+                _ => None,
+            })
+            .collect::<BTreeSet<_>>()
+            .len();
         let text = format!(
             "{market} oracle forced {} → {}{}: {busts} position{} liquidated or bankrupt",
             before.map_or_else(|| "—".into(), |b| fmt(coin_price(sz, b), 0)),

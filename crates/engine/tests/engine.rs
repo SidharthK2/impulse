@@ -1126,6 +1126,78 @@ fn a_closing_fee_never_takes_more_than_the_equity_left() {
     assert!(check_invariants(&s).is_empty());
 }
 
+fn liquidation(buyer: &str, seller: &str, size: i64, price: &str, taker: &str) -> Event {
+    ev(
+        json!({ "type": "trade", "market": M, "buyer": buyer, "seller": seller, "size": size, "price": price, "taker": taker, "liquidation": true }),
+    )
+}
+
+#[test]
+fn a_liquidation_through_the_book_reduces_the_position_and_charges_the_penalty_instead_of_the_taker_fee(
+) {
+    let market = ev(
+        json!({ "type": "market", "id": M, "preset": "perp", "takerFeePpm": 1000, "makerFeePpm": 500, "liquidationFeePpm": 10_000 }),
+    );
+    let (s, results) = run(&concat(vec![
+        vec![market, K("100", M)],
+        fund("a", "100", M),
+        fund("b", "1000", M),
+        vec![
+            T("a", "b", 2, "100", M),
+            liquidation("b", "a", 1, "90", "a"),
+        ],
+    ]));
+    // a sells 1 of its 2 at $90: a 1% penalty on $90, and b pays its 0.05% maker fee on it.
+    assert_eq!(
+        results[7],
+        Ok(vec![
+            Effect::BookLiquidation {
+                market: M.into(),
+                account: "a".into(),
+                closed: -1,
+                price: usd("90"),
+                penalty: usd("0.9"),
+                remaining: 1,
+            },
+            Effect::Fees {
+                market: M.into(),
+                taker: "a".into(),
+                taker_fee: usd("0.9"),
+                maker: "b".into(),
+                maker_fee: usd("0.045"),
+            },
+        ])
+    );
+    assert_eq!(s.markets[M].positions["a"].size, 1);
+    assert!(check_invariants(&s).is_empty());
+}
+
+#[test]
+fn a_liquidation_must_reduce_and_name_its_taker() {
+    let (_, results) = run(&concat(vec![
+        vec![perp(M), K("100", M)],
+        fund("a", "1000", M),
+        fund("b", "1000", M),
+        vec![
+            T("a", "b", 2, "100", M),
+            liquidation("a", "b", 1, "100", "a"), // a is long: buying more isn't a liquidation
+            liquidation("b", "a", 3, "100", "a"), // nor is flipping short
+            ev(
+                json!({ "type": "trade", "market": M, "buyer": "b", "seller": "a", "size": 1, "price": "100", "liquidation": true }),
+            ),
+        ],
+    ]));
+    assert_eq!(
+        results[7],
+        Err("a: a liquidation must reduce the position".to_string())
+    );
+    assert_eq!(
+        results[8],
+        Err("a: a liquidation must reduce the position".to_string())
+    );
+    assert_eq!(results[9], Err("a liquidation names its taker".to_string()));
+}
+
 #[test]
 fn fees_can_be_changed_and_are_validated() {
     let set = |taker: i64, maker: i64| {
