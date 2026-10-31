@@ -10,7 +10,8 @@
 
 use crate::book::Side;
 use crate::exchange::{
-    AccountMeta, DepthBook, ExError, Exchange, MarketSpec, OrderInput, OrderResult, XResult,
+    AccountMeta, DepthBook, ExError, Exchange, MarketSpec, OrderInput, OrderResult, Trigger,
+    TriggerInput, XResult,
 };
 use crate::money::{Amount, Dec, Tokens};
 use crate::units::coins_dec;
@@ -102,6 +103,7 @@ commands! {
     Deposit = "deposit",
     Withdraw = "withdraw",
     PlaceOrder = "placeOrder",
+    PlaceTrigger = "placeTrigger",
     ClosePosition = "closePosition",
     Cancel = "cancel",
     CancelAll = "cancelAll",
@@ -246,6 +248,20 @@ impl Apply for PlaceOrder {
     type Reply = OrderResult;
     fn apply(&self, x: &mut Exchange) -> XResult<OrderResult> {
         x.place_order(&self.account, &self.order)
+    }
+}
+
+/// A stop-loss or take-profit order, waiting for the mark (exchange/triggers.rs).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PlaceTrigger {
+    pub account: String,
+    pub trigger: TriggerInput,
+}
+
+impl Apply for PlaceTrigger {
+    type Reply = Trigger;
+    fn apply(&self, x: &mut Exchange) -> XResult<Trigger> {
+        x.place_trigger(&self.account, &self.trigger)
     }
 }
 

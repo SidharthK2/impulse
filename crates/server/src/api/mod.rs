@@ -16,7 +16,8 @@ use crate::book::{Side, Tif};
 use crate::bots::Bots;
 use crate::command::*;
 use crate::exchange::{
-    ExError, Exchange, Kind, MarketSpec, OrderInput, OrderResult, OrderType, Source,
+    ExError, Exchange, Kind, MarketSpec, OrderInput, OrderResult, OrderType, Source, TriggerInput,
+    TriggerKind,
 };
 use crate::feeds;
 use crate::intake::api_key;
@@ -131,6 +132,7 @@ pub fn router(app: App) -> Router {
         .route("/api/orders", post(trading::place_order))
         .route("/api/orders/cancel-all", post(trading::cancel_all))
         .route("/api/orders/{id}", delete(trading::cancel))
+        .route("/api/triggers", post(trading::place_trigger))
         .route("/api/positions/close", post(trading::close_position))
         .route("/api/margin", post(trading::margin))
         .route("/api/spot/buy", post(trading::spot_buy))

@@ -62,6 +62,12 @@ The journal's last sequence number, and the time each journaled command has take
 ## Additions (2026-10-31, branch `realism`)
 
 ```
+POST /api/triggers  {market, side, kind: "stop" | "takeProfit", triggerPrice, size, price?, reduceOnly?, leverage?}
+                    → TriggerView   (user) reduceOnly defaults to true; 400 if the mark has already reached it, or if
+                    reduce-only with no position it would reduce. DELETE /api/orders/:id cancels one.
+TriggerView    {id, market, side, kind, triggerPrice, size, price: string | null, reduceOnly, leverage, time}
+AccountView    triggers: TriggerView[]            // waiting stop-loss and take-profit orders
+RiskEvent      kind adds "trigger"                // a trigger fired (what it did) or was dropped (no position left)
 AccountView    reserved: string                   // held back from the wallet by open orders
                available: string                  // wallet − reserved: what orders, withdrawals and margin can use
 PositionView   fees: string                       // trading fees paid from this position's margin

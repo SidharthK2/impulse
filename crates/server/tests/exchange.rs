@@ -128,6 +128,92 @@ async fn fills_a_market_order_against_resting_liquidity_with_auto_margin() {
 }
 
 #[tokio::test]
+async fn a_stop_loss_waits_on_the_account_fires_on_the_mark_and_can_be_cancelled() {
+    let (v, _g) = shared().await;
+    let Setup {
+        x,
+        alice,
+        bob,
+        carol,
+        ..
+    } = setup(&v).await;
+    ok(v.order(
+        &bob,
+        json!({ "market": x, "side": "sell", "price": "100", "size": "4" }),
+    )
+    .await);
+    ok(v.order(
+        &alice,
+        json!({ "market": x, "side": "buy", "type": "market", "size": "4" }),
+    )
+    .await);
+    let trigger = |kind: &str, at: &str| json!({ "market": x, "side": "sell", "kind": kind, "triggerPrice": at, "size": "4" });
+    fails(
+        v.as_(&alice, "POST", "/api/triggers", trigger("stop", "101"))
+            .await,
+        "already reached",
+    );
+    let tp = ok(v
+        .as_(
+            &alice,
+            "POST",
+            "/api/triggers",
+            trigger("takeProfit", "120"),
+        )
+        .await);
+    assert_eq!(
+        (
+            &tp["kind"],
+            &tp["triggerPrice"],
+            &tp["reduceOnly"],
+            &tp["price"]
+        ),
+        (
+            &json!("takeProfit"),
+            &json!("120"),
+            &json!(true),
+            &Value::Null
+        )
+    );
+    ok(v.as_(
+        &alice,
+        "DELETE",
+        &format!("/api/orders/{}", tp["id"]),
+        Value::Null,
+    )
+    .await);
+    let stop = ok(v
+        .as_(&alice, "POST", "/api/triggers", trigger("stop", "95"))
+        .await);
+    assert_eq!(v.account(&alice).await["triggers"][0]["id"], stop["id"]);
+
+    ok(v.order(
+        &carol,
+        json!({ "market": x, "side": "buy", "price": "94", "size": "4" }),
+    )
+    .await);
+    ok(v.admin(
+        "POST",
+        "/api/admin/price",
+        json!({ "market": x, "price": "94.5", "holdSeconds": 0 }),
+    )
+    .await);
+    assert_eq!(size(&v, &alice, &x).await, "0");
+    assert_eq!(size(&v, &carol, &x).await, "4");
+    let account = v.account(&alice).await;
+    assert_eq!(account["triggers"], json!([]));
+    let fired = account["risk"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["kind"] == "trigger")
+        .unwrap()["text"]
+        .clone();
+    assert!(fired.as_str().unwrap().contains("sold 4 at 94"), "{fired}");
+    conserved(&v).await;
+}
+
+#[tokio::test]
 async fn walks_the_book_and_rests_the_remainder_of_a_limit_order() {
     let (v, _g) = shared().await;
     let Setup {

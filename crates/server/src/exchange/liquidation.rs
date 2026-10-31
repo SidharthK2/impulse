@@ -1,7 +1,8 @@
 // Liquidation through the order book, ahead of the engine's backstop.
 //
 // Before an event that can move a mark (a feed tick, the clock, a curve trade, a launch's open) commits, the
-// exchange runs it on a copy of the state to see which positions it would liquidate. Each of those positions first
+// exchange runs it on a copy of the state. Trigger orders the new marks reach fire first (triggers.rs), and the copy
+// is made again if any did. Then it sees which positions the event would liquidate. Each of those positions first
 // cancels its resting orders in that market and sends a reduce-only IOC order into the book: a partial liquidation,
 // sized to close only what it takes for the rest of the position to meet initial margin at the new mark (all of it
 // if nothing less will do). The order's limit is the position's bankruptcy price, so a liquidation through the
@@ -36,6 +37,18 @@ impl Exchange {
         let Some((after, effects)) = self.dry_run(events) else {
             return Ok(vec![]); // the events will be refused anyway
         };
+        // Trigger orders the new marks reach go first (triggers.rs); if any fired, look again.
+        self.liquidating = true;
+        let fired = self.fire_triggers(&after);
+        self.liquidating = false;
+        let (after, effects) = if fired {
+            match self.dry_run(events) {
+                Some(next) => next,
+                None => return Ok(std::mem::take(&mut self.liquidation_effects)),
+            }
+        } else {
+            (after, effects)
+        };
         let mut seen = BTreeSet::new();
         let targets: Vec<(String, String)> = effects
             .iter()
@@ -48,7 +61,7 @@ impl Exchange {
             .filter(|t| seen.insert(t.clone()))
             .collect();
         if targets.is_empty() {
-            return Ok(vec![]);
+            return Ok(std::mem::take(&mut self.liquidation_effects));
         }
         self.liquidating = true;
         let mut result = Ok(());

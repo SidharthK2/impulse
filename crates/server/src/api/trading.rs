@@ -71,6 +71,50 @@ pub(super) async fn place_order(
     order_reply(&node.core.x, &id, r, true)
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct TriggerReq {
+    market: String,
+    side: Side,
+    kind: TriggerKind,
+    trigger_price: Dec,
+    size: Dec,
+    #[serde(default, deserialize_with = "field::dec")]
+    price: Option<Dec>,
+    /// stop-loss and take-profit orders only close unless told otherwise
+    #[serde(default = "yes")]
+    reduce_only: bool,
+    #[serde(default, deserialize_with = "field::num")]
+    leverage: Option<f64>,
+}
+
+fn yes() -> bool {
+    true
+}
+
+pub(super) async fn place_trigger(
+    State(app): State<App>,
+    User(id): User,
+    Body(b): Body<TriggerReq>,
+) -> ApiResult {
+    let trigger = TriggerInput {
+        market: b.market,
+        side: b.side,
+        kind: b.kind,
+        trigger_price: b.trigger_price,
+        size: b.size,
+        price: b.price,
+        reduce_only: b.reduce_only,
+        leverage: b.leverage,
+    };
+    let mut node = app.lock();
+    let t = node.submit(PlaceTrigger {
+        account: id,
+        trigger,
+    })?;
+    ok(views::trigger_view(&node.core.x, &t))
+}
+
 pub(super) async fn cancel(
     State(app): State<App>,
     User(id): User,

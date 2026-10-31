@@ -480,7 +480,14 @@ impl Exchange {
         self.books.get_mut(&resting.market)?.remove(id)
     }
 
+    /// Cancel a resting order or a waiting trigger order (they share ids).
     pub fn cancel(&mut self, account: &str, order_id: &str) -> XResult<()> {
+        if order_id
+            .parse::<u64>()
+            .is_ok_and(|id| self.cancel_trigger(account, id))
+        {
+            return Ok(());
+        }
         let owned = order_id
             .parse::<u64>()
             .ok()

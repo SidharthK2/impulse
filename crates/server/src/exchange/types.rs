@@ -267,6 +267,8 @@ pub enum RiskKind {
     Listing,
     Open,
     Ipo,
+    /// a trigger order fired (or was dropped): what it did
+    Trigger,
 }
 
 /// Serialized as is for the API and the websocket feed.
@@ -349,6 +351,51 @@ pub enum OrderStatus {
     Partial,
     Resting,
     Cancelled,
+}
+
+/// A trigger order's kind: a stop fires when the mark moves against the order's direction past the trigger, a take
+/// profit when it moves in its favour (see triggers.rs).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TriggerKind {
+    Stop,
+    TakeProfit,
+}
+
+/// A trigger order as asked for: coin prices and coins.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TriggerInput {
+    pub market: String,
+    pub side: Side,
+    pub kind: TriggerKind,
+    pub trigger_price: Dec,
+    pub size: Dec,
+    /// a limit order at this price when it fires; none: a market order (10% slippage from the mark)
+    pub price: Option<Dec>,
+    pub reduce_only: bool,
+    pub leverage: Option<f64>,
+}
+
+/// A trigger order waiting for the mark: lot prices and lots.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Trigger {
+    pub id: u64, // shares the order counter, so DELETE /api/orders/:id cancels it too
+    pub account: String,
+    pub market: String,
+    pub side: Side,
+    pub kind: TriggerKind,
+    #[serde(with = "big")]
+    pub trigger_price: i128,
+    #[serde(with = "big")]
+    pub size: i128,
+    #[serde(with = "impulse_engine::ser::big_opt")]
+    pub limit: Option<i128>,
+    pub reduce_only: bool,
+    #[serde(with = "big")]
+    pub leverage: i128,
+    pub time: i64,
 }
 
 pub struct OrderResult {

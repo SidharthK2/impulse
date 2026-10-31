@@ -191,6 +191,20 @@ Kind `preipo`, perp only, source `book` ("own order book"). There's no outside p
   After it, the market is an ordinary admin-priced perp (`/api/admin/price`).
 - The bot maker quotes pre-IPO books with a wider ladder (0.4% to 10% from the mark).
 
+## Stop-loss and take-profit orders
+
+- **Placing one.** `POST /api/triggers` (or Stop / TP in the order form). A **stop** sells when the mark falls to
+  its trigger price (or buys when it rises to it). A **take profit** sells when the mark rises to its trigger price
+  (or buys when it falls to it). The server refuses one the mark has already reached.
+- **Waiting.** Triggers wait outside the book, on the account (`triggers` in the account view), and share ids with
+  orders: `DELETE /api/orders/:id` cancels one. Nothing is reserved against the wallet until one fires.
+- **Firing.** In the step whose mark move reaches it, before that move commits: in the same dry run that sends
+  liquidations through the book (`exchange/liquidation.rs`), and ahead of them. So a stop above the liquidation
+  price gets its chance first. A fired trigger is an ordinary order: IOC within 10% of the new mark, or a limit
+  order at its `price`. The risk feed (kind `trigger`) says what it did.
+- **Reduce-only** is the default. A reduce-only trigger whose position has been closed, or has flipped, is
+  dropped at the next mark move, with a `trigger` note in the feed.
+
 ## Mirrored books (Hyperliquid markets)
 
 - **What's mirrored.** Every 2 s the feed fetches Hyperliquid's `l2Book` for each Hyperliquid market (up to 12
@@ -242,7 +256,8 @@ prices are decimal strings in USD; times are ms since epoch. The additions for c
 | GET | `/api/account` | wallet, positions (liq/bankruptcy price, ADL ledger), orders, fills, risk history, snipes |
 | POST | `/api/faucet` | $10k, once a minute, up to a $100k wallet |
 | POST | `/api/orders` `{market, side, type, size, price?, leverage?, reduceOnly?, tif?, slippage?}` | sizes in coins, prices per coin |
-| DELETE | `/api/orders/:id` · POST `/api/orders/cancel-all` `{market?}` | |
+| POST | `/api/triggers` `{market, side, kind: "stop"\|"takeProfit", triggerPrice, size, price?, reduceOnly? (default true), leverage?}` | stop-loss / take-profit, waits for the mark; `price` makes it a limit order when it fires |
+| DELETE | `/api/orders/:id` (an order or a trigger) · POST `/api/orders/cancel-all` `{market?}` (orders only) | |
 | POST | `/api/positions/close` `{market}` · `/api/margin` `{market, amount}` (± USD) | |
 | POST | `/api/spot/buy` `{market, usdc}` · `/api/spot/sell` `{market, tokens\|"all"}` | curves |
 | POST | `/api/attention` `{handle, oracleWindow: 0\|60\|600\|3600, adl}` | permissionless creator coin, 60 s snipe window |

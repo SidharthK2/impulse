@@ -3,7 +3,8 @@
 
 use crate::book::{Order, Side, Tif};
 use crate::exchange::{
-    Exchange, Fill, FillKind, Kind, MarketMeta, RiskEvent, Source, MIRROR_LEVELS, PREIPO_SHARES,
+    Exchange, Fill, FillKind, Kind, MarketMeta, RiskEvent, Source, Trigger, TriggerKind,
+    MIRROR_LEVELS, PREIPO_SHARES,
 };
 use crate::units::{coin_price, coins_from_lots, fmt, pow10, tick_decimals, usd};
 use impulse_engine::{
@@ -600,6 +601,37 @@ pub struct OrderView<'a> {
     time: i64,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TriggerView<'a> {
+    id: u64,
+    market: &'a str,
+    side: Side,
+    kind: TriggerKind,
+    trigger_price: String,
+    size: String,
+    price: Option<String>, // the limit order it places; none: a market order
+    reduce_only: bool,
+    leverage: i128,
+    time: i64,
+}
+
+pub fn trigger_view<'a>(x: &Exchange, t: &'a Trigger) -> TriggerView<'a> {
+    let sz = x.markets[&t.market].sz_decimals;
+    TriggerView {
+        id: t.id,
+        market: &t.market,
+        side: t.side,
+        kind: t.kind,
+        trigger_price: fmt(coin_price(sz, t.trigger_price), 0),
+        size: coins_from_lots(sz, t.size),
+        price: t.limit.map(|p| fmt(coin_price(sz, p), 0)),
+        reduce_only: t.reduce_only,
+        leverage: t.leverage,
+        time: t.time,
+    }
+}
+
 pub fn order_view<'a>(x: &Exchange, o: &'a Order) -> OrderView<'a> {
     let sz = x.markets[&o.market].sz_decimals;
     OrderView {
@@ -777,6 +809,7 @@ pub struct AccountView<'a> {
     ledger: LedgerView,
     spot: Vec<SpotView<'a>>,
     orders: Vec<OrderView<'a>>,
+    triggers: Vec<TriggerView<'a>>, // waiting stop-loss and take-profit orders
     fills: Vec<FillView<'a>>,
     risk: Vec<&'a RiskEvent>,
     snipes: Vec<AccountSnipe<'a>>,
@@ -872,6 +905,10 @@ pub fn account_view<'a>(x: &'a Exchange, id: &'a str) -> AccountView<'a> {
         },
         spot,
         orders: x.orders_of(id, None).map(|o| order_view(x, o)).collect(),
+        triggers: x
+            .triggers_of(id, None)
+            .map(|t| trigger_view(x, t))
+            .collect(),
         fills,
         risk,
         // bids still waiting for an open

@@ -9,7 +9,8 @@
 //
 // The exchange is split by concern: types (its data), matching (orders), accounts (money), markets (listing and
 // prices), launch (creator coins), preipo (book-priced markets), mirror (a venue's real book, posted by the bot
-// maker), liquidation (through the book, ahead of the engine's backstop), history (what the engine did, as records).
+// maker), liquidation (through the book, ahead of the engine's backstop), triggers (stop-loss and take-profit
+// orders), history (what the engine did, as records).
 
 mod accounts;
 mod history;
@@ -19,6 +20,7 @@ mod markets;
 mod matching;
 mod mirror;
 mod preipo;
+mod triggers;
 mod types;
 
 #[cfg(test)]
@@ -147,6 +149,9 @@ pub struct Exchange {
     /// The one-time upgrades this exchange has had, by name (see `UPGRADES`).
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub upgrades: BTreeSet<String>,
+    /// Waiting trigger orders (stop-loss, take-profit) by id, which is also their placement order (triggers.rs).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub triggers: BTreeMap<u64, Trigger>,
     /// Inside a liquidation through the book (liquidation.rs): no nested one starts, and the engine's effects
     /// along the way are collected for the event that set it off. Not state: false between steps.
     #[serde(skip)]
@@ -183,6 +188,7 @@ impl Exchange {
             bots_enabled: true,
             dirty_candles: Default::default(),
             upgrades: BTreeSet::new(),
+            triggers: BTreeMap::new(),
             liquidating: false,
             liquidation_effects: vec![],
         }

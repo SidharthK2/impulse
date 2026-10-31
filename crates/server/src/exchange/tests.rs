@@ -268,6 +268,86 @@ fn a_book_bid_only_below_the_bankruptcy_price_is_left_alone_and_the_backstop_clo
     assert_eq!(x.size_of("L", "alice"), 0); // closed at mark against bob
 }
 
+// ---------- trigger orders ----------
+
+fn trigger(kind: TriggerKind, side: Side, at: &str, size: &str) -> TriggerInput {
+    TriggerInput {
+        market: "L".into(),
+        side,
+        kind,
+        trigger_price: d(at),
+        size: d(size),
+        price: None,
+        reduce_only: true,
+        leverage: None,
+    }
+}
+
+#[test]
+fn a_stop_fires_on_the_mark_move_that_reaches_it_before_any_liquidation() {
+    let mut x = levered(&[("84", "30")]);
+    x.place_trigger("alice", &trigger(TriggerKind::Stop, Side::Sell, "85", "30"))
+        .unwrap();
+    tick(&mut x, "90");
+    assert_eq!(x.triggers.len(), 1);
+    // A gap to 79 would liquidate alice; her stop at 85 fires first and sells into carol's bid.
+    let effects = tick(&mut x, "79");
+    assert_eq!(x.size_of("L", "alice"), 0);
+    assert_eq!(x.size_of("L", "carol"), 30);
+    assert!(x.triggers.is_empty());
+    assert!(!effects.iter().any(|e| matches!(
+        e,
+        Effect::Liquidation { .. } | Effect::BookLiquidation { .. }
+    )));
+    let note = x.risk.iter().find(|r| r.kind == RiskKind::Trigger).unwrap();
+    assert_eq!(
+        note.text,
+        "alice's stop at 85 (sell 30) fired at mark 79: sold 30 at 84"
+    );
+}
+
+#[test]
+fn a_take_profit_fires_when_the_mark_rises_to_it() {
+    let mut x = levered(&[("110", "30")]);
+    x.place_trigger(
+        "alice",
+        &trigger(TriggerKind::TakeProfit, Side::Sell, "110", "30"),
+    )
+    .unwrap();
+    tick(&mut x, "109");
+    assert_eq!(x.size_of("L", "alice"), 30);
+    tick(&mut x, "111");
+    assert_eq!(x.size_of("L", "alice"), 0);
+}
+
+#[test]
+fn a_trigger_is_checked_when_placed_and_can_be_cancelled() {
+    let mut x = levered(&[]);
+    let reached = x.place_trigger("alice", &trigger(TriggerKind::Stop, Side::Sell, "100", "1"));
+    assert!(reached.unwrap_err().message().contains("already reached"));
+    let nothing = x.place_trigger("carol", &trigger(TriggerKind::Stop, Side::Sell, "90", "1"));
+    assert!(nothing.unwrap_err().message().contains("needs a position"));
+    let t = x
+        .place_trigger("alice", &trigger(TriggerKind::Stop, Side::Sell, "90", "10"))
+        .unwrap();
+    assert!(x.cancel("bob", &t.id.to_string()).is_err()); // not bob's
+    x.cancel("alice", &t.id.to_string()).unwrap();
+    assert!(x.triggers.is_empty());
+}
+
+#[test]
+fn a_reduce_only_trigger_is_dropped_once_its_position_is_gone() {
+    let mut x = levered(&[("99", "30")]);
+    x.place_trigger("alice", &trigger(TriggerKind::Stop, Side::Sell, "90", "30"))
+        .unwrap();
+    x.place_order("alice", &OrderInput::market("L", Side::Sell, d("30")))
+        .unwrap();
+    assert_eq!(x.size_of("L", "alice"), 0);
+    tick(&mut x, "95");
+    assert!(x.triggers.is_empty());
+    assert!(x.risk.back().unwrap().text.contains("dropped"));
+}
+
 // ---------- mirrored books ----------
 
 const B: i128 = 1_000_000_000; // one coin, or $1, in nano
