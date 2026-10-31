@@ -13,11 +13,22 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  # A deploy only goes out if the workspace's tests pass on the commit being deployed.
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - run: rustup toolchain install 1.96 --profile minimal && rustup default 1.96
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --locked
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      # A release tag, not @master, so a deploy never picks up an unreleased change to the action.
+      - uses: superfly/flyctl-actions/setup-flyctl@1.6
       # --ha=false: exactly one machine; the exchange can't run as two copies over one volume.
       - run: flyctl deploy --remote-only --ha=false
         env:
