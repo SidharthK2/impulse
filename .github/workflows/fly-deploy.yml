@@ -16,7 +16,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: superfly/flyctl-actions/setup-flyctl@master
       # --ha=false: exactly one machine; the exchange can't run as two copies over one volume.
       - run: flyctl deploy --remote-only --ha=false
