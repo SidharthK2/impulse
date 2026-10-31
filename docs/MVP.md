@@ -26,7 +26,6 @@ make dev            # development: Rust server (debug) on :8787 + Vite on http:/
 make test           # cargo test: engine, golden-file parity, server unit tests, HTTP and websocket tests
 make web            # install and build the web app
 make typecheck      # the web app
-make clean-data     # how to start from an empty exchange (prints; deletes nothing)
 ```
 
 The TypeScript engine and server that the Rust code was ported from are in [impulse-research](https://github.com/SidharthK2/impulse-research),
@@ -44,7 +43,7 @@ no longer used by the app or its tests; its README says how to run them.
 | `TIMER_SPEEDUP` | `1` | `N` = the clock, bots and offline walk run N× faster (tests) |
 | `EXIT_WITH_STDIN` | unset | `1` = exit when stdin closes (test harnesses) |
 
-To start fresh, point `DATA_DIR` at a new directory (`make clean-data` prints how). Nothing deletes old data.
+To start fresh, point `DATA_DIR` at a new directory (`DATA_DIR=data-new make start`) or move the old one aside (`mv data data.old`). Nothing deletes old data.
 
 ## What's in it
 

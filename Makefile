@@ -5,13 +5,15 @@
 #   make test        cargo test for the whole workspace (it builds the server binary the HTTP tests start)
 #   make web         install and build the web app
 #   make typecheck   typecheck the web app
-#   make clean-data  how to start from an empty exchange (it never deletes data itself)
+#
+# To start from an empty exchange, point DATA_DIR at a new directory (DATA_DIR=data-new make start)
+# or move the old one aside (mv data data.old). Nothing here deletes data.
 
 CARGO := cargo
 # --ignore-workspace: web/ is its own pnpm project, even when a parent directory holds a pnpm workspace.
 PNPM_WEB := pnpm --dir web
 
-.PHONY: start dev test web typecheck clean-data
+.PHONY: start dev test web typecheck
 
 web/node_modules/.modules.yaml: web/package.json web/pnpm-lock.yaml
 	$(PNPM_WEB) install --ignore-workspace
@@ -30,8 +32,3 @@ test:
 
 typecheck: web/node_modules/.modules.yaml
 	$(PNPM_WEB) run typecheck
-
-clean-data:
-	@echo "The exchange lives in DATA_DIR (default data/). Nothing here deletes it. To start fresh, either"
-	@echo "  point DATA_DIR at a new directory:   DATA_DIR=data-$$(date +%Y%m%d) make start"
-	@echo "  or move the old one aside yourself:  mv data data.old"
