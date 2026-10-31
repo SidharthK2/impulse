@@ -56,7 +56,7 @@ To start fresh, point `DATA_DIR` at a new directory (`make clean-data` prints ho
 | Units | `crates/server/src/units.rs` | Coins ↔ integer lots (Hyperliquid `szDecimals`), coin price ↔ lot price, ticks |
 | Feeds | `crates/server/src/feeds.rs` | Hyperliquid mids, Polymarket midpoints + resolution, offline random walk, chart backfill |
 | Bots | `crates/server/src/bots.rs` | `maker` ladders every market; `ape`, `degen`, `whale`, `scalper` trade with leverage, snipe new coins, trade curves |
-| API | `crates/server/src/api.rs`, `ws.rs` | JSON over HTTP (axum), websocket hub, static app |
+| API | `crates/server/src/api/`, `ws.rs` | JSON over HTTP (axum): `extract` (errors, auth, bodies), `public`, `trading`, `admin`, `test_hooks`, `web` (static app, CORS); the websocket hub |
 | Views | `crates/server/src/views.rs` | Exact decimal-string JSON for markets, books, accounts, leaderboard |
 | Commands | `crates/server/src/command.rs` | Every state-changing input as data, and `apply`, the only code that changes the exchange |
 | Sequencer | `crates/server/src/sequencer.rs` | The single-threaded core: `submit` (journal before reply, fail-stop), snapshots, recovery, replay |
