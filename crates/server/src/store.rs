@@ -140,11 +140,12 @@ impl Store {
             .map_err(err)
     }
 
-    /// Store a snapshot and keep only the last 5.
+    /// Store a snapshot and keep only the last 5 (plus a legacy import's snapshot 0).
     pub fn save_snapshot(&self, seq: u64, ts: i64, state: &[u8]) -> Result<(), String> {
         let tx = self.conn.unchecked_transaction().map_err(err)?;
         tx.execute("INSERT OR REPLACE INTO snapshots (seq, ts, version, state) VALUES (?1, ?2, ?3, ?4)", params![seq as i64, ts, BUILD, state]).map_err(err)?;
-        tx.execute("DELETE FROM snapshots WHERE seq NOT IN (SELECT seq FROM snapshots ORDER BY seq DESC LIMIT 5)", []).map_err(err)?;
+        // Snapshot 0 (a legacy import) is the base the journal starts from: never pruned.
+        tx.execute("DELETE FROM snapshots WHERE seq <> 0 AND seq NOT IN (SELECT seq FROM snapshots ORDER BY seq DESC LIMIT 5)", []).map_err(err)?;
         tx.commit().map_err(err)
     }
 }
@@ -281,5 +282,22 @@ impl HistoryMarks {
     /// Everything the exchange holds now counts as written.
     pub fn of(x: &Exchange) -> Self {
         HistoryMarks { fill: x.fills.back().map_or(0, |f| f.id), risk: x.risk.back().map_or(0, |r| r.id), accounts: x.accounts.len() }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pruning_keeps_the_last_five_snapshots_and_a_legacy_import() {
+        let dir = std::env::temp_dir().join(format!("impulse-store-{}-{}", std::process::id(), crate::intake::wall_ms()));
+        let store = Store::open(&dir).unwrap();
+        for seq in [0, 10, 20, 30, 40, 50, 60, 70] {
+            store.save_snapshot(seq, 0, b"{}").unwrap();
+        }
+        let mut st = store.conn.prepare("SELECT seq FROM snapshots ORDER BY seq").unwrap();
+        let kept: Vec<i64> = st.query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect();
+        assert_eq!(kept, [0, 30, 40, 50, 60, 70]);
     }
 }

@@ -191,14 +191,17 @@ pub struct Replayed {
 /// an empty exchange before its Genesis command, or a legacy import's snapshot 0), replaying every command after
 /// it, up to `until`. Returns the exchange, its sequence number, and how many commands were replayed.
 pub fn rebuild(store: &Store, full: bool, until: Option<u64>) -> Result<(Exchange, u64, u64), String> {
-    rebuild_counting(store, full, until).map(|(x, seq, r)| (x, seq, r.commands))
+    rebuild_counting(store, full, until, None).map(|(x, seq, r)| (x, seq, r.commands))
 }
 
-pub fn rebuild_counting(store: &Store, full: bool, until: Option<u64>) -> Result<(Exchange, u64, Replayed), String> {
+/// `legacy`: for a full replay of a database whose import snapshot 0 was pruned (before it was kept), the
+/// imported exchange from DATA_DIR/snapshot.json.
+pub fn rebuild_counting(store: &Store, full: bool, until: Option<u64>, legacy: Option<Exchange>) -> Result<(Exchange, u64, Replayed), String> {
     let start = if full { store.first_snapshot()?.filter(|s| s.seq == 0) } else { store.latest_snapshot(until)? };
-    let (mut x, mut seq) = match start {
-        Some(s) => (decode(&s.state)?, s.seq),
-        None => (Exchange::new(0), 0),
+    let (mut x, mut seq) = match (start, legacy) {
+        (Some(s), _) => (decode(&s.state)?, s.seq),
+        (None, Some(x)) if full => (x, 0),
+        (None, _) => (Exchange::new(0), 0),
     };
     let mut replayed = Replayed::default();
     for c in store.commands_after(seq, until)? {
@@ -226,7 +229,17 @@ pub fn rebuild_counting(store: &Store, full: bool, until: Option<u64>) -> Result
 pub fn replay_report(data_dir: &Path, full: bool, until: Option<u64>) -> Result<serde_json::Value, String> {
     let store = Store::open_read_only(data_dir)?;
     let started = Instant::now();
-    let (x, seq, r) = rebuild_counting(&store, full, until)?;
+    // A journal that doesn't begin with Genesis began with a legacy import; if its snapshot 0 is gone, start from
+    // the JSON file the import kept.
+    let imported = store.commands_after(0, Some(1))?.first().is_some_and(|c| !c.payload.contains("\"kind\":\"genesis\""));
+    let legacy = match (full && imported && store.first_snapshot()?.is_none_or(|s| s.seq != 0), crate::persist::load(data_dir)?) {
+        (true, Some((mut x, saved_at))) => {
+            x.now = saved_at.unwrap_or(x.now);
+            Some(x)
+        }
+        _ => None,
+    };
+    let (x, seq, r) = rebuild_counting(&store, full, until, legacy)?;
     Ok(serde_json::json!({ "seq": seq, "hash": x.state_hash(), "replayed": r.commands, "fills": r.fills, "risk": r.risk, "ms": started.elapsed().as_millis() as u64 }))
 }
 
