@@ -19,7 +19,10 @@ const GREET_EVENT = "impulse:uwu-greet";
 
 const pick = <T,>(xs: T[]) => xs[Math.floor(Math.random() * xs.length)]!;
 
-/** Poses: the sprite files under /uwu/anya/, plus "bored" and "asleep" for her idle cycle. */
+/**
+ * Poses: the sprite files under /uwu/anya/ (WebP, made from the PNGs by make uwu-assets), plus "bored" and "asleep"
+ * for her idle cycle.
+ */
 type Pose = "idle" | "happy" | "sad" | "shock" | "poke" | "smug" | "bored" | "asleep";
 const SPRITE_FILE: Record<Pose, string> = {
   idle: "idle",
@@ -41,7 +44,8 @@ const SVG_MOOD: Record<Pose, Mood> = {
   bored: "sleepy",
   asleep: "sleepy",
 };
-const sprite = (p: Pose) => `/uwu/anya/${SPRITE_FILE[p]}.png`;
+/** Each sprite file once: they're all mounted at once (see the mascot below). */
+const SPRITES = [...new Set(Object.values(SPRITE_FILE))];
 
 const REACT: Record<ToastEvent["tone"], { pose: Pose; cue: Cue; lines: string[] }> = {
   up: { pose: "happy", cue: "win", lines: ["yatta~! ✧(≧▽≦)✧", "sugoi!! ٩(◕‿◕)۶", "nice fill ♡"] },
@@ -140,8 +144,8 @@ export function ChartMascot() {
   /** A reaction's pose, shown over the phase's resting pose until it times out. */
   const [reaction, setReaction] = useState<Pose | null>(null);
   const [bubble, setBubble] = useState<{ line: string; sub?: string; n: number } | null>(null);
-  /** The pose whose image just failed to load: that pose shows Pulse-chan, and the next pose tries again. */
-  const [broken, setBroken] = useState<Pose | null>(null);
+  /** Sprite files that failed to load: their poses show Pulse-chan, and switching to one tries the file again. */
+  const [broken, setBroken] = useState<ReadonlySet<string>>(() => new Set());
   /** The nodding-off clip; without it she sleeps in her sitting pose, dimmed. */
   const [sleepClip, setSleepClip] = useState(true);
   const reset = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -149,32 +153,37 @@ export function ChartMascot() {
   const phaseRef = useRef<Phase>("awake");
   const pokes = useRef<number[]>([]);
   const lastLine = useRef(-1);
+  /** Counts clicks, so a clip that finishes loading late only extends its own click's bubble. */
+  const clicks = useRef(0);
 
   const goTo = useCallback((p: Phase) => {
     phaseRef.current = p;
     setPhase(p);
   }, []);
 
-  const say = useCallback((line: string, opts: { pose?: Pose; sub?: string; ms?: number } = {}) => {
+  /** Keep the current reaction and bubble up for `ms` from now. */
+  const hold = useCallback((ms: number) => {
     clearTimeout(reset.current);
-    setReaction(opts.pose ?? null);
-    setBubble({ line, sub: opts.sub, n: Date.now() });
     reset.current = setTimeout(() => {
       setReaction(null);
       setBubble(null);
-    }, opts.ms ?? 4000);
+    }, ms);
   }, []);
+
+  const say = useCallback(
+    (line: string, opts: { pose?: Pose; sub?: string; ms?: number } = {}) => {
+      setReaction(opts.pose ?? null);
+      setBubble({ line, sub: opts.sub, n: Date.now() });
+      hold(opts.ms ?? 4000);
+    },
+    [hold],
+  );
 
   /** Something happened: she's awake, and the quiet clock restarts. */
   const wake = useCallback(() => {
     quietSince.current = Date.now();
     if (phaseRef.current !== "awake") goTo("awake");
   }, [goTo]);
-
-  // Load every pose up front so a reaction never flashes an empty frame.
-  useEffect(() => {
-    for (const p of Object.values(SPRITE_FILE)) new Image().src = `/uwu/anya/${p}.png`;
-  }, []);
 
   // Trades and greetings.
   useEffect(() => {
@@ -249,14 +258,27 @@ export function ChartMascot() {
     if (i === lastLine.current) i = (i + 1) % ANYA.length;
     lastLine.current = i;
     const a = ANYA[i]!;
+    // React on the click itself; the clip can take a moment to load the first time.
+    const id = ++clicks.current;
+    say(from === "bored" ? `oh! ${a.line}` : a.line, { pose: a.pose, ms: 2500 });
     const dur = await play(a.src, "info");
-    say(from === "bored" ? `oh! ${a.line}` : a.line, {
-      pose: a.pose,
-      ms: Math.max(2500, dur * 1000 + 900),
-    });
+    if (id === clicks.current && dur * 1000 + 900 > 2500) hold(dur * 1000 + 900);
   };
 
   const pose: Pose = reaction ?? (phase === "awake" ? "idle" : phase);
+  const file = SPRITE_FILE[pose];
+  const sleeping = pose === "asleep" && sleepClip;
+  // Switching to a pose whose file failed tries it again (state adjusted while rendering, as React suggests for
+  // reacting to a change).
+  const [shown, setShown] = useState(file);
+  if (file !== shown) {
+    setShown(file);
+    if (broken.has(file)) {
+      const next = new Set(broken);
+      next.delete(file);
+      setBroken(next);
+    }
+  }
   return (
     <div className="uwu-mascot-wrap">
       {bubble && (
@@ -275,7 +297,7 @@ export function ChartMascot() {
         aria-label={phase === "asleep" ? "Wake Anya up" : "Poke Anya"}
         onClick={() => void click()}
       >
-        {broken !== pose && pose === "asleep" && sleepClip ? (
+        {sleeping && (
           <video
             className="uwu-sleep"
             src="/uwu/anya/asleep.mp4"
@@ -285,17 +307,25 @@ export function ChartMascot() {
             playsInline
             onError={() => setSleepClip(false)}
           />
-        ) : broken !== pose ? (
-          <img
-            key={pose}
-            src={sprite(pose)}
-            alt=""
-            draggable={false}
-            onError={() => setBroken(pose)}
-          />
-        ) : (
-          <PulseChan mood={SVG_MOOD[pose]} size={120} />
         )}
+        {/* Every pose stays mounted and decoded, the current one shown: a pose change is a class swap, with no
+            image to load or decode, so even rapid clicks switch instantly. */}
+        {SPRITES.map(
+          (f) =>
+            !broken.has(f) && (
+              <img
+                key={f}
+                src={`/uwu/anya/${f}.webp`}
+                className={f === file && !sleeping ? "on" : undefined}
+                alt=""
+                draggable={false}
+                decoding="async"
+                onLoad={(e) => void e.currentTarget.decode().catch(() => {})}
+                onError={() => setBroken((b) => new Set(b).add(f))}
+              />
+            ),
+        )}
+        {!sleeping && broken.has(file) && <PulseChan mood={SVG_MOOD[pose]} size={120} />}
         {pose === "asleep" && (
           <span className="uwu-zzz" aria-hidden="true">
             <i>z</i>

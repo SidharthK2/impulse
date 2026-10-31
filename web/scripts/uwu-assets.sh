@@ -22,6 +22,16 @@ get $PM/Anya-Forger-PNG-Isolated-File.png uwu/anya/smug.png
 get $PM/Anya-Forger-PNG-Isolated-Image.png uwu/anya/sleepy.png
 # Asleep: Anya nodding off (Tenor "anya-spy-x-family-sleepy-drowsy-falling-asleep"), as a small looping video.
 get https://media.tenor.com/-yFcDy-4T8wAAAPo/anya-spy-x-family.mp4 uwu/anya/asleep.mp4
+# The app shows the sprites as WebP, 330px tall (about twice their 150px on screen): a tenth of the PNGs' size, and
+# quick to decode when she switches pose. Needs cwebp (brew install webp).
+if command -v cwebp >/dev/null; then
+  for f in uwu/anya/*.png; do
+    w="${f%.png}.webp"
+    [ -s "$w" ] || { cwebp -quiet -q 85 -alpha_q 100 -m 6 -resize 0 330 "$f" -o "$w" && echo "  $w"; }
+  done
+else
+  echo "cwebp not found (brew install webp): no WebP sprites, so Anya shows as Pulse-chan" >&2
+fi
 # Classic anime-girl sound bites (nya, kyaa, sugoi, baka, giggles). Loudness varies wildly between them;
 # audio.ts levels each one in the browser and trims long ones.
 MI=https://www.myinstants.com/media/sounds

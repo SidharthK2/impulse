@@ -487,6 +487,8 @@
   filter: drop-shadow(0 6px 12px rgba(20, 10, 60, 0.4));
   transform-origin: 50% 100%;
 }
+/* Every pose's image is mounted (Uwu.tsx); the hidden ones sit underneath, out of the way, and only the shown one
+   (.on) takes up space and animates, its pop restarting each time it's shown. */
 .uwu-mascot img {
   display: block;
   height: 100%;
@@ -495,6 +497,15 @@
   object-fit: contain;
   object-position: left bottom;
   user-select: none;
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.uwu-mascot img.on {
+  position: static;
+  opacity: 1;
   animation: uwu-pose 0.28s cubic-bezier(0.3, 1.5, 0.6, 1);
 }
 @keyframes uwu-pose {
@@ -502,7 +513,7 @@
     transform: scale(0.85) translateY(8px);
   }
 }
-.uwu-mascot.pose-idle img {
+.uwu-mascot.pose-idle img.on {
   animation:
     uwu-pose 0.28s cubic-bezier(0.3, 1.5, 0.6, 1),
     uwu-breathe 3.6s ease-in-out 0.3s infinite;
@@ -520,7 +531,7 @@
   animation: uwu-shake 0.35s ease-in-out 2;
 }
 /* Bored: a slow, heavy sway. */
-.uwu-mascot.pose-bored img {
+.uwu-mascot.pose-bored img.on {
   transform-origin: 50% 100%;
   animation:
     uwu-pose 0.28s cubic-bezier(0.3, 1.5, 0.6, 1),
@@ -536,7 +547,7 @@
   }
 }
 /* Asleep: dimmed, breathing slowly, with Zzz floating up. */
-.uwu-mascot.pose-asleep img {
+.uwu-mascot.pose-asleep img.on {
   filter: brightness(0.8) saturate(0.75);
   transform-origin: 50% 100%;
   animation: uwu-snooze 4.5s ease-in-out infinite;
