@@ -47,7 +47,12 @@ export function MarketPicker({
   }, [markets, q]);
   return (
     <div className="picker" ref={ref}>
-      <button className="picker-btn" onClick={() => setOpen(!open)} aria-expanded={open}>
+      <button
+        type="button"
+        className="picker-btn"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+      >
         <span className="name">{current.kind === "binary" ? current.name : current.id}</span>
         <span className="faint">▾</span>
       </button>
@@ -444,6 +449,7 @@ export function SpotPanel({
           <span className="muted small grow">Sell</span>
           {[0.25, 0.5].map((f) => (
             <button
+              type="button"
               key={f}
               className="btn small sell"
               disabled={!signedIn || busy || !held}
@@ -456,6 +462,7 @@ export function SpotPanel({
             </button>
           ))}
           <button
+            type="button"
             className="btn small sell"
             disabled={!signedIn || busy || !held}
             onClick={() => sell("all", `Sold all ${market.id}`)}

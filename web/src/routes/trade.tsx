@@ -136,6 +136,7 @@ function PhoneTrade(props: {
       <div className="m-tabs" role="tablist">
         {panes.map(([id, label]) => (
           <button
+            type="button"
             key={id}
             role="tab"
             aria-selected={pane === id}
@@ -181,12 +182,14 @@ function PhoneTrade(props: {
       {!sniping && market.status === "open" && (
         <div className="m-actions">
           <button
+            type="button"
             className="btn buy"
             onClick={() => (signedIn ? setSheet({ side: "buy", kind: "perp" }) : onSignUp())}
           >
             Long
           </button>
           <button
+            type="button"
             className="btn sell"
             onClick={() => (signedIn ? setSheet({ side: "sell", kind: "perp" }) : onSignUp())}
           >
@@ -203,12 +206,14 @@ function PhoneTrade(props: {
           {market.curve && (
             <div className="seg sheet-switch">
               <button
+                type="button"
                 className={sheet.kind === "perp" ? "on" : ""}
                 onClick={() => setSheet({ ...sheet, kind: "perp" })}
               >
                 Perp
               </button>
               <button
+                type="button"
                 className={sheet.kind === "spot" ? "on" : ""}
                 onClick={() => setSheet({ ...sheet, kind: "spot" })}
               >

@@ -61,6 +61,7 @@ export function BookPanel({ market, onPick }: { market: MarketView; onPick: (p: 
             ] as const
           ).map(([id, label]) => (
             <button
+              type="button"
               key={id}
               role="tab"
               aria-selected={tab === id}

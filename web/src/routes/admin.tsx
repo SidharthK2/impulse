@@ -143,6 +143,7 @@ export function AdminPage() {
                     <div className="row" style={{ gap: 4 }}>
                       {(m.kind === "binary" ? [0.2, 0.5, 1.5] : [0.7, 0.85, 1.15, 1.4]).map((f) => (
                         <button
+                          type="button"
                           key={f}
                           className={`btn small ${f < 1 ? "danger" : ""}`}
                           onClick={() => gap(m, f)}
@@ -159,6 +160,7 @@ export function AdminPage() {
                   {m.resolvable && m.status === "open" && (
                     <div className="row" style={{ gap: 4 }}>
                       <button
+                        type="button"
                         className="btn small"
                         onClick={() =>
                           confirm(`Resolve ${m.id} at 0?`) &&
@@ -172,6 +174,7 @@ export function AdminPage() {
                         → 0
                       </button>
                       <button
+                        type="button"
                         className="btn small"
                         onClick={() =>
                           confirm(`Resolve ${m.id} at 1?`) &&
@@ -210,6 +213,7 @@ export function AdminPage() {
               )}
             </span>
             <button
+              type="button"
               className="btn small"
               onClick={() =>
                 call(

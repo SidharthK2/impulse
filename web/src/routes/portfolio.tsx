@@ -15,7 +15,7 @@ export function PortfolioPage() {
       <div className="page">
         <h1>Portfolio</h1>
         <p className="lead">Sign up to get $10,000 of paper USDC.</p>
-        <button className="btn primary" onClick={() => open("signup")}>
+        <button type="button" className="btn primary" onClick={() => open("signup")}>
           Sign up
         </button>
       </div>

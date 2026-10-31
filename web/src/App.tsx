@@ -85,7 +85,11 @@ function StatusBar() {
           fixtures
         </label>
       )}
-      <button className="status-link hide-sm" onClick={() => useUi.getState().setSearch(true)}>
+      <button
+        type="button"
+        className="status-link hide-sm"
+        onClick={() => useUi.getState().setSearch(true)}
+      >
         <kbd>/</kbd> markets
       </button>
     </footer>
@@ -158,7 +162,7 @@ function SignUp({ onDone, onClose }: { onDone: (key: string) => void; onClose: (
           value={created.apiKey}
           onFocus={(e) => e.target.select()}
         />
-        <button className="btn primary block" onClick={() => onDone(created.apiKey)}>
+        <button type="button" className="btn primary block" onClick={() => onDone(created.apiKey)}>
           Start trading
         </button>
       </Modal>

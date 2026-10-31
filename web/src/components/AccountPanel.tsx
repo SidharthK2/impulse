@@ -44,7 +44,12 @@ export function AccountPanel({ account, markets, current, signedIn }: Props) {
       <div className="panel-head">
         <div className="tabs">
           {tabs.map((t) => (
-            <button key={t.id} className={tab === t.id ? "on" : ""} onClick={() => setTab(t.id)}>
+            <button
+              type="button"
+              key={t.id}
+              className={tab === t.id ? "on" : ""}
+              onClick={() => setTab(t.id)}
+            >
               {t.label}
               {t.count ? <span className="count">{t.count}</span> : null}
             </button>
@@ -80,6 +85,7 @@ function CancelAll() {
   const toast = useToast();
   return (
     <button
+      type="button"
       className="btn small"
       onClick={() =>
         api<{ cancelled: number }>("POST", "/api/orders/cancel-all", {})
@@ -171,12 +177,13 @@ function Positions({
               </dl>
               <div className="pos-card-actions">
                 <button
+                  type="button"
                   className="btn small"
                   onClick={() => setMarginFor(marginFor === p.market ? null : p.market)}
                 >
                   Margin
                 </button>
-                <button className="btn small danger" onClick={() => close(p)}>
+                <button type="button" className="btn small danger" onClick={() => close(p)}>
                   Close
                 </button>
               </div>
@@ -283,12 +290,13 @@ function Positions({
                 <td className="right">
                   <div className="row" style={{ justifyContent: "flex-end", gap: 4 }}>
                     <button
+                      type="button"
                       className="btn small"
                       onClick={() => setMarginFor(marginFor === p.market ? null : p.market)}
                     >
                       Margin
                     </button>
-                    <button className="btn small danger" onClick={() => close(p)}>
+                    <button type="button" className="btn small danger" onClick={() => close(p)}>
                       Close
                     </button>
                   </div>
@@ -501,6 +509,7 @@ function Orders({
               <td className="right mono">{o.leverage}×</td>
               <td className="right">
                 <button
+                  type="button"
                   className="btn small"
                   onClick={() =>
                     api("DELETE", `/api/orders/${o.id}`).catch((e) =>

@@ -99,6 +99,7 @@ export function HomePage() {
                     : markets.filter((m) => c.kinds.includes(m.kind)).length;
                 return (
                   <button
+                    type="button"
                     key={c.id}
                     role="tab"
                     aria-selected={category === c.id}
@@ -199,7 +200,7 @@ function Th({
       className={`${right ? "right" : ""} ${className}`}
       aria-sort={on ? (sort.desc ? "descending" : "ascending") : "none"}
     >
-      <button className={`th-sort ${on ? "on" : ""}`} onClick={() => onSort(k)}>
+      <button type="button" className={`th-sort ${on ? "on" : ""}`} onClick={() => onSort(k)}>
         {label}
         <span aria-hidden="true">{on ? (sort.desc ? "↓" : "↑") : ""}</span>
       </button>

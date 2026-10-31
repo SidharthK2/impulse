@@ -66,6 +66,7 @@ function Menu({
   return (
     <div className={`menu ${open ? "open" : ""}`} ref={ref}>
       <button
+        type="button"
         className={`${className} ${active ? "active" : ""}`}
         aria-haspopup="menu"
         aria-expanded={open}
@@ -156,6 +157,7 @@ export function Header() {
       <span className="spacer" />
 
       <button
+        type="button"
         className="search-btn"
         onClick={() => setSearch(true)}
         aria-label="Search markets"
@@ -166,6 +168,7 @@ export function Header() {
         <kbd>{isMac ? "⌘K" : "Ctrl K"}</kbd>
       </button>
       <button
+        type="button"
         className="icon-btn"
         onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
         aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
@@ -235,10 +238,10 @@ function AccountButton() {
   if (!key) {
     return (
       <div className="row acct-out">
-        <button className="btn ghost hide-sm" onClick={() => openModal("signup")}>
+        <button type="button" className="btn ghost hide-sm" onClick={() => openModal("signup")}>
           Sign in
         </button>
-        <button className="btn primary" onClick={() => openModal("signup")}>
+        <button type="button" className="btn primary" onClick={() => openModal("signup")}>
           Sign up<span className="hide-sm"> · $10k</span>
         </button>
       </div>
@@ -308,6 +311,7 @@ function AccountButton() {
             )}
           </dl>
           <button
+            type="button"
             className="btn primary block"
             disabled={wait > 0}
             onClick={faucet}
@@ -321,6 +325,7 @@ function AccountButton() {
             <PieIcon /> Portfolio
           </Link>
           <button
+            type="button"
             className="menu-item row-item"
             role="menuitem"
             onClick={() => {
@@ -336,6 +341,7 @@ function AccountButton() {
             <KeyIcon /> Copy API key
           </button>
           <button
+            type="button"
             className="menu-item row-item danger"
             role="menuitem"
             onClick={() => {

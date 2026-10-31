@@ -28,7 +28,7 @@ export function Sheet({
         <div className="sheet-head">
           <span className="sheet-grip" aria-hidden="true" />
           <b>{title}</b>
-          <button className="icon-btn" onClick={onClose} aria-label="Close">
+          <button type="button" className="icon-btn" onClick={onClose} aria-label="Close">
             ✕
           </button>
         </div>

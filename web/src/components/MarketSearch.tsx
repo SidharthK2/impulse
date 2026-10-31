@@ -111,6 +111,7 @@ function Palette({ onClose }: { onClose: () => void }) {
             const ch = change24h(m);
             return (
               <button
+                type="button"
                 key={m.id}
                 id={`pal-${i}`}
                 data-i={i}

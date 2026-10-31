@@ -534,7 +534,12 @@ export function Chart({ market, position }: { market: MarketView; position?: Pos
         <span className="spacer" />
         <div className="tabs">
           {(Object.keys(RANGES) as Range[]).map((r) => (
-            <button key={r} className={r === range ? "on" : ""} onClick={() => setRange(r)}>
+            <button
+              type="button"
+              key={r}
+              className={r === range ? "on" : ""}
+              onClick={() => setRange(r)}
+            >
               {r}
             </button>
           ))}
