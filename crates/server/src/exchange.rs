@@ -38,6 +38,13 @@ impl ExError {
     }
 }
 
+/// Storage and other plumbing errors arrive as strings: to callers they're internal errors.
+impl From<String> for ExError {
+    fn from(e: String) -> Self {
+        ExError::Internal(e)
+    }
+}
+
 pub type XResult<T> = Result<T, ExError>;
 
 // ---------- types ----------
@@ -348,7 +355,7 @@ fn blames(reason: &str, account: &str) -> bool {
 }
 
 /// String(n) for a JS number, as the TS server hands numeric config to the engine.
-fn js_number(v: f64) -> String {
+fn js_string(v: f64) -> String {
     if v.fract() == 0.0 && v.abs() < 1e21 {
         format!("{}", v as i128)
     } else {
@@ -821,7 +828,7 @@ impl Exchange {
         if tick <= 0 || tick % pow10(sz) != 0 {
             return Err(ExError::bad("tick must be a positive whole number of nano-USD per lot"));
         }
-        let num = |v: f64| Some(Num(js_number(v)));
+        let num = |v: f64| Some(Num(js_string(v)));
         let event = Event::Market(MarketEvent {
             id: spec.id.clone(),
             preset: Some(kind.preset().into()),

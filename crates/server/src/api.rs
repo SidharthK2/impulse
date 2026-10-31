@@ -8,7 +8,8 @@ use crate::bots::Bots;
 use crate::command::{Command, Reply, Tick};
 pub use crate::sequencer::Core;
 use crate::exchange::{ExError, Exchange, Kind, MarketSpec, OrderInput, OrderType, Source};
-use crate::intake::{api_key, wall_ms};
+use crate::intake::api_key;
+use crate::logging::log;
 use crate::feeds;
 use crate::rng::Rng;
 use crate::units::usd;
@@ -26,12 +27,6 @@ use std::collections::HashMap;
 use std::path::{Component, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 
-/// One timestamped line on stdout. Write errors are ignored: a closed pipe must not take the server down.
-pub fn log(s: &str) {
-    use std::io::Write;
-    let t = crate::feeds::iso_utc(wall_ms());
-    let _ = writeln!(std::io::stdout(), "[{}] {s}", &t[11..19]);
-}
 
 pub struct Inner {
     core: Mutex<Core>,
@@ -193,22 +188,7 @@ impl Body {
 }
 
 fn kinds(effects: &[Effect]) -> Vec<&'static str> {
-    effects.iter().map(effect_kind).collect()
-}
-
-pub fn effect_kind(e: &Effect) -> &'static str {
-    match e {
-        Effect::Liquidation { .. } => "liquidation",
-        Effect::Bankrupt { .. } => "bankrupt",
-        Effect::ForcedClose { .. } => "forcedClose",
-        Effect::Haircut { .. } => "haircut",
-        Effect::Settlement { .. } => "settlement",
-        Effect::Spot { .. } => "spot",
-        Effect::Mark { .. } => "mark",
-        Effect::Funding { .. } => "funding",
-        Effect::Graduation { .. } => "graduation",
-        Effect::Open { .. } => "open",
-    }
+    effects.iter().map(Effect::kind).collect()
 }
 
 fn parse_side(s: &str) -> Result<Side, ExError> {

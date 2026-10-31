@@ -370,6 +370,24 @@ pub enum Effect {
     },
 }
 
+impl Effect {
+    /// The effect's `kind` tag, as it serializes.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Effect::Liquidation { .. } => "liquidation",
+            Effect::Bankrupt { .. } => "bankrupt",
+            Effect::ForcedClose { .. } => "forcedClose",
+            Effect::Haircut { .. } => "haircut",
+            Effect::Settlement { .. } => "settlement",
+            Effect::Spot { .. } => "spot",
+            Effect::Mark { .. } => "mark",
+            Effect::Funding { .. } => "funding",
+            Effect::Graduation { .. } => "graduation",
+            Effect::Open { .. } => "open",
+        }
+    }
+}
+
 /// Why a transition didn't commit. `Rejected` is an ordinary refusal (the TS engine's `Rejected`); `Fatal` is
 /// what the TS engine throws as a plain Error: malformed input or a broken invariant.
 #[derive(Clone, Debug, PartialEq)]

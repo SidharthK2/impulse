@@ -2,7 +2,8 @@
 // outcomes (and their resolution); a seeded random walk when offline. Feeds only ever call Exchange::tick, so
 // every price change runs liquidation and ADL atomically, and an admin hold makes the feed stand aside.
 
-use crate::api::{log, App, Core};
+use crate::api::{App, Core};
+use crate::logging::log;
 use crate::command::{Bar, Command, Reply, Tick};
 use crate::exchange::{Exchange, ExError, Kind, MarketSpec, Source};
 use crate::intake::wall_ms;

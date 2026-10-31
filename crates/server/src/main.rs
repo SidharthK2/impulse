@@ -11,6 +11,7 @@ mod command;
 mod exchange;
 mod feeds;
 mod intake;
+mod logging;
 mod persist;
 mod rng;
 mod sequencer;
@@ -19,7 +20,8 @@ mod units;
 mod views;
 mod ws;
 
-use api::{log, App};
+use api::App;
+use logging::log;
 use command::Command;
 use intake::IntakeClock;
 use std::path::PathBuf;

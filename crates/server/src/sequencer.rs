@@ -11,7 +11,7 @@
 
 use crate::bots::Bots;
 use crate::command::{self, Command, Reply};
-use crate::exchange::{ExError, Exchange, XResult};
+use crate::exchange::{Exchange, XResult};
 use crate::intake::IntakeClock;
 use crate::rng::Rng;
 use crate::store::{HistoryMarks, Store};
@@ -50,7 +50,7 @@ pub enum Recovery {
 
 /// Stop the process: the alternative is serving state the journal doesn't have.
 fn fail_stop(why: &str) -> ! {
-    crate::api::log(&format!("FATAL: {why}; stopping (restart recovers the last committed state)"));
+    crate::logging::log(&format!("FATAL: {why}; stopping (restart recovers the last committed state)"));
     std::process::exit(70);
 }
 
@@ -140,7 +140,7 @@ impl Core {
         self.snapshot_at = Instant::now();
         let Some(s) = &self.store else { return };
         if let Err(e) = s.save_snapshot(self.seq, self.x.now, &encode(&self.x)) {
-            crate::api::log(&format!("snapshot at seq {} failed: {e}", self.seq));
+            crate::logging::log(&format!("snapshot at seq {} failed: {e}", self.seq));
         }
     }
 
@@ -164,7 +164,7 @@ impl Core {
                     store.write_history(0, &mut x, HistoryMarks::default())?;
                     store.commit()?;
                     store.save_snapshot(0, x.now, &encode(&x))?;
-                    crate::api::log(&format!("imported the legacy snapshot {} as snapshot 0 (the file is kept)", data_dir.join("snapshot.json").display()));
+                    crate::logging::log(&format!("imported the legacy snapshot {} as snapshot 0 (the file is kept)", data_dir.join("snapshot.json").display()));
                     imported = true;
                 }
             }
@@ -243,8 +243,3 @@ pub fn replay_report(data_dir: &Path, full: bool, until: Option<u64>) -> Result<
     Ok(serde_json::json!({ "seq": seq, "hash": x.state_hash(), "replayed": r.commands, "fills": r.fills, "risk": r.risk, "ms": started.elapsed().as_millis() as u64 }))
 }
 
-impl From<String> for ExError {
-    fn from(e: String) -> Self {
-        ExError::Internal(e)
-    }
-}
