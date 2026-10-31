@@ -3090,3 +3090,52 @@ a.btn.primary {
 .roll-digit::before {
   transition: none;
 }
+
+/* The intro band: edge to edge, a soft ink glow, and the pulse field drifting behind. Copy stays clear: the field
+   fades out to the left and toward the bottom edge. */
+.intro-band {
+  position: relative;
+  width: 100vw;
+  margin: -24px calc(50% - 50vw) 0;
+  overflow: hidden;
+  border-bottom: 1px solid var(--line);
+  background:
+    radial-gradient(55% 140% at 82% -10%, color-mix(in srgb, var(--text) 7%, transparent), transparent 70%),
+    radial-gradient(40% 90% at 100% 100%, color-mix(in srgb, var(--text) 3%, transparent), transparent 70%),
+    var(--bg);
+}
+.intro-band .pulse-field {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  /* Faded behind the copy on the left and out toward the bottom edge, where the stats sit. */
+  mask-image: linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, 0.25) 30%, #000 65%), linear-gradient(180deg, #000 45%, transparent 92%);
+  mask-composite: intersect;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, 0.25) 30%, #000 65%), linear-gradient(180deg, #000 45%, transparent 92%);
+  -webkit-mask-composite: source-in;
+}
+.home .intro-band .intro {
+  position: relative;
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 56px 16px 40px;
+  border-bottom: 0;
+}
+.home .home-grid {
+  margin-top: 16px;
+}
+@media (max-width: 760px) {
+  .intro-band {
+    margin-top: -24px;
+  }
+  .home .intro-band .intro {
+    padding: 28px 12px 24px;
+  }
+  /* Just the top-right corner on phones, where nothing is written. */
+  .intro-band .pulse-field {
+    mask-image: radial-gradient(75% 45% at 100% 0%, rgba(0, 0, 0, 0.55), transparent 100%);
+    -webkit-mask-image: radial-gradient(75% 45% at 100% 0%, rgba(0, 0, 0, 0.55), transparent 100%);
+  }
+}

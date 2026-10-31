@@ -1,5 +1,5 @@
 // The home page's backdrop: a field of monospace characters with pulse waves (the logo's heartbeat line) drifting
-// across it. Drawn on a canvas one text row at a time, about 15 frames a second, only while it's on screen; a
+// slowly across it, in the theme's ink at low opacity. Drawn on a canvas one text row at a time, about 15 frames a second, only while it's on screen; a
 // single still frame for people who prefer reduced motion.
 
 import { useEffect, useRef } from "react";
@@ -34,9 +34,8 @@ const grain = (c: number, r: number, k: number) => {
 
 // Waves: vertical position (fraction of height), amplitude (rows), period (columns), speed (columns/s), phase.
 const WAVES = [
-  { y: 0.3, amp: 5, period: 64, speed: 9, phase: 0 },
-  { y: 0.58, amp: 7, period: 92, speed: -6, phase: 37 },
-  { y: 0.84, amp: 4, period: 48, speed: 12, phase: 11 },
+  { y: 0.28, amp: 4, period: 70, speed: 4.5, phase: 0 },
+  { y: 0.56, amp: 5, period: 96, speed: -3, phase: 37 },
 ];
 
 export function PulseField({ className = "" }: { className?: string }) {
@@ -49,7 +48,9 @@ export function PulseField({ className = "" }: { className?: string }) {
     const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
     const css = getComputedStyle(document.documentElement);
     const ink = { grain: css.getPropertyValue("--line").trim(), dim: css.getPropertyValue("--line-2").trim(), mid: css.getPropertyValue("--faint").trim(), hot: css.getPropertyValue("--accent").trim() };
-    const font = `12px ${css.getPropertyValue("--mono").trim() || "monospace"}`;
+    // A true monospace: the rows are space-padded strings, so every character must be one cell wide (the app's
+    // number font is proportional Inter).
+    const font = '12px ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace';
     let cw = 7.2;
     const ch = 14;
     let cols = 0;
@@ -82,7 +83,7 @@ export function PulseField({ className = "" }: { className?: string }) {
       const body = blank();
       const hot = blank();
       const k = Math.floor(t * 0.6);
-      for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) if (grain(c, r, k) < 0.05) bg[r]![c] = "·";
+      for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) if (grain(c, r, k) < 0.06) bg[r]![c] = "·";
       for (const wv of WAVES) {
         const base = wv.y * rows;
         for (let c = 0; c < cols; c++) {
@@ -111,8 +112,8 @@ export function PulseField({ className = "" }: { className?: string }) {
       };
       line(bg, ink.grain, 1);
       line(flat, ink.dim, 1);
-      line(body, ink.mid, 0.55);
-      line(hot, ink.hot, 0.45);
+      line(body, ink.mid, 0.4);
+      line(hot, ink.hot, 0.28);
       ctx.globalAlpha = 1;
     };
 

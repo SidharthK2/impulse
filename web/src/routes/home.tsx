@@ -2,6 +2,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { useForm, useSelector } from "@tanstack/react-form";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { change24h } from "../components/Market";
+import { PulseField } from "../components/PulseField";
 import { Sparkline } from "../components/Sparkline";
 import { displayName, headline } from "../components/status";
 import { FieldError, FormError, invalid, useServerError } from "../components/form";
@@ -174,7 +175,9 @@ function Intro({ markets }: { markets: MarketView[] }) {
   );
   const start = lastMarket && markets.some((m) => m.id === lastMarket) ? lastMarket : (markets.find((m) => m.kind === "perp")?.id ?? markets[0]?.id ?? "BTC-PERP");
   return (
-    <section className="intro">
+    <section className="intro-band">
+      <PulseField />
+      <div className="intro">
       <div className="intro-copy">
         <h1 className="wordmark">impulse</h1>
         <p className="intro-line">
@@ -207,6 +210,7 @@ function Intro({ markets }: { markets: MarketView[] }) {
           <dd>{usd(haircuts, { compact: true })}</dd>
         </div>
       </dl>
+      </div>
     </section>
   );
 }
