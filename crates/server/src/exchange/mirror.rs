@@ -110,7 +110,8 @@ impl Exchange {
             .chain(&asks)
             .map(|&(price, lots)| ceil_div(lots * lot_price(sz, price), lev))
             .sum();
-        let floor = margin + 500_000 * impulse_engine::fixed::ONE;
+        // On top of what its orders elsewhere hold back (exchange::reserved).
+        let floor = self.reserved(crate::bots::MM) + margin + 500_000 * impulse_engine::fixed::ONE;
         let wallet = self.wallet(crate::bots::MM);
         if wallet < floor {
             let million = 1_000_000 * impulse_engine::fixed::ONE;

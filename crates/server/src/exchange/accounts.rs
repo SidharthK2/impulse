@@ -58,8 +58,28 @@ impl Exchange {
         Ok(FAUCET_AMOUNT)
     }
 
+    /// An amount the account may take from its wallet, given what its open orders hold back (`reserved`); "all"
+    /// is everything that's free. With nothing held, the engine's own checks apply unchanged.
+    pub(super) fn spendable(&self, account: &str, amount: Amount, what: &str) -> XResult<Amount> {
+        let reserved = self.reserved(account);
+        if reserved == 0 {
+            return Ok(amount);
+        }
+        let free = self.available(account);
+        match amount {
+            Amount::All if free > 0 => Ok(Amount::Exact(Dec::from_nano(free))),
+            Amount::Exact(d) if d.nano() <= free => Ok(amount),
+            _ => Err(ExError::bad(format!(
+                "{what}: only ${} of the wallet is free; ${} is held for open orders",
+                usd(free),
+                usd(reserved)
+            ))),
+        }
+    }
+
     pub fn withdraw(&mut self, account: &str, amount: Amount) -> XResult<()> {
         self.account(account)?;
+        let amount = self.spendable(account, amount, "withdraw")?;
         self.commit(&[Event::Withdraw {
             account: account.into(),
             amount: engine_amount(amount),
@@ -79,6 +99,7 @@ impl Exchange {
             return Err(ExError::bad("amount must be non-zero"));
         }
         let e = if v > 0 {
+            self.spendable(account, Amount::Exact(amount), "add margin")?;
             ev_allocate(account, market, dec(v))
         } else {
             ev_release(account, market, dec(-v))
@@ -90,6 +111,7 @@ impl Exchange {
     pub fn spot_buy(&mut self, account: &str, market: &str, usdc: Amount) -> XResult<Vec<Effect>> {
         self.account(account)?;
         self.market(market)?;
+        let usdc = self.spendable(account, usdc, "spend")?;
         self.commit(&[Event::SpotBuy {
             account: account.into(),
             market: market.into(),

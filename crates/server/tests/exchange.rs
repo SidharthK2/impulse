@@ -235,21 +235,29 @@ async fn cancels_the_resting_side_on_a_self_trade_and_a_maker_that_cant_afford_i
         &bob,
         json!({ "market": x, "side": "sell", "price": "100", "size": "25", "leverage": 3 }),
     )
-    .await); // needs ~$834
-    ok(
+    .await); // holds ~$834 of bob's wallet
+    fails(
         v.as_(&bob, "POST", "/api/withdraw", json!({ "amount": "900" }))
             .await,
-    ); // now bob can't post it
+        "held for open orders",
+    );
+    // The mark gaps to 150: filling 10 of the short at 100 would now need $1,000 plus the fee, more than bob has.
+    ok(v.admin(
+        "POST",
+        "/api/admin/price",
+        json!({ "market": x, "price": "150", "holdSeconds": 0 }),
+    )
+    .await);
     let r = ok(v
         .order(
             &alice,
-            json!({ "market": x, "side": "buy", "type": "market", "size": "25" }),
+            json!({ "market": x, "side": "buy", "type": "market", "size": "10" }),
         )
         .await);
     assert_eq!(r["status"], "cancelled");
     assert_eq!(r["fills"].as_array().unwrap().len(), 0);
     assert_eq!(v.account(&bob).await["orders"], json!([])); // the maker that couldn't post margin lost its order
-    assert_eq!(wallet(&v, &bob).await, "100.00"); // and its failed allocation never committed
+    assert_eq!(wallet(&v, &bob).await, "1000.00"); // and its failed allocation never committed
 }
 
 #[tokio::test]

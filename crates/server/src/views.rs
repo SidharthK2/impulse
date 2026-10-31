@@ -767,6 +767,8 @@ pub struct AccountView<'a> {
     created_at: i64,
     next_faucet: i64,
     wallet: String,
+    reserved: String, // held back by open orders (the margin each would need if it filled)
+    available: String, // wallet − reserved: what new orders, withdrawals and margin can use
     deposited: String,
     withdrawn: String,
     equity: String,
@@ -855,6 +857,8 @@ pub fn account_view<'a>(x: &'a Exchange, id: &'a str) -> AccountView<'a> {
         created_at: meta.created_at,
         next_faucet: meta.last_faucet + 60_000,
         wallet: usd(wallet),
+        reserved: usd(x.reserved(id)),
+        available: usd(x.available(id)),
         deposited: usd(deposited),
         withdrawn: usd(withdrawn),
         equity: usd(total),

@@ -366,7 +366,7 @@ pub fn quote(x: &mut Exchange, id: &str) {
     }
     let lev = leverage_now(m).0 as f64;
     let pos = x.size_of(id, MM);
-    if x.wallet(MM) < 500_000 * ONE {
+    if x.available(MM) < 500_000 * ONE {
         let _ = x.deposit(MM, Dec::from_nano(1_000_000 * ONE));
     }
 

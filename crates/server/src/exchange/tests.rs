@@ -103,6 +103,51 @@ fn the_fees_upgrade_gives_markets_listed_without_fees_the_default_fees_once() {
     assert!(x.upgrade("nonsense").is_err());
 }
 
+// ---------- margin held by resting orders ----------
+
+#[test]
+fn a_resting_order_holds_its_margin_back_from_the_wallet() {
+    let mut x = session("k");
+    x.create_account("carol", false, "carol-key").unwrap();
+    x.deposit("carol", d("1000")).unwrap();
+    let mut bid = OrderInput::limit("X", Side::Buy, d("99"), d("20"));
+    bid.leverage = Some(3.0);
+    x.place_order("carol", &bid).unwrap();
+    // $1,980 at 3× is $660, plus the 0.015% maker fee ($0.297).
+    assert_eq!(x.reserved("carol"), 660_297_000_000);
+    assert_eq!(x.available("carol"), 339_703_000_000);
+
+    let err = x
+        .withdraw("carol", Amount::parse("400").unwrap())
+        .unwrap_err();
+    assert!(
+        err.message().contains("held for open orders"),
+        "{}",
+        err.message()
+    );
+    assert!(x.place_order("carol", &bid).is_err()); // a second one doesn't fit
+    x.withdraw("carol", Amount::All).unwrap(); // everything that's free
+    assert_eq!(x.wallet("carol"), 660_297_000_000);
+
+    x.cancel_all("carol", None).unwrap();
+    assert_eq!(x.reserved("carol"), 0);
+}
+
+#[test]
+fn an_order_holds_nothing_for_the_part_that_only_reduces_a_position() {
+    let mut x = session("k"); // alice is long 2, bob short 2 with 3 more offered at 100
+                              // bob's offer adds to his short: all 3 hold margin ($300 at 3×, plus the maker fee).
+    assert_eq!(x.reserved("bob"), 100_045_000_000);
+    let mut ask = OrderInput::limit("X", Side::Sell, d("110"), d("2"));
+    ask.leverage = Some(3.0);
+    x.place_order("alice", &ask).unwrap();
+    assert_eq!(x.reserved("alice"), 0); // closes her long
+    ask.size = d("1");
+    x.place_order("alice", &ask).unwrap();
+    // The first offer uses up the long; the second would open a short of 1: $110 at 3×, plus the fee.
+    assert_eq!(x.reserved("alice"), 36_666_666_667 + 16_500_000);
+}
+
 // ---------- liquidation through the book ----------
 
 /// A $100 perp in whole coins: alice long 30 at 3× from bob, and carol bidding `bids` (price, coins).

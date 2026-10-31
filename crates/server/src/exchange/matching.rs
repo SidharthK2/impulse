@@ -168,6 +168,51 @@ impl Exchange {
         })
     }
 
+    /// What an account's resting orders hold back from its wallet: for each, the margin it would need if it filled
+    /// (at its own price and leverage, capped at the max loss where there is one) plus the maker fee. An order holds
+    /// nothing for the part that would only reduce the account's position: in each market, the best-placed orders
+    /// on the reducing side use up the position first. Both sides count, since both could fill.
+    pub fn reserved(&self, account: &str) -> i128 {
+        let markets: BTreeSet<&str> = self
+            .orders
+            .values()
+            .filter(|r| r.account == account)
+            .map(|r| r.market.as_str())
+            .collect();
+        markets
+            .into_iter()
+            .map(|id| {
+                let m = &self.state.markets[id];
+                let pos = self.size_of(id, account);
+                let mut held = 0;
+                for side in [Side::Buy, Side::Sell] {
+                    let mut reducing = if pos.signum() == -side.dir() {
+                        pos.abs()
+                    } else {
+                        0
+                    };
+                    for o in self.books[id]
+                        .side(side)
+                        .iter()
+                        .filter(|o| o.account == account)
+                    {
+                        let cut = o.size.min(reducing);
+                        reducing -= cut;
+                        if !o.reduce_only && o.size > cut {
+                            held += order_margin(m, side, o.size - cut, o.price, o.leverage);
+                        }
+                    }
+                }
+                held
+            })
+            .sum()
+    }
+
+    /// The wallet less what open orders hold back.
+    pub fn available(&self, account: &str) -> i128 {
+        (self.wallet(account) - self.reserved(account)).max(0)
+    }
+
     /// Rough pre-trade check so obviously unaffordable orders don't rest. Fills re-check exactly.
     fn check_affordable(
         &self,
@@ -191,13 +236,19 @@ impl Exchange {
             need = need.min(delta.abs() * u);
         }
         need += ceil_div(delta.abs() * px * m.config.taker_fee_ppm, PPM);
-        let wallet = self.wallet(account);
+        let reserved = self.reserved(account);
+        let wallet = self.wallet(account) - reserved;
         let free = p.map_or(0, |p| 0.max(equity(p, m.mark) - initial_margin(m, p)));
         if need > wallet + free {
+            let held = if reserved > 0 {
+                format!(" (${} is held for open orders)", usd(reserved))
+            } else {
+                String::new()
+            };
             return Err(ExError::bad(format!(
-                "insufficient balance: needs about ${} of margin, ${} available",
+                "insufficient balance: needs about ${} of margin, ${} available{held}",
                 usd(need),
-                usd(wallet + free)
+                usd((wallet + free).max(0))
             )));
         }
         Ok(())
@@ -470,4 +521,25 @@ impl Exchange {
 enum Blame {
     Maker,
     Taker(String),
+}
+
+/// The margin `lots` on `side` at `price` (lot price) would need if filled at `leverage`, capped at the max loss
+/// where the market has a bound on that side, plus the maker fee.
+pub(super) fn order_margin(
+    m: &Market,
+    side: Side,
+    lots: i128,
+    price: i128,
+    leverage: i128,
+) -> i128 {
+    let mut need = ceil_div(lots * price, leverage.max(1));
+    let cap = if side == Side::Buy {
+        Some(lots * (price - m.config.lower))
+    } else {
+        m.config.upper.map(|u| lots * (u - price))
+    };
+    if let Some(c) = cap {
+        need = need.min(c.max(0));
+    }
+    need + ceil_div(lots * price * m.config.maker_fee_ppm, PPM)
 }

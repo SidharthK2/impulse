@@ -62,6 +62,8 @@ The journal's last sequence number, and the time each journaled command has take
 ## Additions (2026-10-31, branch `realism`)
 
 ```
+AccountView    reserved: string                   // held back from the wallet by open orders
+               available: string                  // wallet − reserved: what orders, withdrawals and margin can use
 PositionView   fees: string                       // trading fees paid from this position's margin
 Fill           fee?: string                       // in an account's own fills (perp): what that account paid
 MarketView     settings adds "Trading fees", and "Liquidity" on markets that mirror Hyperliquid's book

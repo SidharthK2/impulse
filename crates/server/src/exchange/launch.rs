@@ -13,6 +13,7 @@ impl Exchange {
         if launch.opened.is_some() || now >= launch.opens_at {
             return Err(ExError::bad(format!("{market}'s snipe window has closed")));
         }
+        let usdc = self.spendable(account, usdc, "snipe")?;
         let before = self.wallet(account);
         self.commit(&[Event::Snipe {
             account: account.into(),
