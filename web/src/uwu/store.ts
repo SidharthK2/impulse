@@ -41,8 +41,9 @@ const storage = createJSONStorage(() => ({
 
 export const useUwu = create<UwuPrefs>()(
   persist(
+    // New visitors get the skin and its sound; whoever turns either off keeps that choice.
     (set) => ({
-      on: false,
+      on: true,
       volume: 0.6,
       muted: false,
       music: true,

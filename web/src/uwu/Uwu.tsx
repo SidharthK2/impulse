@@ -88,15 +88,20 @@ export function UwuLayer() {
   const on = useUwu((s) => s.on);
   useEffect(() => {
     if (!on) return;
+    // The first click or key press, whichever comes first.
     const down = () => {
+      window.removeEventListener("pointerdown", down, { capture: true });
+      window.removeEventListener("keydown", down, { capture: true });
       unlock();
       greet();
     };
     const toast = (e: Event) => void cue(REACT[(e as CustomEvent<ToastEvent>).detail.tone].cue);
-    window.addEventListener("pointerdown", down, { capture: true, once: true });
+    window.addEventListener("pointerdown", down, { capture: true });
+    window.addEventListener("keydown", down, { capture: true });
     window.addEventListener(TOAST_EVENT, toast);
     return () => {
       window.removeEventListener("pointerdown", down, { capture: true });
+      window.removeEventListener("keydown", down, { capture: true });
       window.removeEventListener(TOAST_EVENT, toast);
     };
   }, [on]);
