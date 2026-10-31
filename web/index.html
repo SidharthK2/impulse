@@ -30,7 +30,7 @@
         var p = JSON.parse(localStorage.getItem("impulse.prefs") || "{}").state || {};
         document.documentElement.dataset.theme = p.theme || (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
       } catch (e) {}
-      // One canonical address per page, whichever host served it (impulse-sid.fly.dev or impulse.sidkap.xyz).
+      // One canonical address per page: this path on impulse.sidkap.xyz, whichever host served it (localhost too).
       document.querySelector('link[rel="canonical"]').href = "https://impulse.sidkap.xyz" + location.pathname;
     </script>
   </head>

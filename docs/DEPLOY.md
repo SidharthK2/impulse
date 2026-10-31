@@ -22,7 +22,7 @@ fly secrets set ADMIN_TOKEN="$(openssl rand -hex 24)" --app <your-app-name>
 fly deploy --remote-only --ha=false
 ```
 
-The app comes up at `https://<your-app-name>.fly.dev`. `--remote-only` builds the image on Fly's builder, so
+The API comes up at `https://<your-app-name>.fly.dev` (the web app is on Cloudflare, below). `--remote-only` builds the image on Fly's builder, so
 nothing heavy runs on your machine. Keep the admin token somewhere safe: `fly secrets` won't show it again.
 
 Optional: `fly secrets set OFFLINE=1` (or uncomment it in `fly.toml`) for simulated prices.
