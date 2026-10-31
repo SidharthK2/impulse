@@ -1,4 +1,4 @@
-// UwU mode preferences: the skin switch, the mascot, the sparkle trail and the audio mixer. Kept apart from the main
+// UwU mode preferences: the skin switch and the audio mixer. Kept apart from the main
 // prefs (store.ts) so the whole mode can be dropped or moved without touching them.
 
 import { create } from "zustand";
@@ -6,15 +6,12 @@ import { createJSONStorage, persist } from "zustand/middleware";
 
 export interface UwuPrefs {
   on: boolean;
-  mascot: boolean;
-  sparkles: boolean;
   /** 0..1, the master volume */
   volume: number;
   muted: boolean;
   music: boolean;
-  voices: boolean;
-  trades: boolean;
-  blips: boolean;
+  /** Anya's voice and the trade sounds */
+  voice: boolean;
   set: (p: Partial<Omit<UwuPrefs, "set">>) => void;
 }
 
@@ -46,17 +43,20 @@ export const useUwu = create<UwuPrefs>()(
   persist(
     (set) => ({
       on: false,
-      mascot: true,
-      sparkles: true,
-      volume: 0.7,
+      volume: 0.6,
       muted: false,
-      music: false,
-      voices: true,
-      trades: true,
-      blips: false,
+      music: true,
+      voice: true,
       set: (p) => set(p),
     }),
-    { name: "impulse.uwu", storage },
+    {
+      name: "impulse.uwu",
+      storage,
+      // v1 dropped the sparkle trail, the mascot switch and the per-sound switches, and turned sound on by
+      // default: keep only whether the mode is on.
+      version: 1,
+      migrate: (old) => ({ on: !!(old as { on?: boolean } | null)?.on }) as UwuPrefs,
+    },
   ),
 );
 

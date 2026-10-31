@@ -1,11 +1,11 @@
 // Original UwU art, drawn as inline SVG so it scales, themes with CSS variables, and ships no image files.
 // Pulse-chan is Impulse's mascot: a chibi girl with cat ears, pink twin tails and a hoodie with the Impulse
-// heartbeat on it. Mochi is her cat. To swap in commissioned illustrations later, replace these components;
-// everything else only knows them by name and mood.
+// heartbeat on it. With the demo art fetched (`make uwu-assets`) the mascot is
+// Anya instead (uwu/Uwu.tsx); Pulse-chan is the fallback when those files are missing.
 
 import { useMemo } from "react";
 
-export type Mood = "idle" | "happy" | "sad" | "shock" | "poke" | "sleepy";
+export type Mood = "idle" | "happy" | "sad" | "shock" | "poke" | "sleepy" | "smug";
 
 const INK = "#3a2350";
 
@@ -290,81 +290,6 @@ export function PulseChan({ mood = "idle", size = 150 }: { mood?: Mood; size?: n
   );
 }
 
-/** Mochi the cat, loafing. */
-export function Mochi({ size = 72, className = "" }: { size?: number; className?: string }) {
-  return (
-    <svg
-      className={`mochi ${className}`}
-      width={size}
-      height={(size * 100) / 120}
-      viewBox="0 0 120 100"
-      role="img"
-      aria-label="Mochi the cat"
-    >
-      <path
-        className="mochi-tail"
-        d="M100 80 Q122 66 108 48"
-        stroke="#5b4f86"
-        strokeWidth="9"
-        strokeLinecap="round"
-        fill="none"
-      />
-      <path
-        d="M100 80 Q122 66 108 48"
-        stroke="#f3f0ff"
-        strokeWidth="5.5"
-        strokeLinecap="round"
-        fill="none"
-        className="mochi-tail"
-      />
-      <ellipse cx="60" cy="74" rx="46" ry="24" fill="#f3f0ff" stroke="#5b4f86" strokeWidth="2.5" />
-      <path
-        d="M38 34 L34 6 L58 22 Z M82 34 L86 6 L62 22 Z"
-        fill="#f3f0ff"
-        stroke="#5b4f86"
-        strokeWidth="2.5"
-        strokeLinejoin="round"
-      />
-      <path d="M40 28 L38 14 L50 22 Z M80 28 L82 14 L70 22 Z" fill="#ffc4e1" />
-      <circle cx="60" cy="46" r="29" fill="#f3f0ff" stroke="#5b4f86" strokeWidth="2.5" />
-      <path
-        d="M54 22 v7 M60 20 v8 M66 22 v7"
-        stroke="#b8b0d8"
-        strokeWidth="2.4"
-        strokeLinecap="round"
-      />
-      <ellipse cx="48" cy="47" rx="4" ry="5" fill="#2a1846" />
-      <ellipse cx="72" cy="47" rx="4" ry="5" fill="#2a1846" />
-      <circle cx="46.5" cy="45" r="1.6" fill="#fff" />
-      <circle cx="70.5" cy="45" r="1.6" fill="#fff" />
-      <path
-        d="M55 55 Q57.5 59 60 56 Q62.5 59 65 55"
-        stroke="#5b4f86"
-        strokeWidth="2"
-        fill="none"
-        strokeLinecap="round"
-      />
-      <ellipse cx="41" cy="56" rx="6" ry="3.4" fill="#ffb0d4" opacity="0.6" />
-      <ellipse cx="79" cy="56" rx="6" ry="3.4" fill="#ffb0d4" opacity="0.6" />
-      <path
-        d="M36 70 Q60 80 84 70"
-        stroke="#9ff0d0"
-        strokeWidth="5"
-        fill="none"
-        strokeLinecap="round"
-      />
-      <circle cx="60" cy="78" r="5" fill="#ffe27a" stroke="#f0b93c" strokeWidth="1.5" />
-      <path
-        d="M40 92 q4 -6 8 0 M72 92 q4 -6 8 0"
-        stroke="#5b4f86"
-        strokeWidth="2"
-        fill="none"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
 /** A small deterministic random sequence, so the star field is the same on every render. */
 function rng(seed: number) {
   let s = seed;
@@ -446,7 +371,6 @@ export function ChartScene() {
           ))}
         </svg>
       </div>
-      <Mochi size={64} className="uwu-scene-cat" />
     </div>
   );
 }

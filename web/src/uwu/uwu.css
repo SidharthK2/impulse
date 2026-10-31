@@ -136,12 +136,15 @@
 [data-skin="uwu"][data-theme="light"] .brand-name {
   background-image: linear-gradient(90deg, #e2507f, #9a5bd8 60%, #17a578);
 }
+/* The base style makes the tag plain text (no padding); here it is a proper pill. */
 [data-skin="uwu"] .brand-tag {
-  color: var(--accent-ink);
+  color: #2a1036;
   background: linear-gradient(90deg, var(--uwu-pink), var(--uwu-lilac));
-}
-[data-skin="uwu"] .brand-tag::after {
-  content: " ♡";
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
 }
 [data-skin="uwu"] .nav > a.active::after,
 [data-skin="uwu"] .nav .nav-more.active::after {
@@ -438,36 +441,14 @@
     transform: translateX(-50%);
   }
 }
-.uwu-scene-cat {
+/* ---------- Anya in the chart ---------- */
+
+/* Bottom-left of the plot, sitting on the clouds; above the canvas so she can be poked. */
+.uwu-mascot-wrap {
   position: absolute;
-  left: 18px;
-  bottom: 22px;
+  left: 10px;
+  bottom: 18px;
   z-index: 2;
-  filter: drop-shadow(0 4px 8px rgba(20, 10, 60, 0.35));
-}
-.mochi-tail {
-  transform-box: fill-box;
-  transform-origin: 0% 100%;
-  animation: uwu-wag 2.6s ease-in-out infinite;
-}
-@keyframes uwu-wag {
-  0%,
-  100% {
-    transform: rotate(0deg);
-  }
-  50% {
-    transform: rotate(-14deg);
-  }
-}
-
-/* ---------- Pulse-chan in the corner ---------- */
-
-/* Bottom-left: on the trade page that's the empty end of the positions table, and toasts keep the right. */
-.uwu-companion {
-  position: fixed;
-  left: 14px;
-  bottom: 22px;
-  z-index: 14; /* under the status bar (15), so she rises from behind it */
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -475,29 +456,56 @@
 }
 .uwu-mascot {
   pointer-events: auto;
-  translate: 0 52%;
-  transition: translate 0.35s cubic-bezier(0.3, 1.5, 0.6, 1);
-  background: none;
-  border: 0;
+  display: block;
+  height: 150px;
   padding: 0;
+  border: 0;
+  background: none;
   cursor: pointer;
-  filter: drop-shadow(0 8px 18px rgba(20, 10, 60, 0.45));
-  animation: uwu-bob 4.5s ease-in-out infinite;
+  filter: drop-shadow(0 6px 12px rgba(20, 10, 60, 0.4));
   transform-origin: 50% 100%;
 }
-.uwu-companion.up .uwu-mascot,
-.uwu-mascot:hover,
-.uwu-mascot:focus-visible {
-  translate: 0 0;
+.uwu-mascot img {
+  display: block;
+  height: 100%;
+  width: auto;
+  max-width: 190px;
+  object-fit: contain;
+  object-position: left bottom;
+  user-select: none;
+  animation: uwu-pose 0.28s cubic-bezier(0.3, 1.5, 0.6, 1);
 }
-.uwu-mascot:active {
-  animation: none;
-  transform: scale(0.94, 0.9);
+@keyframes uwu-pose {
+  from {
+    transform: scale(0.85) translateY(8px);
+  }
+}
+.uwu-mascot.mood-idle img {
+  animation:
+    uwu-pose 0.28s cubic-bezier(0.3, 1.5, 0.6, 1),
+    uwu-breathe 3.6s ease-in-out 0.3s infinite;
+}
+@keyframes uwu-breathe {
+  50% {
+    transform: translateY(-3px);
+  }
+}
+.uwu-mascot.mood-happy,
+.uwu-mascot.mood-poke {
+  animation: uwu-hop 0.45s ease-out 2;
+}
+.uwu-mascot.mood-shock {
+  animation: uwu-shake 0.35s ease-in-out 2;
 }
 .uwu-mascot:focus-visible {
   outline: 2px dashed var(--uwu-pink);
-  outline-offset: 4px;
-  border-radius: 20px;
+  outline-offset: 2px;
+  border-radius: 12px;
+}
+@media (max-width: 760px) {
+  .uwu-mascot {
+    height: 96px;
+  }
 }
 @keyframes uwu-bob {
   0%,
@@ -585,8 +593,8 @@
 }
 .uwu-bubble {
   position: relative;
-  max-width: 240px;
-  margin: 0 0 6px 40px;
+  max-width: 260px;
+  margin: 0 0 4px 30px;
   padding: 9px 13px;
   border-radius: 16px;
   background: #fff;
@@ -626,63 +634,6 @@
     opacity: 0;
   }
 }
-.uwu-hide {
-  pointer-events: auto;
-  position: absolute;
-  left: 0;
-  bottom: 140px;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  border: 1px solid var(--line-2);
-  background: var(--panel);
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1;
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-.uwu-companion:hover .uwu-hide,
-.uwu-hide:focus-visible {
-  opacity: 1;
-}
-/* On phones the bottom of the screen belongs to the Long / Short bar. */
-@media (max-width: 760px) {
-  .uwu-companion {
-    display: none;
-  }
-}
-
-/* ---------- sparkle trail ---------- */
-
-.uwu-sparkles {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 70;
-  overflow: hidden;
-}
-.uwu-sparkles span {
-  position: absolute;
-  opacity: 0;
-  transform: translate(-50%, -50%);
-  text-shadow: 0 0 6px currentColor;
-}
-.uwu-sparkles span.go {
-  animation: uwu-sparkle 0.8s ease-out forwards;
-}
-@keyframes uwu-sparkle {
-  0% {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1) rotate(0deg);
-  }
-  100% {
-    opacity: 0;
-    transform: translate(-50%, 10px) scale(0.3) rotate(90deg);
-  }
-}
-
 /* ---------- header controls ---------- */
 
 .uwu-controls {
@@ -743,7 +694,7 @@
   position: absolute;
   top: calc(100% + 10px);
   right: -8px;
-  width: 280px;
+  width: 240px;
   z-index: 50;
   border-radius: 16px;
   border: 1px solid var(--line-2);
@@ -752,23 +703,6 @@
   overflow: hidden;
   animation: uwu-pop-in 0.2s cubic-bezier(0.3, 1.4, 0.6, 1);
   transform-origin: 90% 0;
-}
-.uwu-pop-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--line);
-  font-size: 12px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-.uwu-pop-head b {
-  font-weight: 800;
-}
-.uwu-pop-head span {
-  color: var(--muted);
-  font-weight: 700;
 }
 .uwu-vol {
   display: flex;
@@ -829,10 +763,6 @@
 .uwu-check:hover {
   background: color-mix(in srgb, var(--uwu-pink) 6%, transparent);
 }
-.uwu-check.off {
-  color: var(--faint);
-  cursor: default;
-}
 .uwu-check input {
   position: absolute;
   opacity: 0;
@@ -861,10 +791,6 @@
 .uwu-check input:focus-visible + i {
   outline: 2px solid var(--uwu-lilac);
   outline-offset: 2px;
-}
-.uwu-pop-sep {
-  height: 6px;
-  background: var(--panel-2);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -7,6 +7,7 @@
 #   make typecheck   typecheck the web app
 #   make fmt         format the Rust (rustfmt) and the web app (oxfmt)
 #   make lint        what CI checks besides tests: formatting, clippy, oxlint, typecheck
+#   make uwu-assets  download UwU mode's demo media into web/public/uwu (gitignored; internal use only)
 #
 # To start from an empty exchange, point DATA_DIR at a new directory (DATA_DIR=data-new make start)
 # or move the old one aside (mv data data.old). Nothing here deletes data.
@@ -15,7 +16,7 @@ CARGO := cargo
 # --ignore-workspace: web/ is its own pnpm project, even when a parent directory holds a pnpm workspace.
 PNPM_WEB := pnpm --dir web
 
-.PHONY: start dev test web typecheck fmt lint
+.PHONY: start dev test web typecheck fmt lint uwu-assets
 
 web/node_modules/.modules.yaml: web/package.json web/pnpm-lock.yaml
 	$(PNPM_WEB) install --ignore-workspace
@@ -45,3 +46,6 @@ lint: web/node_modules/.modules.yaml
 	$(PNPM_WEB) run fmt:check
 	$(PNPM_WEB) run lint
 	$(PNPM_WEB) run typecheck
+
+uwu-assets:
+	web/scripts/uwu-assets.sh

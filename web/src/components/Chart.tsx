@@ -8,6 +8,7 @@ import { type Range, usePrefs } from "../store";
 import type { Candle, MarketView, PositionView, RiskEvent } from "../types";
 import { ChartScene } from "../uwu/art";
 import { useUwu } from "../uwu/store";
+import { ChartMascot } from "../uwu/Uwu";
 import { type Incident, IncidentCard, incidents } from "./WhoPaid";
 
 const RANGES: Record<Range, number> = {
@@ -549,6 +550,7 @@ export function Chart({ market, position }: { market: MarketView; position?: Pos
       <div className="chart" ref={wrap}>
         {uwu && <ChartScene />}
         <canvas ref={canvas} aria-label={`${market.id} mark price chart`} role="img" />
+        {uwu && <ChartMascot />}
         {hover && <HoverCard hover={hover} market={market} />}
       </div>
     </div>
