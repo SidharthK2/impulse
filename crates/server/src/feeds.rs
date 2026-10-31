@@ -376,20 +376,18 @@ async fn backfill(app: App, only: Option<Vec<String>>) {
         node.core.x.markets.values().filter(|m| only.as_ref().is_none_or(|o| o.contains(&m.id))).map(|m| (m.id.clone(), m.source.clone())).collect()
     };
     for (id, source) in targets {
-        let points: Result<Vec<(i64, i128, i128, i128, i128)>, String> = match &source {
+        let bars: Result<Vec<Bar>, String> = match &source {
             Source::Hyperliquid { coin, .. } => hl_candles(&app.http, coin, 360).await.map(|cs| {
-                cs.iter()
-                    .filter_map(|c| Some((c["t"].as_i64()?, feed_nano(&c["o"]).ok()?, feed_nano(&c["h"]).ok()?, feed_nano(&c["l"]).ok()?, feed_nano(&c["c"]).ok()?)))
-                    .collect()
+                let price = |v: &Value| feed_nano(v).ok();
+                cs.iter().filter_map(|c| Some(Bar { t: c["t"].as_i64()?, o: price(&c["o"])?, h: price(&c["h"])?, l: price(&c["l"])?, c: price(&c["c"])? })).collect()
             }),
             Source::Polymarket { token_id, .. } => pm_history(&app.http, token_id)
                 .await
-                .map(|h| h.iter().filter_map(|&(t, p)| nano_from_f64(p).ok().map(|n| (t * 1000, n, n, n, n))).collect()),
+                .map(|h| h.iter().filter_map(|&(t, p)| nano_from_f64(p).ok().map(|n| Bar { t: t * 1000, o: n, h: n, l: n, c: n })).collect()),
             _ => continue,
         };
-        match points {
-            Ok(pts) => {
-                let bars = pts.into_iter().map(|(t, o, h, l, c)| Bar { t, o, h, l, c }).collect();
+        match bars {
+            Ok(bars) => {
                 if let Err(e) = app.lock().submit(History { market: id.clone(), bars }) {
                     log(&format!("history for {id}: {}", e.message()));
                 }

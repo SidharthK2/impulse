@@ -10,7 +10,8 @@ use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Mutex, MutexGuard, OnceLock};
+use std::sync::OnceLock;
+use tokio::sync::{Mutex, MutexGuard};
 
 pub const ADMIN: &str = "t";
 
@@ -67,10 +68,10 @@ pub fn spawn(data_dir: PathBuf, env: &[(&str, &str)]) -> Server {
 }
 
 /// The binary's shared server, and a lock that runs its tests one at a time.
-pub fn shared() -> (Venue, MutexGuard<'static, ()>) {
+pub async fn shared() -> (Venue, MutexGuard<'static, ()>) {
     static SERVER: OnceLock<Server> = OnceLock::new();
-    static LOCK: Mutex<()> = Mutex::new(());
-    let guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    static LOCK: Mutex<()> = Mutex::const_new(());
+    let guard = LOCK.lock().await;
     let server = SERVER.get_or_init(|| spawn(temp_dir("http"), &[]));
     (Venue::new(&server.base), guard)
 }

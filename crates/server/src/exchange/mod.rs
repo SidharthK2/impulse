@@ -100,7 +100,7 @@ pub struct Exchange {
     #[serde(skip)]
     keys: HashMap<String, String>, // api key → account
     #[serde(skip)]
-    order_market: BTreeMap<u64, String>, // resting order id → market, in time priority
+    orders: BTreeMap<u64, Resting>, // resting order id → where it rests and whose it is, in time priority
     #[serde(skip)]
     pub version: u64, // bumps on every change: the websocket hub diffs on it, and the journal records a step only if it moved
     /// The current step's time (wall-clock ms), set at intake. The core never reads a clock.
@@ -131,7 +131,7 @@ impl Exchange {
             candles: BTreeMap::new(),
             next_id: 1,
             keys: HashMap::new(),
-            order_market: BTreeMap::new(),
+            orders: BTreeMap::new(),
             version: 0,
             now: genesis,
             bots_enabled: true,
@@ -142,7 +142,7 @@ impl Exchange {
     /// Rebuild the indexes a snapshot doesn't carry.
     pub fn restored(mut self) -> Self {
         self.keys = self.accounts.values().map(|a| (a.api_key.clone(), a.id.clone())).collect();
-        self.order_market = self.books.iter().flat_map(|(id, b)| b.orders().map(move |o| (o.id, id.clone()))).collect();
+        self.orders = self.books.iter().flat_map(|(id, b)| b.orders().map(move |o| (o.id, Resting { market: id.clone(), account: o.account.clone() }))).collect();
         for id in self.markets.keys() {
             self.books.entry(id.clone()).or_default();
         }
@@ -270,6 +270,12 @@ impl Exchange {
         self.next_id += 1;
         id
     }
+}
+
+/// Where a resting order is, and whose: the index behind order lookups by id and by account.
+struct Resting {
+    market: String,
+    account: String,
 }
 
 fn clamp_lot(kind: Kind, lot: i128) -> i128 {

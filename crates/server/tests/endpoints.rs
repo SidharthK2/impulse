@@ -14,7 +14,7 @@ async fn perp(v: &Venue) -> (String, String) {
 
 #[tokio::test]
 async fn the_faucet_pays_once_a_minute_up_to_a_100k_wallet() {
-    let (v, _g) = shared();
+    let (v, _g) = shared().await;
     let u = v.user(&format!("fa{}", uid()), 10_000).await; // sign-up used the faucet
     let (status, r) = v.as_(&u, "POST", "/api/faucet", json!({})).await;
     assert_eq!(status, 429, "{r}");
@@ -28,7 +28,7 @@ async fn the_faucet_pays_once_a_minute_up_to_a_100k_wallet() {
 
 #[tokio::test]
 async fn cancels_only_your_own_orders() {
-    let (v, _g) = shared();
+    let (v, _g) = shared().await;
     let (x, s) = perp(&v).await;
     let alice = v.user(&format!("al{s}"), 10_000).await;
     let bob = v.user(&format!("bo{s}"), 10_000).await;
@@ -41,7 +41,7 @@ async fn cancels_only_your_own_orders() {
 
 #[tokio::test]
 async fn adds_and_removes_isolated_margin_on_an_open_position() {
-    let (v, _g) = shared();
+    let (v, _g) = shared().await;
     let (x, s) = perp(&v).await;
     let alice = v.user(&format!("al{s}"), 10_000).await;
     let bob = v.user(&format!("bo{s}"), 10_000).await;
@@ -60,7 +60,7 @@ async fn adds_and_removes_isolated_margin_on_an_open_position() {
 
 #[tokio::test]
 async fn sells_spot_tokens_back_to_the_curve() {
-    let (v, _g) = shared();
+    let (v, _g) = shared().await;
     let s = uid();
     let c = format!("@sp{s}");
     ok(v.admin("POST", "/api/test/market", json!({ "id": c, "kind": "attention", "source": { "kind": "curve" } })).await);
@@ -78,7 +78,7 @@ async fn sells_spot_tokens_back_to_the_curve() {
 
 #[tokio::test]
 async fn refuses_malformed_bodies_and_answers_cors_preflights() {
-    let (v, _g) = shared();
+    let (v, _g) = shared().await;
     let http = reqwest::Client::new();
     let bad = http.post(format!("{}/api/accounts", v.base)).header("content-type", "application/json").body("{").send().await.unwrap();
     assert_eq!(bad.status().as_u16(), 400);
@@ -94,7 +94,7 @@ async fn refuses_malformed_bodies_and_answers_cors_preflights() {
 
 #[tokio::test]
 async fn serves_a_plain_text_page_when_the_web_app_isnt_built() {
-    let (v, _g) = shared();
+    let (v, _g) = shared().await;
     let res = reqwest::get(format!("{}/some/page", v.base)).await.unwrap();
     assert_eq!(res.status().as_u16(), 200);
     assert_eq!(res.headers()["content-type"], "text/plain");
@@ -103,7 +103,7 @@ async fn serves_a_plain_text_page_when_the_web_app_isnt_built() {
 
 #[tokio::test]
 async fn reports_config_and_ranks_the_leaderboard_by_pnl() {
-    let (v, _g) = shared();
+    let (v, _g) = shared().await;
     let config = ok(v.get("/api/config").await);
     assert_eq!(config["graduation"].as_array().unwrap().len(), 5);
     assert_eq!(config["fundingBasePerHour"].as_array().unwrap().len(), 6);
@@ -124,7 +124,7 @@ async fn reports_config_and_ranks_the_leaderboard_by_pnl() {
 
 #[tokio::test]
 async fn builds_one_minute_candles_from_marks_and_trades() {
-    let (v, _g) = shared();
+    let (v, _g) = shared().await;
     let (x, s) = perp(&v).await;
     let alice = v.user(&format!("al{s}"), 10_000).await;
     let bob = v.user(&format!("bo{s}"), 10_000).await;
@@ -142,7 +142,7 @@ async fn builds_one_minute_candles_from_marks_and_trades() {
 
 #[tokio::test]
 async fn typed_requests_name_missing_fields_and_refuse_wrong_types() {
-    let (v, _g) = shared();
+    let (v, _g) = shared().await;
     let (x, s) = perp(&v).await;
     let u = v.user(&format!("ty{s}"), 10_000).await;
     let (status, r) = v.order(&u, json!({ "side": "buy", "size": "1" })).await;

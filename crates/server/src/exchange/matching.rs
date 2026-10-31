@@ -5,11 +5,10 @@ use super::*;
 impl Exchange {
     /// Resting orders in time priority, optionally in one market.
     pub fn orders_of<'a>(&'a self, account: &'a str, market: Option<&'a str>) -> impl Iterator<Item = &'a Order> + 'a {
-        self.order_market
+        self.orders
             .iter()
-            .filter(move |(_, m)| market.is_none_or(|want| want == m.as_str()))
-            .filter_map(move |(id, m)| self.books.get(m)?.orders().find(|o| o.id == *id))
-            .filter(move |o| o.account == account)
+            .filter(move |(_, r)| r.account == account && market.is_none_or(|want| want == r.market))
+            .filter_map(move |(id, r)| self.books.get(&r.market)?.orders().find(|o| o.id == *id))
     }
 
     pub fn place_order(&mut self, account: &str, input: OrderInput) -> XResult<OrderResult> {
@@ -43,7 +42,7 @@ impl Exchange {
         let (lower, upper) = (m.config.lower, m.config.upper);
         let (price, tif) = match input.kind {
             OrderType::Market => {
-                let slip = (input.slippage.unwrap_or(0.05).max(0.001).min(0.5) * 10_000.0).round() as i128;
+                let slip = (input.slippage.unwrap_or(0.05).clamp(0.001, 0.5) * 10_000.0).round() as i128;
                 let band = (mark * slip / 10_000).max((meta.tick / pow10(meta.sz_decimals)) * 5);
                 let mut price = if input.side == Side::Buy { mark + band } else { mark - band };
                 if let Some(u) = upper {
@@ -103,7 +102,7 @@ impl Exchange {
         let status = if order.size == 0 {
             OrderStatus::Filled
         } else if tif != Tif::Ioc && stop.is_none() {
-            self.order_market.insert(order.id, meta.id.clone());
+            self.orders.insert(order.id, Resting { market: meta.id.clone(), account: account.into() });
             self.books.get_mut(&meta.id).expect("book").add(order.clone());
             if order.filled > 0 {
                 OrderStatus::Partial
@@ -287,9 +286,9 @@ impl Exchange {
     }
 
     pub(super) fn remove_order(&mut self, id: u64) -> Option<Order> {
-        let market = self.order_market.remove(&id)?;
+        let resting = self.orders.remove(&id)?;
         self.version += 1;
-        self.books.get_mut(&market)?.remove(id)
+        self.books.get_mut(&resting.market)?.remove(id)
     }
 
     pub fn cancel(&mut self, account: &str, order_id: &str) -> XResult<()> {

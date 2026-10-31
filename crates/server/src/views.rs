@@ -233,7 +233,7 @@ fn snipe_view<'a>(x: &'a Exchange, meta: &'a MarketMeta, m: &Market) -> Option<S
         *by_account.entry(&b.account).or_default() += b.usdc;
     }
     let mut top: Vec<(&str, i128)> = by_account.iter().map(|(a, v)| (*a, *v)).collect();
-    top.sort_by(|a, b| b.1.cmp(&a.1));
+    top.sort_by_key(|t| std::cmp::Reverse(t.1)); // stable: ties keep account order
     let net: i128 = x.pending_bids(&meta.id).map_or(0, |b| b.values().sum());
     let projected = m.curve.as_ref().map_or(0, |c| {
         let (x1, y1) = open_curve(c.x, c.y, net);
@@ -689,7 +689,7 @@ pub fn leaderboard_view(x: &Exchange) -> Vec<LeaderRow<'_>> {
             (meta.id.as_str(), meta.bot, total, total - net_in, haircuts, open)
         })
         .collect();
-    rows.sort_by(|a, b| b.3.cmp(&a.3)); // stable, like Array.prototype.sort
+    rows.sort_by_key(|r| std::cmp::Reverse(r.3)); // stable: ties keep sign-up order
     rows.into_iter().map(|(id, bot, eq, pnl, h, open)| LeaderRow { id, bot, equity: usd(eq), pnl: usd(pnl), haircuts: usd(h), open }).collect()
 }
 

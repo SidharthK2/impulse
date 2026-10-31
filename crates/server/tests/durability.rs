@@ -9,10 +9,9 @@ mod common;
 use common::*;
 use serde_json::{json, Value};
 use std::path::Path;
-use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
+static ONE_AT_A_TIME: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 /// Bots on, timers 25× faster, the test clock.
 const BUSY: &[(&str, &str)] = &[("BOTS", "1"), ("TIMER_SPEEDUP", "25")];
@@ -81,7 +80,7 @@ async fn busy_session(v: &Venue, target: u64) {
 
 #[tokio::test]
 async fn determinism_a_bots_on_session_replayed_from_seq_1_reaches_the_live_state_hash() {
-    let _g = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let _g = ONE_AT_A_TIME.lock().await;
     let dir = temp_dir("determinism");
     let mut server = spawn(dir.clone(), BUSY);
     let v = Venue::new(&server.base);
@@ -98,7 +97,7 @@ async fn determinism_a_bots_on_session_replayed_from_seq_1_reaches_the_live_stat
 
 #[tokio::test]
 async fn a_snapshot_plus_its_tail_reaches_the_same_hash_as_a_full_replay() {
-    let _g = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let _g = ONE_AT_A_TIME.lock().await;
     let dir = temp_dir("snapshot");
     let mut server = spawn(dir.clone(), BUSY);
     let v = Venue::new(&server.base);
@@ -116,7 +115,7 @@ async fn a_snapshot_plus_its_tail_reaches_the_same_hash_as_a_full_replay() {
 
 #[tokio::test]
 async fn kill_9_mid_trading_loses_nothing_acknowledged_and_restarts_at_the_journals_hash() {
-    let _g = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let _g = ONE_AT_A_TIME.lock().await;
     let dir = temp_dir("crash");
     let mut server = spawn(dir.clone(), BUSY);
     let v = Venue::new(&server.base);
@@ -159,7 +158,7 @@ async fn kill_9_mid_trading_loses_nothing_acknowledged_and_restarts_at_the_journ
 
 #[tokio::test]
 async fn a_refused_command_writes_no_journal_row() {
-    let _g = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let _g = ONE_AT_A_TIME.lock().await;
     let dir = temp_dir("reject");
     let server = spawn(dir.clone(), &[]);
     let v = Venue::new(&server.base);
@@ -179,7 +178,7 @@ async fn a_refused_command_writes_no_journal_row() {
 
 #[tokio::test]
 async fn the_read_tables_match_the_in_memory_history_and_the_journals_effects() {
-    let _g = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let _g = ONE_AT_A_TIME.lock().await;
     let dir = temp_dir("tables");
     let mut server = spawn(dir.clone(), BUSY);
     let v = Venue::new(&server.base);
@@ -220,7 +219,7 @@ async fn the_read_tables_match_the_in_memory_history_and_the_journals_effects() 
 
 #[tokio::test]
 async fn a_legacy_json_snapshot_alone_in_data_dir_comes_up_with_the_same_state() {
-    let _g = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let _g = ONE_AT_A_TIME.lock().await;
     let a = temp_dir("legacy-a");
     let mut server = spawn(a.clone(), &[]);
     let v = Venue::new(&server.base);
@@ -257,7 +256,7 @@ async fn a_legacy_json_snapshot_alone_in_data_dir_comes_up_with_the_same_state()
 
 #[tokio::test]
 async fn throughput_with_bots_on_and_synchronous_full() {
-    let _g = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let _g = ONE_AT_A_TIME.lock().await;
     let dir = temp_dir("throughput");
     let mut server = spawn(dir.clone(), BUSY);
     let v = Venue::new(&server.base);

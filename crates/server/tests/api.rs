@@ -18,7 +18,7 @@ async fn setup(v: &Venue) -> (String, User) {
 
 #[tokio::test]
 async fn signs_up_with_a_paper_deposit_and_rejects_bad_or_taken_names() {
-    let (v, _g) = shared();
+    let (v, _g) = shared().await;
     let s = uid();
     let (status, r) = v.post("/api/accounts", json!({ "name": format!("tr{s}") })).await;
     assert_eq!(status, 200);
@@ -30,7 +30,7 @@ async fn signs_up_with_a_paper_deposit_and_rejects_bad_or_taken_names() {
 
 #[tokio::test]
 async fn requires_auth_to_trade_and_admin_token_for_admin() {
-    let (v, _g) = shared();
+    let (v, _g) = shared().await;
     let (x, _) = setup(&v).await;
     assert_eq!(v.get("/api/account").await.0, 401);
     assert_eq!(v.post("/api/admin/price", json!({ "market": x, "price": "50" })).await.0, 403);
@@ -39,7 +39,7 @@ async fn requires_auth_to_trade_and_admin_token_for_admin() {
 
 #[tokio::test]
 async fn trades_reports_fills_in_coins_and_closes() {
-    let (v, _g) = shared();
+    let (v, _g) = shared().await;
     let (x, trader) = setup(&v).await;
     let r = ok(v.order(&trader, json!({ "market": x, "side": "buy", "type": "market", "size": "2.5", "leverage": 2 })).await);
     assert_eq!(r["status"], "filled");
@@ -53,7 +53,7 @@ async fn trades_reports_fills_in_coins_and_closes() {
 
 #[tokio::test]
 async fn lets_the_admin_force_a_gap_and_lists_it_in_the_feed() {
-    let (v, _g) = shared();
+    let (v, _g) = shared().await;
     let (x, _) = setup(&v).await;
     ok(v.admin("POST", "/api/admin/price", json!({ "market": x, "price": "90", "holdSeconds": 0 })).await);
     let feed = ok(v.get(&format!("/api/feed?market={x}")).await);
@@ -62,7 +62,7 @@ async fn lets_the_admin_force_a_gap_and_lists_it_in_the_feed() {
 
 #[tokio::test]
 async fn lists_attention_markets_permissionlessly() {
-    let (v, _g) = shared();
+    let (v, _g) = shared().await;
     let (_, trader) = setup(&v).await;
     let s = uid();
     let r = ok(v.as_(&trader, "POST", "/api/attention", json!({ "handle": format!("t{s}"), "oracleWindow": 0 })).await);
@@ -72,7 +72,7 @@ async fn lists_attention_markets_permissionlessly() {
 
 #[tokio::test]
 async fn websocket_streams_subscribed_channels_and_the_authed_account() {
-    let (v, _g) = shared();
+    let (v, _g) = shared().await;
     let (x, trader) = setup(&v).await;
     let book = format!("book:{x}");
     let mut msgs = vec![json!({ "op": "auth", "key": trader.key })];

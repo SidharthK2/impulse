@@ -32,7 +32,7 @@ async fn traded(v: &Venue, market: &str, s: &str) -> User {
 
 #[tokio::test]
 async fn stays_near_the_base_rate_after_a_50pct_crash_once_the_book_is_re_quoted() {
-    let (v, _g) = shared();
+    let (v, _g) = shared().await;
     let s = uid();
     let x = format!("F{s}");
     ok(v.admin("POST", "/api/test/market", json!({ "id": x, "kind": "perp", "price": "100", "szDecimals": 2 })).await);
@@ -47,7 +47,7 @@ async fn stays_near_the_base_rate_after_a_50pct_crash_once_the_book_is_re_quoted
 
 #[tokio::test]
 async fn stays_near_the_base_rate_after_an_ipo_gap_once_the_book_is_re_quoted() {
-    let (v, _g) = shared();
+    let (v, _g) = shared().await;
     let s = uid();
     let p = format!("G{s}");
     ok(v.admin("POST", "/api/admin/preipo", json!({ "id": p, "name": "Funding Co (pre-IPO)", "price": "100" })).await);

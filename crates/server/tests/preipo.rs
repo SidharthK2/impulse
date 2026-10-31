@@ -11,7 +11,7 @@ async fn mark(v: &Venue, id: &str) -> String {
 
 #[tokio::test]
 async fn seeds_stripe_pre_at_91_50_on_its_own_order_book() {
-    let (v, _g) = shared();
+    let (v, _g) = shared().await;
     let m = v.market("STRIPE-PRE").await["market"].clone();
     assert_eq!(m["kind"], "preipo");
     assert_eq!(m["source"], json!({ "kind": "book", "label": "own order book" }));
@@ -21,7 +21,7 @@ async fn seeds_stripe_pre_at_91_50_on_its_own_order_book() {
 
 #[tokio::test]
 async fn marks_to_median_of_best_bid_best_ask_and_last_trade_the_last_trade_with_a_side_empty_else_the_seed() {
-    let (v, _g) = shared();
+    let (v, _g) = shared().await;
     let s = uid();
     let p = format!("PRE{s}");
     let created = ok(v.admin("POST", "/api/admin/preipo", json!({ "id": p, "name": "Test Co (pre-IPO)", "price": "50" })).await);
@@ -47,7 +47,7 @@ async fn marks_to_median_of_best_bid_best_ask_and_last_trade_the_last_trade_with
 
 #[tokio::test]
 async fn an_ipo_gaps_the_mark_to_the_public_price_and_charges_the_shortfall_to_the_other_side() {
-    let (v, _g) = shared();
+    let (v, _g) = shared().await;
     let s = uid();
     let p = format!("IPO{s}");
     ok(v.admin("POST", "/api/admin/preipo", json!({ "id": p, "name": "Gap Co (pre-IPO)", "price": "100", "description": "test" })).await);

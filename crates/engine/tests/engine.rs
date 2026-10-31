@@ -122,7 +122,7 @@ fn is_tick(e: &Event, market: Option<&str>, price: &str) -> bool {
     matches!(e, Event::Tick { market: m, price: p } if p.0 == price && market.is_none_or(|want| want == m))
 }
 
-fn find<'a>(steps: &'a [Step], pred: impl Fn(&Event) -> bool) -> &'a Step {
+fn find(steps: &[Step], pred: impl Fn(&Event) -> bool) -> &Step {
     steps.iter().find(|s| pred(&s.event)).expect("step not found")
 }
 

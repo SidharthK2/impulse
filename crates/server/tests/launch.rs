@@ -11,7 +11,7 @@ fn spot_tokens(acct: &Value, market: &str) -> Vec<Value> {
 
 #[tokio::test]
 async fn bids_of_100k_open_at_0_000125_for_800m_tokens_with_the_rest_held_as_the_launch_reserve() {
-    let (v, _g) = shared();
+    let (v, _g) = shared().await;
     let s = uid();
     let c = format!("@c{s}");
     ok(v.admin("POST", "/api/test/market", json!({ "id": c, "kind": "attention", "source": { "kind": "curve" }, "feeBps": 0, "snipeSeconds": 60 })).await);
@@ -49,7 +49,7 @@ async fn bids_of_100k_open_at_0_000125_for_800m_tokens_with_the_rest_held_as_the
 
 #[tokio::test]
 async fn holds_bids_in_the_window_rejects_trading_until_the_open_and_bids_after_it() {
-    let (v, _g) = shared();
+    let (v, _g) = shared().await;
     let s = uid();
     let u = v.user(&format!("sn{s}"), 10_000).await;
     let coin = ok(v.as_(&u, "POST", "/api/attention", json!({ "handle": format!("w{s}") })).await);
@@ -78,7 +78,7 @@ async fn holds_bids_in_the_window_rejects_trading_until_the_open_and_bids_after_
 
 #[tokio::test]
 async fn lists_a_demo_coin_and_pumps_it_from_the_house_account() {
-    let (v, _g) = shared();
+    let (v, _g) = shared().await;
     let coin = ok(v.admin("POST", "/api/admin/demo-coin", json!({})).await);
     let id = coin["id"].as_str().unwrap().to_string();
     assert!(id.starts_with("@demo_"), "{id}");
@@ -101,7 +101,7 @@ async fn lists_a_demo_coin_and_pumps_it_from_the_house_account() {
 
 #[tokio::test]
 async fn reports_every_markets_settings_flagging_the_ones_mirror_doesnt_publish() {
-    let (v, _g) = shared();
+    let (v, _g) = shared().await;
     let coin = ok(v.admin("POST", "/api/admin/demo-coin", json!({ "handle": format!("set{}", uid()) })).await);
     let setting = |label: &str| coin["settings"].as_array().unwrap().iter().find(|x| x["label"] == label).cloned().unwrap_or_else(|| panic!("no {label}"));
     assert_eq!(setting("Perp oracle"), json!({ "label": "Perp oracle", "value": "10-minute TWAP of spot", "ours": true }));
@@ -113,7 +113,7 @@ async fn reports_every_markets_settings_flagging_the_ones_mirror_doesnt_publish(
 
 #[tokio::test]
 async fn streams_the_new_fields_on_the_existing_channels_markets_account_and_feed() {
-    let (v, _g) = shared();
+    let (v, _g) = shared().await;
     let s = uid();
     let u = v.user(&format!("ws{s}"), 10_000).await;
     let coin = ok(v.as_(&u, "POST", "/api/attention", json!({ "handle": format!("ws{s}") })).await);

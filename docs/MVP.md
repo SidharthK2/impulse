@@ -375,7 +375,7 @@ Each market reports these in `settings`, with `ours: true` where the number is o
   `PRAGMA fullfsync`.
 - Replay is only as deterministic as the build: commands replay through the current code, and a snapshot after every
   recovery keeps replays short, but a journal written by an older build could replay differently. The bot maker's
-  ladder (`BotQuote`) computes its prices with f64 inside the core: deterministic for one build on one platform,
-  not across platforms. The noise traders' and the walk's float math runs at intake, and only its results are
-  journaled.
+  ladder (`BotQuote`) computes its prices with f64 inside the core, using only IEEE-754 basic operations and exact
+  powers of ten, which give the same results on every platform. The noise traders' and the walk's float math
+  (powf, ln, exp) runs at intake, and only its results are journaled.
 - Each engine transition clones the state, which is fine at this size and would need rethinking at real scale.

@@ -46,7 +46,7 @@ impl Exchange {
                     let sz = self.markets[market.as_str()].sz_decimals;
                     let text = format!("{market} resolved at {}; {} positions settled", fmt(coin_price(sz, *price), 0), closes.len());
                     self.record(market, RiskKind::Settlement, closes.iter().map(|c| c.account.clone()).collect(), text, None);
-                    let ids: Vec<u64> = self.order_market.iter().filter(|(_, m)| *m == market).map(|(id, _)| *id).collect();
+                    let ids: Vec<u64> = self.orders.iter().filter(|(_, r)| r.market == *market).map(|(id, _)| *id).collect();
                     for id in ids {
                         self.remove_order(id);
                     }

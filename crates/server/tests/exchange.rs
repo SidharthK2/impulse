@@ -52,7 +52,7 @@ async fn conserved(v: &Venue) {
 
 #[tokio::test]
 async fn fills_a_market_order_against_resting_liquidity_with_auto_margin() {
-    let (v, _g) = shared();
+    let (v, _g) = shared().await;
     let Setup { x, alice, bob, .. } = setup(&v).await;
     let rest = ok(v.order(&bob, json!({ "market": x, "side": "sell", "price": "100", "size": "10" })).await);
     assert_eq!(rest["status"], "resting");
@@ -70,7 +70,7 @@ async fn fills_a_market_order_against_resting_liquidity_with_auto_margin() {
 
 #[tokio::test]
 async fn walks_the_book_and_rests_the_remainder_of_a_limit_order() {
-    let (v, _g) = shared();
+    let (v, _g) = shared().await;
     let Setup { x, alice, bob, carol, .. } = setup(&v).await;
     ok(v.order(&bob, json!({ "market": x, "side": "sell", "price": "100", "size": "1" })).await);
     ok(v.order(&carol, json!({ "market": x, "side": "sell", "price": "101", "size": "1" })).await);
@@ -83,7 +83,7 @@ async fn walks_the_book_and_rests_the_remainder_of_a_limit_order() {
 
 #[tokio::test]
 async fn rejects_off_tick_prices_post_only_crosses_and_unaffordable_orders() {
-    let (v, _g) = shared();
+    let (v, _g) = shared().await;
     let Setup { x, alice, bob, .. } = setup(&v).await;
     ok(v.order(&bob, json!({ "market": x, "side": "sell", "price": "100", "size": "1" })).await);
     fails(v.order(&alice, json!({ "market": x, "side": "buy", "price": "100.0001", "size": "1" })).await, "tick");
@@ -94,7 +94,7 @@ async fn rejects_off_tick_prices_post_only_crosses_and_unaffordable_orders() {
 
 #[tokio::test]
 async fn cancels_the_resting_side_on_a_self_trade_and_a_maker_that_cant_afford_its_fill() {
-    let (v, _g) = shared();
+    let (v, _g) = shared().await;
     let Setup { x, alice, bob, .. } = setup(&v).await;
     ok(v.order(&alice, json!({ "market": x, "side": "sell", "price": "100", "size": "1" })).await);
     let selfie = ok(v.order(&alice, json!({ "market": x, "side": "buy", "price": "100", "size": "1" })).await);
@@ -114,7 +114,7 @@ async fn cancels_the_resting_side_on_a_self_trade_and_a_maker_that_cant_afford_i
 
 #[tokio::test]
 async fn closes_with_reduce_only_and_returns_collateral_to_the_wallet() {
-    let (v, _g) = shared();
+    let (v, _g) = shared().await;
     let Setup { x, alice, bob, carol, .. } = setup(&v).await;
     ok(v.order(&bob, json!({ "market": x, "side": "sell", "price": "100", "size": "5" })).await);
     ok(v.order(&alice, json!({ "market": x, "side": "buy", "type": "market", "size": "2" })).await);
@@ -131,7 +131,7 @@ async fn closes_with_reduce_only_and_returns_collateral_to_the_wallet() {
 
 #[tokio::test]
 async fn a_gap_bankrupts_the_long_charges_the_shorts_and_records_who_paid() {
-    let (v, _g) = shared();
+    let (v, _g) = shared().await;
     let Setup { x, alice, bob, carol, .. } = setup(&v).await;
     ok(v.order(&bob, json!({ "market": x, "side": "sell", "price": "100", "size": "10" })).await);
     ok(v.order(&carol, json!({ "market": x, "side": "sell", "price": "100", "size": "10" })).await);
@@ -166,7 +166,7 @@ async fn a_gap_bankrupts_the_long_charges_the_shorts_and_records_who_paid() {
 
 #[tokio::test]
 async fn holds_the_feed_during_an_admin_override_then_lets_it_back_in() {
-    let (v, _g) = shared();
+    let (v, _g) = shared().await;
     let Setup { x, .. } = setup(&v).await;
     ok(v.admin("POST", "/api/admin/price", json!({ "market": x, "price": "120", "holdSeconds": 30 })).await);
     assert_eq!(ok(v.admin("POST", "/api/test/tick", json!({ "market": x, "price": "100" })).await)["effects"], Value::Null);
@@ -178,7 +178,7 @@ async fn holds_the_feed_during_an_admin_override_then_lets_it_back_in() {
 
 #[tokio::test]
 async fn the_clock_accrues_funding_and_an_attention_curve_moves_its_own_mark() {
-    let (v, _g) = shared();
+    let (v, _g) = shared().await;
     let Setup { x, s, alice, bob, carol } = setup(&v).await;
     let p = format!("@p{s}");
     let m = ok(v.admin("POST", "/api/test/market", json!({ "id": p, "kind": "attention", "source": { "kind": "curve" } })).await);
@@ -198,7 +198,7 @@ async fn the_clock_accrues_funding_and_an_attention_curve_moves_its_own_mark() {
 
 #[tokio::test]
 async fn resolves_a_binary_and_settles_every_position() {
-    let (v, _g) = shared();
+    let (v, _g) = shared().await;
     let Setup { s, alice, bob, .. } = setup(&v).await;
     let b = format!("B{s}");
     ok(v.admin("POST", "/api/test/market", json!({ "id": b, "kind": "binary", "price": "0.4" })).await);
@@ -216,7 +216,7 @@ async fn resolves_a_binary_and_settles_every_position() {
 
 #[tokio::test]
 async fn snapshot_round_trips_the_whole_exchange() {
-    let (v, _g) = shared();
+    let (v, _g) = shared().await;
     let Setup { x, alice, bob, carol, .. } = setup(&v).await;
     ok(v.order(&bob, json!({ "market": x, "side": "sell", "price": "101", "size": "3" })).await);
     ok(v.order(&carol, json!({ "market": x, "side": "sell", "price": "100", "size": "3" })).await);

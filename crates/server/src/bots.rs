@@ -10,7 +10,7 @@ use crate::command::{BotQuote, Command, CreateAccount, Deposit, PlaceOrder, Snip
 use crate::exchange::{Exchange, Kind, OrderInput};
 use crate::rng::Rng;
 use crate::money::{Amount, Dec, Tokens};
-use crate::units::{coins_dec, usd, ONE};
+use crate::units::{coins_dec, pow10, usd, ONE};
 use impulse_engine::{leverage_now, Status};
 use serde::Serialize;
 
@@ -153,7 +153,7 @@ impl Bots {
         let scale = 10f64.powi(sz as i32);
         let price = m.mark.unwrap_or(0) as f64 * scale / 1e9;
         let lots = ((budget * lev.min(max_lev)) / price * scale).floor();
-        if !(lots >= 1.0) {
+        if lots.is_nan() || lots < 1.0 {
             return (vec![], None);
         }
         // Mild momentum: follow the last few minutes of the chart more often than not.
@@ -215,7 +215,10 @@ impl Bots {
 }
 
 /// Replace the market maker's ladder in one market (the BotQuote command, inside the core: a function of the
-/// exchange alone).
+/// exchange alone). Its float math replays identically anywhere: only IEEE-754 basic operations (+ − × ÷,
+/// floor, ceil, round, comparisons), which are correctly rounded on every platform, and exact powers of ten; no
+/// transcendental functions. The noise traders' float math (powf) runs at intake, and only its result is
+/// journaled.
 pub fn quote(x: &mut Exchange, id: &str) {
     let _ = x.cancel_all(MM, Some(id));
     let meta = x.markets[id].clone();
@@ -231,7 +234,7 @@ pub fn quote(x: &mut Exchange, id: &str) {
     }
 
     let ladder = ladder(meta.kind);
-    let scale = 10f64.powi(meta.sz_decimals as i32);
+    let scale = pow10(meta.sz_decimals) as f64;
     let mark = mark_lot as f64 * scale / 1e9; // coin price
     let tick = meta.tick as f64 / 1e9;
     let inv_usd = pos as f64 * mark_lot as f64 / 1e9;
@@ -253,7 +256,7 @@ pub fn quote(x: &mut Exchange, id: &str) {
 }
 
 fn place(x: &mut Exchange, id: &str, side: Side, price: f64, notional: f64, leverage: f64) {
-    if !(price > 0.0) || !price.is_finite() {
+    if price.is_nan() || price <= 0.0 || !price.is_finite() {
         return;
     }
     let meta = &x.markets[id];
@@ -261,7 +264,7 @@ fn place(x: &mut Exchange, id: &str, side: Side, price: f64, notional: f64, leve
     if price_nano <= 0 {
         return;
     }
-    let scale = 10f64.powi(meta.sz_decimals as i32);
+    let scale = pow10(meta.sz_decimals) as f64;
     let lots = ((notional / price) * scale).floor().max(1.0) as i128;
     let size = coins_dec(meta.sz_decimals, lots);
     let input = OrderInput { tif: Some(Tif::Alo), leverage: Some(leverage), ..OrderInput::limit(id, side, Dec::from_nano(price_nano), size) };
