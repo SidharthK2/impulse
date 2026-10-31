@@ -10,7 +10,7 @@
 
 use crate::book::Side;
 use crate::exchange::{
-    AccountMeta, ExError, Exchange, MarketSpec, OrderInput, OrderResult, XResult,
+    AccountMeta, DepthBook, ExError, Exchange, MarketSpec, OrderInput, OrderResult, XResult,
 };
 use crate::money::{Amount, Dec, Tokens};
 use crate::units::coins_dec;
@@ -118,6 +118,7 @@ commands! {
     SetBots = "setBots",
     FeedTick = "tick",
     Ticks = "ticks",
+    Depth = "depth",
     History = "history",
     BotQuote = "botQuote",
     TestReload = "testReload",
@@ -493,6 +494,25 @@ impl Apply for Ticks {
                     .err()
                     .map(|e| (t.market.clone(), e))
             })
+            .collect())
+    }
+}
+
+/// A poll of a venue's order books (Hyperliquid's top levels): the bot maker mirrors each book and its market's
+/// mark moves to the book's mid. A refused book doesn't stop the rest.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Depth {
+    pub books: Vec<DepthBook>,
+}
+
+impl Apply for Depth {
+    /// The refused books and why, for the feed's warnings.
+    type Reply = Vec<(String, ExError)>;
+    fn apply(&self, x: &mut Exchange) -> XResult<Vec<(String, ExError)>> {
+        Ok(self
+            .books
+            .iter()
+            .filter_map(|b| x.mirror(b).err().map(|e| (b.market.clone(), e)))
             .collect())
     }
 }

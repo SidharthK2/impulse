@@ -103,6 +103,10 @@ pub struct MarketMeta {
     pub launch: Option<LaunchMeta>,
     #[serde(default)]
     pub preipo: Option<PreipoMeta>,
+    /// When the bot maker last posted the venue's real order book here (see mirror.rs). While that's recent, the
+    /// market's liquidity is the mirror rather than the maker's ladder.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mirrored_at: Option<i64>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

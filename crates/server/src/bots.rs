@@ -1,6 +1,7 @@
 // House bots so a lone user has someone to trade with.
-//  - maker: quotes a ladder around the oracle on every market, skewed against its inventory. It is an ordinary
-//    account with no special treatment, so ADL haircuts it like anyone else.
+//  - maker: on Hyperliquid markets, posts Hyperliquid's real order book (exchange/mirror.rs); everywhere else, and
+//    whenever that mirror is stale, quotes a ladder around the oracle, skewed against its inventory. It is an
+//    ordinary account with no special treatment, so ADL haircuts it like anyone else.
 //  - noise traders: open and close random leveraged positions against the book, so markets have volume (and
 //    graduate) and gaps have somebody to liquidate. They also snipe new creator coins with small amounts and
 //    trade the curves of open ones.
@@ -353,6 +354,9 @@ impl Bots {
 /// transcendental functions. The noise traders' float math (powf) runs at intake, and only its result is
 /// journaled.
 pub fn quote(x: &mut Exchange, id: &str) {
+    if x.mirroring(id) {
+        return; // the venue's real book is posted here (exchange/mirror.rs)
+    }
     let _ = x.cancel_all(MM, Some(id));
     let meta = x.markets[id].clone();
     let m = &x.state.markets[id];

@@ -1,18 +1,22 @@
-// Price feeds. Hyperliquid mids for crypto, memecoins and HIP-3 equities; Polymarket midpoints for binary
-// outcomes (and their resolution); a seeded random walk when offline. Feeds only ever call Exchange::tick, so
-// every price change runs liquidation and ADL atomically, and an admin hold makes the feed stand aside.
+// Price feeds. Hyperliquid order books for crypto, memecoins and HIP-3 equities (the bot maker mirrors each, and
+// the mark is the book's mid; allMids for a book that doesn't arrive); Polymarket midpoints for binary outcomes
+// (and their resolution); a seeded random walk when offline. Every price goes through Exchange::tick, so every
+// price change runs liquidation and ADL atomically, and an admin hold makes the feed stand aside.
 
 use crate::api::{App, Node};
-use crate::command::{Bar, History, ListMarket, Resolve, Tick, Ticks};
-use crate::exchange::{ExError, Exchange, Kind, MarketSpec, Source};
+use crate::command::{Bar, Depth, History, ListMarket, Resolve, Tick, Ticks};
+use crate::exchange::{
+    DepthBook, ExError, Exchange, Kind, Level, MarketSpec, Source, MIRROR_LEVELS,
+};
 use crate::intake::wall_ms;
 use crate::logging::log;
 use crate::money::Dec;
 use crate::units::{nano_from_f64, nano_from_feed};
 use impulse_engine::Status;
 use serde_json::{json, Value};
-use std::collections::{BTreeSet, HashMap};
-use std::sync::{Arc, Mutex};
+use std::collections::{BTreeSet, HashMap, HashSet};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
 const HL: &str = "https://api.hyperliquid.xyz/info";
@@ -618,10 +622,108 @@ fn submit_ticks(node: &mut Node, warn: &Warn, prices: Vec<(String, &Value)>) {
     }
 }
 
+/// How many Hyperliquid books one poll fetches: one request each, so a long listing takes turns.
+const BOOKS_PER_POLL: usize = 12;
+static BOOK_CURSOR: AtomicUsize = AtomicUsize::new(0);
+/// An unchanged book is sent again after this long, so its mirror stays fresh (exchange/mirror.rs: 15 s).
+const RESEND: Duration = Duration::from_secs(10);
+type Sides = (Vec<Level>, Vec<Level>);
+/// Each market's last book sent, and when.
+static SENT_BOOKS: LazyLock<Mutex<HashMap<String, (Instant, Sides)>>> =
+    LazyLock::new(Default::default);
+
+/// A Hyperliquid perp's top levels per side (coin: "BTC", or "xyz:AAPL" for a HIP-3 market).
+async fn hl_book(http: &reqwest::Client, coin: &str) -> Result<Sides, String> {
+    let v = hl(http, json!({ "type": "l2Book", "coin": coin }), None).await?;
+    let sides = v["levels"]
+        .as_array()
+        .filter(|s| s.len() == 2)
+        .ok_or("hyperliquid l2Book: no levels")?;
+    let side = |i: usize| -> Result<Vec<Level>, String> {
+        let levels = sides[i].as_array().ok_or("hyperliquid l2Book: bad side")?;
+        levels
+            .iter()
+            .take(MIRROR_LEVELS)
+            .map(|l| {
+                let field = |k: &str| {
+                    l[k].as_str()
+                        .ok_or_else(|| format!("hyperliquid l2Book: level without {k}"))
+                        .and_then(nano_from_feed)
+                };
+                Ok(Level(
+                    Dec::from_nano(field("px")?),
+                    Dec::from_nano(field("sz")?),
+                ))
+            })
+            .collect()
+    };
+    Ok((side(0)?, side(1)?))
+}
+
+/// Mirror Hyperliquid's books (one Depth command: the maker posts each, and the mark moves to its mid), then tick
+/// any market whose book didn't arrive from allMids, as before the mirror.
 async fn poll_hyperliquid(app: &App, warn: &Warn) -> Result<(), String> {
     let markets = open_markets(&app.lock().core.x, |s| {
         matches!(s, Source::Hyperliquid { .. })
     });
+    let start = BOOK_CURSOR.fetch_add(BOOKS_PER_POLL, Ordering::Relaxed);
+    let picked: Vec<(String, String)> = (0..BOOKS_PER_POLL.min(markets.len()))
+        .filter_map(|i| match &markets[(start + i) % markets.len()] {
+            (id, Source::Hyperliquid { coin, .. }) => Some((id.clone(), coin.clone())),
+            _ => None,
+        })
+        .collect();
+    let fetched = futures_util::future::join_all(picked.into_iter().map(|(id, coin)| {
+        let http = app.http.clone();
+        async move { (id, hl_book(&http, &coin).await) }
+    }))
+    .await;
+    let mut books = vec![];
+    let mut mirrored = HashSet::new();
+    {
+        let mut sent = SENT_BOOKS.lock().unwrap_or_else(|e| e.into_inner());
+        for (id, r) in fetched {
+            match r {
+                Ok(levels) => {
+                    mirrored.insert(id.clone());
+                    // Every book goes in the journal, so an unchanged one waits (up to RESEND).
+                    if let Some((at, last)) = sent.get(&id) {
+                        if *last == levels && at.elapsed() < RESEND {
+                            continue;
+                        }
+                    }
+                    sent.insert(id.clone(), (Instant::now(), levels.clone()));
+                    let (bids, asks) = levels;
+                    books.push(DepthBook {
+                        market: id,
+                        bids,
+                        asks,
+                    });
+                }
+                Err(e) => warn.warn(&format!("book {id}"), &e),
+            }
+        }
+    }
+    if !books.is_empty() {
+        match app.lock().submit(Depth { books }) {
+            Ok(refused) => {
+                for (id, e) in refused {
+                    warn.warn(&format!("book {id}"), e.message());
+                    mirrored.remove(&id);
+                }
+            }
+            Err(e) => {
+                warn.warn("books", e.message());
+                SENT_BOOKS.lock().unwrap_or_else(|e| e.into_inner()).clear();
+                mirrored.clear();
+            }
+        }
+    }
+
+    let markets: Vec<(String, Source)> = markets
+        .into_iter()
+        .filter(|(id, _)| !mirrored.contains(id))
+        .collect();
     let dexes: BTreeSet<Option<String>> = markets
         .iter()
         .map(|(_, s)| {
@@ -764,7 +866,7 @@ pub fn start(app: &App, warn: &Warn) {
         });
     }
     every(
-        3000,
+        2000,
         app.clone(),
         warn.clone(),
         "pollHyperliquid",

@@ -79,6 +79,14 @@ Newest last. Each entry: the decision, why, and what it rules out.
 | 2026-10-31 | Typed request bodies instead of emulating JavaScript's `Number()` and truthiness | The emulation only mattered for parity with the retired TS server; malformed input now gets 400s with field names (see API-CONTRACT) |
 | 2026-10-31 | `VERIFY_STEPS=1` (every test server): a command that leaves `version` alone must leave the state hash alone | Version bumps are manual; a missed one would silently drop a change from the journal. Rejected: hashing in production (a hash per command) |
 
+## Realism (2026-10-31, branch `realism`)
+
+| Date | Decision | Why / alternative rejected |
+|---|---|---|
+| 2026-10-31 | **Mirror Hyperliquid's book** into ours: every 2 s, its top 10 levels per side become the bot maker's orders, and the mark moves to that book's mid in the same `depth` command | The ladder gave BTC about $47k a side, with a 5 bp spread; real depth and spreads are what make fills and slippage realistic. The levels are ordinary orders, so users still match each other, and resting orders fill when the real market trades through them. Rejected: filling users against a virtual copy of the venue's book outside ours (two sources of liquidity to merge in matching, liquidation and the views) |
+| 2026-10-31 | Poll `l2Book` over HTTP every 2 s, 10 levels a side, rather than a websocket subscription | Every book the core sees has to be journaled. A websocket pushes a book per block per coin, so it would be coalesced to about this rate anyway; polling needs no new dependency. The cost: quotes can be up to about 2 s old, so someone watching Hyperliquid live can pick off a moved level on paper |
+| 2026-10-31 | The mirror stands aside during admin holds (the ladder quotes the forced price) and after 15 s without a book | An admin gap must still be demoable, and a dead feed mustn't leave a market without liquidity |
+
 ## Deliberately not done (yet)
 
 - **Liquidation through the book, perp fees:** the biggest realism gap. (The order book and matching came with the

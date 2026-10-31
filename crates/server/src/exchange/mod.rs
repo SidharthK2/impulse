@@ -8,26 +8,29 @@
 // "solvent after every transition" holds for the live venue exactly as it does in replay.
 //
 // The exchange is split by concern: types (its data), matching (orders), accounts (money), markets (listing and
-// prices), launch (creator coins), preipo (book-priced markets), history (what the engine did, as records).
+// prices), launch (creator coins), preipo (book-priced markets), mirror (a venue's real book, posted by the bot
+// maker), history (what the engine did, as records).
 
 mod accounts;
 mod history;
 mod launch;
 mod markets;
 mod matching;
+mod mirror;
 mod preipo;
 mod types;
 
 #[cfg(test)]
 mod tests;
 
+pub use mirror::{DepthBook, Level, MIRROR_LEVELS};
 pub use types::*;
 
 use crate::book::{Book, Order, Side, Tif};
 use crate::money::{Amount, Dec, Tokens};
 use crate::units::{
-    auto_tick, cents, coin_price, coins_from_lots, dec, fmt, group, lot_price, lots_from_coins,
-    pow10, usd,
+    auto_tick, cents, coin_price, coins_dec, coins_from_lots, dec, fmt, group, lot_price,
+    lots_from_coins, pow10, usd,
 };
 use impulse_engine::fixed::ceil_div;
 use impulse_engine::ser::{big, Num};

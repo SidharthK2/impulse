@@ -52,11 +52,12 @@ To start fresh, point `DATA_DIR` at a new directory (`DATA_DIR=data-new make sta
 | Piece | Where | What it does |
 |---|---|---|
 | Risk engine | `crates/engine` (port of the TypeScript engine in impulse-research) | Positions, margin, liquidation, ADL, funding, graduation, taper, curves, launches, invariants |
-| Exchange | `crates/server/src/exchange/` | The exchange state and its operations, one module per concern: `types`, `matching` (orders, auto-margin), `accounts`, `markets` (listing, prices, the clock), `launch`, `preipo`, `history` (risk feed, fills, candles); every change is an engine transition |
+| Exchange | `crates/server/src/exchange/` | The exchange state and its operations, one module per concern: `types`, `matching` (orders, auto-margin), `accounts`, `markets` (listing, prices, the clock), `launch`, `preipo`, `mirror` (Hyperliquid's books), `history` (risk feed, fills, candles); every change is an engine transition |
 | Order book | `crates/server/src/book.rs` | Price-time priority CLOB per market |
 | Units | `crates/server/src/units.rs` | Coins ↔ integer lots (Hyperliquid `szDecimals`), coin price ↔ lot price, ticks |
-| Feeds | `crates/server/src/feeds.rs` | Hyperliquid mids, Polymarket midpoints + resolution, offline random walk, chart backfill |
-| Bots | `crates/server/src/bots.rs` | `maker` ladders every market; `ape`, `degen`, `whale`, `scalper` trade with leverage, snipe new coins, trade curves |
+| Feeds | `crates/server/src/feeds.rs` | Hyperliquid order books (top 10 levels per side, every 2 s; allMids for a book that doesn't arrive), Polymarket midpoints + resolution, offline random walk, chart backfill |
+| Mirror | `crates/server/src/exchange/mirror.rs` | The bot maker posts each Hyperliquid book into ours and the mark moves to its mid, in one `depth` command per poll |
+| Bots | `crates/server/src/bots.rs` | `maker` mirrors Hyperliquid's books and ladders every other market (and any whose mirror is stale); `ape`, `degen`, `whale`, `scalper` trade with leverage, snipe new coins, trade curves |
 | API | `crates/server/src/api/`, `ws.rs` | JSON over HTTP (axum): `extract` (errors, auth, bodies), `public`, `trading`, `admin`, `test_hooks`, `web` (static app, CORS); the websocket hub |
 | Views | `crates/server/src/views.rs` | Exact decimal-string JSON for markets, books, accounts, leaderboard |
 | Commands | `crates/server/src/command.rs` | Every state-changing input as data, and `apply`, the only code that changes the exchange |
@@ -80,7 +81,8 @@ clients (API, bots, feeds, clock) → sequencer → journal (SQLite, before the 
 - **Commands.** Every state-changing input is a `Command` (`command.rs`): sign-up, faucet, deposits and
   withdrawals, orders, cancels, closes, margin, spot trades, snipes, every listing (a venue mirror carries the
   metadata fetched from Hyperliquid or Polymarket inside it), admin price/hold/release, resolve, IPO, pump, the bots
-  switch, feed ticks (one command per poll or random-walk step), chart backfill, the bot maker's requotes, the 2 s
+  switch, feed ticks (one command per poll or random-walk step), Hyperliquid books (one `depth` command per poll),
+  chart backfill, the bot maker's requotes, the 2 s
   clock, `Genesis` for a fresh exchange and `Resume` after downtime. The bots are ordinary clients that submit
   commands; nothing about them lives in the core except what the exchange records.
 - **Deterministic core.** `command::apply(exchange, command)` reads nothing else. Time is the command's timestamp,
@@ -189,13 +191,34 @@ Kind `preipo`, perp only, source `book` ("own order book"). There's no outside p
   After it, the market is an ordinary admin-priced perp (`/api/admin/price`).
 - The bot maker quotes pre-IPO books with a wider ladder (0.4% to 10% from the mark).
 
+## Mirrored books (Hyperliquid markets)
+
+- **What's mirrored.** Every 2 s the feed fetches Hyperliquid's `l2Book` for each Hyperliquid market (up to 12
+  per poll, taking turns beyond that) and submits the top 10 levels per side as one `depth` command.
+- **How it's posted.** The bot maker cancels its orders in that market and posts each level as an ordinary
+  limit order at the maker's current max leverage, best level of each side first. Prices snap to our tick (bids
+  down, asks up), and sizes round down to whole lots. The orders can take liquidity: when the real market moves
+  through a user's resting order, that order fills at its own price, as it would have on Hyperliquid.
+- **The mark** is the mirrored book's mid, set in the same command after the levels are posted. Liquidation and
+  ADL run in that tick, as for any feed price.
+- **What a fill doesn't do.** A user's fill against a mirrored level doesn't consume Hyperliquid's liquidity; the
+  next poll posts Hyperliquid's book as it is.
+- **When it stands aside.** During an admin hold, the mirror neither posts nor moves the mark, and the maker's
+  ladder quotes around the forced price. With the bots off, the mirror only moves the mark. If a market's book
+  hasn't arrived for 15 s, the ladder takes over; a book that fails to arrive falls back to an allMids tick.
+- **The maker's wallet** is topped up in whole millions of paper dollars so it can carry every level's margin.
+- **Journal cost.** Levels are journaled as decimal strings. A book that hasn't changed since it was last sent waits,
+  for up to 10 s. Measured 2026-10-31 with the 7 default Hyperliquid markets: about 2.7 KB per poll, so roughly
+  100–120 MB of journal a day if the server runs nonstop. These commands replace the allMids ticks and the ladder
+  requotes for those markets.
+
 ## Markets at launch
 
 | Market | Oracle | Notes |
 |---|---|---|
-| BTC, ETH, SOL, HYPE | Hyperliquid mid | |
-| kPEPE, FARTCOIN | Hyperliquid mid | memecoins |
-| AAPL | Hyperliquid HIP-3 (`xyz:AAPL`) | an equity perp |
+| BTC, ETH, SOL, HYPE | Hyperliquid book mid | Hyperliquid's book mirrored |
+| kPEPE, FARTCOIN | Hyperliquid book mid | memecoins; Hyperliquid's book mirrored |
+| AAPL | Hyperliquid HIP-3 (`xyz:AAPL`) book mid | an equity perp; Hyperliquid's book mirrored |
 | 4 × `PM-<id>` | Polymarket midpoint (first outcome) | Picked by 24h volume: ends ≥ 3 days out, price 0.08–0.92. Auto-settles when Polymarket resolves |
 | `STRIPE-PRE` | its own order book | pre-IPO perp, seeded at $91.50 |
 | `@moonboy` | own xy=k curve, 10-min TWAP | attention market, no snipe window |
@@ -363,6 +386,9 @@ Each market reports these in `settings`, with `ours: true` where the number is o
 - Paper money only: no custody, chain, signatures, KYC or rate limits. API keys sit in localStorage.
 - Liquidation closes at mark against the other side, not through the book. There are no partial liquidations,
   liquidation fees or perp fees. The only fee is the 1% spot curve fee (and on snipes).
+- Mirrored books are polled every 2 s, so a mirrored level can be up to about 2 s behind Hyperliquid: someone
+  watching Hyperliquid live can pick off a level that has moved, on paper. Fills against a mirrored level don't
+  move Hyperliquid's price. Polymarket books aren't mirrored (those markets keep the ladder).
 - The launch reserve is held, not distributed: nothing pays it out to the creator or back to snipers.
 - A pre-IPO mark is only as good as its book. The median resists one quote, but a thin book can be walked, and every
   move is an engine tick that can liquidate. The bot maker is the only liquidity a fresh exchange has.

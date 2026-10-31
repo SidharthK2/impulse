@@ -86,6 +86,7 @@ impl Exchange {
                 ipo_at: None,
                 ipo_price: None,
             }),
+            mirrored_at: None,
         };
         let mut events = vec![event];
         if let (Some(start), false) = (start, kind == Kind::Attention) {

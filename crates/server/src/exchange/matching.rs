@@ -109,7 +109,11 @@ impl Exchange {
         if tif == Tif::Alo && self.books[&id].crosses(input.side, price) {
             return Err(ExError::bad("post-only order would take liquidity"));
         }
-        if tif != Tif::Ioc && self.orders_of(account, None).count() >= MAX_OPEN_ORDERS {
+        // The house bots quote every market (the maker mirrors whole books), so the cap is for people.
+        if tif != Tif::Ioc
+            && !self.accounts[account].bot
+            && self.orders_of(account, None).count() >= MAX_OPEN_ORDERS
+        {
             return Err(ExError::bad(format!(
                 "at most {MAX_OPEN_ORDERS} open orders"
             )));

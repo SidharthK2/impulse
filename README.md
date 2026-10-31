@@ -15,8 +15,9 @@ The first visit after a quiet spell takes a few seconds while the server wakes u
 | **Pre-IPO perps** | Leverage on private companies with no outside price: the mark is whatever the market's own order book settles on, until an IPO gaps it to a public price. |
 | **ADL instead of an insurance fund** | When a position goes below zero, the shortfall comes out of the winners on the other side in the same transaction. Every event records who paid, and the UI shows it. |
 
-Crypto and stock perps (Hyperliquid prices) and prediction-market perps (Polymarket) run on the same engine. House
-bots make markets and trade, so there's always something happening.
+Crypto and stock perps (Hyperliquid prices, with Hyperliquid's real order book mirrored into ours) and
+prediction-market perps (Polymarket) run on the same engine. House bots make markets and trade, so there's always
+something happening.
 
 ![Trading BTC-PERP](docs/images/trade.png)
 

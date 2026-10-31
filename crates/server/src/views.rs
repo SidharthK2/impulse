@@ -3,7 +3,7 @@
 
 use crate::book::{Order, Side, Tif};
 use crate::exchange::{
-    Exchange, Fill, FillKind, Kind, MarketMeta, RiskEvent, Source, PREIPO_SHARES,
+    Exchange, Fill, FillKind, Kind, MarketMeta, RiskEvent, Source, MIRROR_LEVELS, PREIPO_SHARES,
 };
 use crate::units::{coin_price, coins_from_lots, fmt, pow10, tick_decimals, usd};
 use impulse_engine::{
@@ -194,7 +194,7 @@ fn pct_per_hour(ppb: i128) -> String {
     format!("{}%/h", ppb as f64 / 1e7)
 }
 
-fn settings(meta: &MarketMeta, m: &Market) -> Vec<Setting> {
+fn settings(meta: &MarketMeta, m: &Market, mirrored: bool) -> Vec<Setting> {
     let mut out = vec![];
     match &meta.source {
         Source::Curve => {
@@ -255,6 +255,15 @@ fn settings(meta: &MarketMeta, m: &Market) -> Vec<Setting> {
             out.push(setting("IPO", "admin sets the public price; the mark gaps to it and liquidation and ADL run in that transaction", true));
         }
         _ => out.push(setting("Oracle", source_label(meta), meta.preipo.is_some())),
+    }
+    if mirrored {
+        out.push(setting(
+            "Liquidity",
+            format!(
+                "Hyperliquid's top {MIRROR_LEVELS} levels per side, posted by the house maker every 2 s; the mark is that book's mid"
+            ),
+            true,
+        ));
     }
     out.push(setting(
         "Start leverage",
@@ -452,7 +461,7 @@ pub fn market_view<'a>(x: &'a Exchange, id: &str) -> MarketView<'a> {
             ipo_at: p.ipo_at,
             ipo_price: p.ipo_price.map(|v| fmt(v, 0)),
         }),
-        settings: settings(meta, m),
+        settings: settings(meta, m, x.mirroring(&meta.id)),
     }
 }
 
