@@ -1,0 +1,40 @@
+# Checks every push to main and every pull request: the Rust workspace's tests, and the web app's typecheck and build.
+# Deploys don't wait on this run; each deploy workflow repeats the checks it needs before it ships.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A newer push to the same branch makes the older run pointless.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      # The same toolchain as the Dockerfile (rust:1.96).
+      - run: rustup toolchain install 1.96 --profile minimal && rustup default 1.96
+      - uses: Swatinem/rust-cache@v2
+      # --locked: fail if Cargo.lock is out of date rather than quietly resolving new versions.
+      - run: cargo test --locked
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: npm install -g pnpm@11.6.0
+      - run: pnpm install --frozen-lockfile --ignore-workspace
+      - run: pnpm run typecheck
+      - run: pnpm run build
