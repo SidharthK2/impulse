@@ -8,12 +8,12 @@
   --text: #ececee;
   --muted: #8d8d94;
   --faint: #5e5e66;
-  /* One brand colour, used sparingly: primary buttons, the current-page marker, links, focus, the home glow. Violet
-     so it never reads as up/down. --accent is the bright line colour; --accent-fill is the deeper button fill
-     that keeps white text readable. */
-  --accent: #8b7cff;
-  --accent-fill: #6c5cf0;
-  --accent-ink: #ffffff;
+  /* One brand colour, used sparingly: primary buttons, the current-page marker, links, focus, the home glow. Teal,
+     bluer than the green of "up" so the two never read alike. --accent is the bright line colour; --accent-fill
+     is the button fill, with dark text on it. */
+  --accent: #2ec4e6;
+  --accent-fill: #22b3d6;
+  --accent-ink: #04161b;
   --up: #34c38f;
   --up-bg: rgba(52, 195, 143, 0.1);
   --down: #f0566a;
@@ -40,8 +40,8 @@
   --text: #111113;
   --muted: #64646b;
   --faint: #9b9ba2;
-  --accent: #5b4ae0;
-  --accent-fill: #5b4ae0;
+  --accent: #0a84a3;
+  --accent-fill: #0a7f9c;
   --accent-ink: #ffffff;
   --up: #0f9b6c;
   --up-bg: rgba(15, 155, 108, 0.09);
