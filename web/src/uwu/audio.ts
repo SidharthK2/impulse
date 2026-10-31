@@ -35,12 +35,25 @@ const level = () => {
 
 let unlocked = false;
 
-/** Browsers only start audio after a gesture; the first pointerdown (or the UwU switch) calls this. */
+/** Browsers only start audio after a gesture; the first tap, click or key press (or the UwU switch) calls this. */
 export function unlock() {
   unlocked = true;
-  const c = audio();
-  if (c?.state === "suspended") void c.resume();
+  wake();
   syncMusic();
+}
+
+/**
+ * Resume the audio context if it isn't running. iOS suspends it after a call, a lock or a while in the background
+ * ("interrupted"), and only lets a gesture resume it, so every later tap and key press calls this too.
+ */
+function wake() {
+  const c = audio();
+  if (c && c.state !== "running") void c.resume().catch(() => {});
+}
+if (typeof window !== "undefined") {
+  // pointerup, not pointerdown: a touch only counts as a gesture that may start audio once the finger lifts.
+  for (const type of ["pointerup", "keydown"])
+    window.addEventListener(type, () => unlocked && wake(), { capture: true });
 }
 
 // ---------- Web Audio graph ----------
@@ -111,7 +124,7 @@ export async function play(src: string, fallback: Cue = "info"): Promise<number>
   if (!audible() || !s.voice) return 0;
   const c = audio();
   if (!c || !out) return 0;
-  if (c.state === "suspended") void c.resume();
+  if (c.state !== "running") void c.resume().catch(() => {});
   const clip = await load(src);
   if (!clip) {
     synth(fallback);
@@ -152,21 +165,31 @@ export function preload(extra: string[] = []) {
 
 // ---------- music ----------
 
+// The music element plays through Web Audio (musicGain → out) rather than setting its own volume: iOS ignores
+// HTMLMediaElement.volume, so there it played at full device volume, deaf to the slider and the ducking.
 let music: HTMLAudioElement | null = null;
+let musicGain: GainNode | null = null;
 let track = 0;
 let fallback = false;
 let ducked = false;
 
-const musicVolume = () => Math.min(1, level() * MUSIC_LEVEL * (ducked ? DUCK : 1));
+/** The music's level under the master volume, which `out` applies. */
+const musicLevel = () => MUSIC_LEVEL * (ducked ? DUCK : 1);
+
+function setMusicLevel() {
+  if (musicGain && ctx) musicGain.gain.setTargetAtTime(musicLevel(), ctx.currentTime, 0.08);
+  // No Web Audio: the element's own volume (fine everywhere but iOS).
+  else if (music) music.volume = Math.min(1, level() * musicLevel());
+}
 
 function duck(seconds: number) {
   ducked = true;
-  if (music) music.volume = musicVolume();
+  setMusicLevel();
   clearTimeout(unduck);
   unduck = setTimeout(
     () => {
       ducked = false;
-      if (music) music.volume = musicVolume();
+      setMusicLevel();
     },
     seconds * 1000 + 250,
   );
@@ -193,11 +216,22 @@ function syncMusic() {
     music.addEventListener("error", () => {
       // No music files: play the synthesized lullaby instead.
       fallback = true;
+      music?.pause();
       music = null;
       syncMusic();
     });
+    const c = audio();
+    if (c && out) {
+      try {
+        musicGain = c.createGain();
+        musicGain.gain.value = musicLevel();
+        c.createMediaElementSource(music).connect(musicGain).connect(out);
+      } catch {
+        musicGain = null;
+      }
+    }
   }
-  music.volume = musicVolume();
+  setMusicLevel();
   if (music.paused) void music.play().catch(() => {});
 }
 

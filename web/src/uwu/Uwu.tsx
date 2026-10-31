@@ -97,7 +97,7 @@ export function UwuLayer() {
     if (!on) return;
     // The first click or key press, whichever comes first.
     const down = () => {
-      window.removeEventListener("pointerdown", down, { capture: true });
+      window.removeEventListener("pointerup", down, { capture: true });
       window.removeEventListener("keydown", down, { capture: true });
       unlock();
       greet();
@@ -107,13 +107,13 @@ export function UwuLayer() {
       const t = e.target as Element | null;
       if (e.button === 0 && t?.closest(BLIPS) && !t.closest(".uwu-mascot-wrap")) blip();
     };
-    window.addEventListener("pointerdown", down, { capture: true });
+    // pointerup, not pointerdown: a touch only counts as a gesture that may start audio once the finger lifts.
+    window.addEventListener("pointerup", down, { capture: true });
     window.addEventListener("keydown", down, { capture: true });
-    // Added after `down`, so on the first press the audio is unlocked before it blips.
     window.addEventListener("pointerdown", press, { capture: true });
     window.addEventListener(TOAST_EVENT, toast);
     return () => {
-      window.removeEventListener("pointerdown", down, { capture: true });
+      window.removeEventListener("pointerup", down, { capture: true });
       window.removeEventListener("keydown", down, { capture: true });
       window.removeEventListener("pointerdown", press, { capture: true });
       window.removeEventListener(TOAST_EVENT, toast);
