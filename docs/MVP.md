@@ -51,7 +51,7 @@ To start fresh, point `DATA_DIR` at a new directory (`make clean-data` prints ho
 | Piece | Where | What it does |
 |---|---|---|
 | Risk engine | `crates/engine` (port of the TypeScript engine in impulse-research) | Positions, margin, liquidation, ADL, funding, graduation, taper, curves, launches, invariants |
-| Exchange | `crates/server/src/exchange.rs` | Order books, matching, auto-margin, accounts, launches, pre-IPO marks, history; every change is an engine transition |
+| Exchange | `crates/server/src/exchange/` | The exchange state and its operations, one module per concern: `types`, `matching` (orders, auto-margin), `accounts`, `markets` (listing, prices, the clock), `launch`, `preipo`, `history` (risk feed, fills, candles); every change is an engine transition |
 | Order book | `crates/server/src/book.rs` | Price-time priority CLOB per market |
 | Units | `crates/server/src/units.rs` | Coins ↔ integer lots (Hyperliquid `szDecimals`), coin price ↔ lot price, ticks |
 | Feeds | `crates/server/src/feeds.rs` | Hyperliquid mids, Polymarket midpoints + resolution, offline random walk, chart backfill |
