@@ -1,0 +1,180 @@
+<!doctype html>
+<!--
+  The link-preview card (public/og.png, 1200x630). Logo and wordmark sit in the middle: WhatsApp crops small
+  previews to a centred square. Keep the PNG under ~300 KB or WhatsApp drops it. After editing, from web/
+  (after pnpm install: Inter comes from node_modules, and without it Chrome falls back to Helvetica):
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --hide-scrollbars \
+      --allow-file-access-from-files --force-device-scale-factor=1 --window-size=1200,630 \
+      --screenshot="$PWD/public/og.png" "file://$PWD/scripts/og-card.html"
+  then bump the ?v= on og:image and twitter:image in index.html, so the apps fetch it again.
+-->
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      @font-face {
+        font-family: Inter;
+        src: url("../node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2")
+          format("woff2");
+        font-weight: 100 900;
+      }
+      * {
+        margin: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1200px;
+        height: 630px;
+        overflow: hidden;
+        background: #0c0c0d;
+      }
+      body {
+        font-family: Inter, sans-serif;
+        position: relative;
+        color: #ececee;
+      }
+      .grid {
+        position: absolute;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+        background-size: 60px 60px;
+        background-position: -1px -1px;
+        -webkit-mask-image: radial-gradient(ellipse 75% 70% at 50% 50%, #000 30%, transparent 100%);
+      }
+      .glow {
+        position: absolute;
+        inset: 0;
+        background:
+          radial-gradient(ellipse 45% 40% at 50% 46%, rgba(0, 240, 255, 0.13), transparent 70%),
+          radial-gradient(ellipse 40% 35% at 78% 70%, rgba(255, 42, 109, 0.1), transparent 70%);
+      }
+      svg.wave {
+        position: absolute;
+        left: 0;
+        top: 0;
+      }
+      .center {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 26px;
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 30px;
+      }
+      .tile {
+        width: 132px;
+        height: 132px;
+        border-radius: 32px;
+        background: #16161a;
+        border: 1.5px solid rgba(0, 240, 255, 0.25);
+        box-shadow:
+          0 0 60px rgba(0, 240, 255, 0.25),
+          inset 0 0 30px rgba(0, 240, 255, 0.06);
+        display: grid;
+        place-items: center;
+      }
+      .word {
+        font-size: 150px;
+        font-weight: 800;
+        letter-spacing: -0.055em;
+        line-height: 1;
+        padding-bottom: 12px;
+      }
+      .tag {
+        font-size: 34px;
+        font-weight: 500;
+        color: #a4a4ac;
+        letter-spacing: -0.01em;
+      }
+      .tag i {
+        font-style: normal;
+        color: #00f0ff;
+        padding: 0 8px;
+      }
+      .pill {
+        position: absolute;
+        top: 40px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 20px;
+        font-weight: 650;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: #ff2a6d;
+        background: rgba(255, 42, 109, 0.1);
+        border: 1px solid rgba(255, 42, 109, 0.35);
+        border-radius: 999px;
+        padding: 8px 20px;
+      }
+      .foot {
+        position: absolute;
+        bottom: 38px;
+        left: 0;
+        right: 0;
+        text-align: center;
+        font-size: 22px;
+        color: #6c6c74;
+        letter-spacing: 0.02em;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="grid"></div>
+    <div class="glow"></div>
+    <svg class="wave" width="1200" height="630" viewBox="0 0 1200 630">
+      <defs>
+        <linearGradient id="g" x1="0" x2="1">
+          <stop offset="0" stop-color="#00f0ff" stop-opacity="0" />
+          <stop offset=".15" stop-color="#00f0ff" stop-opacity=".7" />
+          <stop offset=".5" stop-color="#9a8cff" stop-opacity=".35" />
+          <stop offset=".85" stop-color="#ff2a6d" stop-opacity=".7" />
+          <stop offset="1" stop-color="#ff2a6d" stop-opacity="0" />
+        </linearGradient>
+        <filter id="b" x="-10%" y="-50%" width="120%" height="200%">
+          <feGaussianBlur stdDeviation="6" />
+        </filter>
+      </defs>
+      <g fill="none" stroke="url(#g)" stroke-linejoin="round" stroke-linecap="round">
+        <path
+          filter="url(#b)"
+          stroke-width="8"
+          d="M0 485 H120 l22 -38 30 76 22 -38 H300 l26 -70 36 120 26 -50 H520 l18 -30 24 52 16 -22 H700 l26 -78 36 124 26 -46 H930 l22 -36 30 64 22 -28 H1200"
+        />
+        <path
+          stroke-width="3"
+          d="M0 485 H120 l22 -38 30 76 22 -38 H300 l26 -70 36 120 26 -50 H520 l18 -30 24 52 16 -22 H700 l26 -78 36 124 26 -46 H930 l22 -36 30 64 22 -28 H1200"
+        />
+      </g>
+    </svg>
+    <div class="pill">paper money · real order book</div>
+    <div class="center" style="justify-content: flex-start; padding-top: 150px">
+      <div class="row">
+        <div class="tile">
+          <svg width="100" height="100" viewBox="0 0 32 32">
+            <path
+              d="M4 18h6l3-9 5 15 3-8h7"
+              fill="none"
+              stroke="#00f0ff"
+              stroke-width="3"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              style="filter: drop-shadow(0 0 3px rgba(0, 240, 255, 0.8))"
+            />
+          </svg>
+        </div>
+        <div class="word">impulse</div>
+      </div>
+      <div class="tag">pre-IPO perps <i>·</i> creator coins <i>·</i> crypto</div>
+    </div>
+    <div class="foot">impulse.sidkap.xyz</div>
+  </body>
+</html>
