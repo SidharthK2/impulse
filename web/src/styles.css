@@ -8,13 +8,13 @@
   --text: #ececee;
   --muted: #8d8d94;
   --faint: #5e5e66;
-  /* Neon on near-black, after Night City: acid yellow is the brand colour (primary buttons, the current-page
-     marker, links, focus, the home glow and wave tips), and electric cyan is a second neon that only tints the
+  /* Neon on near-black, cyberpunk style: electric cyan is the brand colour (primary buttons, the current-page
+     marker, links, focus, the home glow and wave tips), and hot magenta is a second neon that only tints the
      home intro's glow. Buttons carry near-black text, and in dark theme a soft neon halo. */
-  --accent: #fcee0a;
-  --accent-fill: #fcee0a;
-  --accent-ink: #121100;
-  --accent-2: #00f0ff;
+  --accent: #00f0ff;
+  --accent-fill: #00e1f0;
+  --accent-ink: #001417;
+  --accent-2: #ff2a6d;
   --up: #34c38f;
   --up-bg: rgba(52, 195, 143, 0.1);
   --down: #f0566a;
@@ -41,10 +41,10 @@
   --text: #111113;
   --muted: #64646b;
   --faint: #9b9ba2;
-  --accent: #857400;
-  --accent-fill: #fcee0a;
-  --accent-ink: #121100;
-  --accent-2: #0096a8;
+  --accent: #007a8c;
+  --accent-fill: #00e1f0;
+  --accent-ink: #001417;
+  --accent-2: #d1245b;
   --up: #0f9b6c;
   --up-bg: rgba(15, 155, 108, 0.09);
   --down: #d93a4f;
@@ -2895,5 +2895,5 @@ input[type="checkbox"] {
     0 0 22px color-mix(in srgb, var(--accent) 32%, transparent);
 }
 :root[data-theme="light"] .btn.primary {
-  border-color: #d9cc00;
+  border-color: #00c3d1;
 }
