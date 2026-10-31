@@ -1,6 +1,7 @@
 // Request plumbing: the error type and the extractors for the signed-in user, the admin token and JSON bodies.
 
 use super::*;
+use crate::money::{Amount, Dec, Tokens};
 
 pub struct ApiError(ExError);
 
@@ -82,6 +83,21 @@ fn js_number(v: &Value) -> f64 {
 
 impl Body {
     /// A required string field; numbers are accepted and read as their decimal text.
+    /// A required exact decimal (USD, a price, or coins).
+    pub(super) fn dec(&self, name: &str) -> Result<Dec, ExError> {
+        Dec::parse(&self.str(name)?).map_err(|e| ExError::bad(format!("{name}: {e}")))
+    }
+
+    /// A required wallet amount: a decimal or "all".
+    pub(super) fn amount(&self, name: &str) -> Result<Amount, ExError> {
+        Amount::parse(&self.str(name)?).map_err(|e| ExError::bad(format!("{name}: {e}")))
+    }
+
+    /// Required spot tokens: a whole number or "all".
+    pub(super) fn tokens(&self, name: &str) -> Result<Tokens, ExError> {
+        Tokens::parse(&self.str(name)?).map_err(ExError::bad)
+    }
+
     pub(super) fn str(&self, name: &str) -> Result<String, ExError> {
         match self.0.get(name) {
             Some(Value::String(s)) if !s.is_empty() => Ok(s.clone()),

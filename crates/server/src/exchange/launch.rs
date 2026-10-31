@@ -4,7 +4,7 @@ use super::*;
 
 impl Exchange {
     /// A snipe-window bid: USDC from the wallet, no cancel, filled at the open price.
-    pub fn snipe(&mut self, account: &str, market: &str, usdc: &str) -> XResult<()> {
+    pub fn snipe(&mut self, account: &str, market: &str, usdc: Amount) -> XResult<()> {
         self.account(account)?;
         let now = self.now();
         let Some(launch) = &self.market(market)?.launch else {
@@ -14,7 +14,7 @@ impl Exchange {
             return Err(ExError::bad(format!("{market}'s snipe window has closed")));
         }
         let before = self.wallet(account);
-        self.commit(&[Event::Snipe { account: account.into(), market: market.into(), amount: usdc.into() }])?;
+        self.commit(&[Event::Snipe { account: account.into(), market: market.into(), amount: engine_amount(usdc) }])?;
         let paid = before - self.wallet(account);
         if let Some(l) = self.market_mut(market)?.launch.as_mut() {
             l.bids.push(SnipeBid { account: account.into(), usdc: paid, time: now });
@@ -29,12 +29,12 @@ impl Exchange {
 
     /// Admin pump: the house account buys (usdc > 0) or sells about |usdc| of tokens (usdc < 0) on the curve.
     /// `house_key` (from intake) is the house account's API key if this pump creates it.
-    pub fn pump(&mut self, market: &str, usdc: &str, house_key: &str) -> XResult<Vec<Effect>> {
+    pub fn pump(&mut self, market: &str, usdc: Dec, house_key: &str) -> XResult<Vec<Effect>> {
         let meta = self.market(market)?;
         if meta.kind != Kind::Attention {
             return Err(ExError::bad(format!("{market} has no spot curve: use /api/admin/price")));
         }
-        let v = parse(usdc)?;
+        let v = usdc.nano();
         if v == 0 {
             return Err(ExError::bad("usdc must be non-zero"));
         }

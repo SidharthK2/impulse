@@ -24,7 +24,8 @@ mod tests;
 pub use types::*;
 
 use crate::book::{Book, Order, Side, Tif};
-use crate::units::{auto_tick, cents, coin_price, coins_from_lots, dec, fmt, group, lot_price, lots_from_coins, parse_fixed, pow10, usd};
+use crate::money::{Amount, Dec, Tokens};
+use crate::units::{auto_tick, cents, coin_price, coins_from_lots, dec, fmt, group, lot_price, lots_from_coins, pow10, usd};
 use impulse_engine::fixed::ceil_div;
 use impulse_engine::ser::{big, Num};
 use impulse_engine::{apply, equity, initial_margin, initial_state, leverage_now, ApplyError, Effect, Event, Market, MarketEvent, Position, State, Status};
@@ -65,8 +66,9 @@ fn js_string(v: f64) -> String {
     }
 }
 
-fn parse(v: &str) -> XResult<i128> {
-    parse_fixed(v).map_err(ExError::bad)
+/// An amount as the engine reads it: a decimal string, or "all".
+fn engine_amount(a: Amount) -> Num {
+    Num(a.to_string())
 }
 
 fn ev_deposit(account: &str, amount: String) -> Event {

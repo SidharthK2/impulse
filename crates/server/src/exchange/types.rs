@@ -151,8 +151,8 @@ pub struct MarketSpec {
     pub name: Option<String>,
     pub base: Option<String>,
     pub sz_decimals: Option<u32>,
-    pub tick: Option<String>,  // coin price
-    pub price: Option<String>, // first oracle price (coin price) for externally priced markets
+    pub tick: Option<Dec>,  // coin price
+    pub price: Option<Dec>, // first oracle price (coin price) for externally priced markets
     pub description: Option<String>,
     pub url: Option<String>,
     pub creator: Option<String>,
@@ -283,8 +283,8 @@ pub struct OrderInput {
     pub market: String,
     pub side: Side,
     pub kind: OrderType,
-    pub size: String,          // coins
-    pub price: Option<String>, // coin price, limit orders
+    pub size: Dec,          // coins
+    pub price: Option<Dec>, // coin price, limit orders
     pub leverage: Option<f64>,
     pub reduce_only: bool,
     pub tif: Option<Tif>,
@@ -292,10 +292,10 @@ pub struct OrderInput {
 }
 
 impl OrderInput {
-    pub fn market(market: &str, side: Side, size: String) -> Self {
+    pub fn market(market: &str, side: Side, size: Dec) -> Self {
         OrderInput { market: market.into(), side, kind: OrderType::Market, size, price: None, leverage: None, reduce_only: false, tif: None, slippage: None }
     }
-    pub fn limit(market: &str, side: Side, price: String, size: String) -> Self {
+    pub fn limit(market: &str, side: Side, price: Dec, size: Dec) -> Self {
         OrderInput { kind: OrderType::Limit, price: Some(price), ..OrderInput::market(market, side, size) }
     }
 }

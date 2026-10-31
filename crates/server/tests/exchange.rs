@@ -224,6 +224,9 @@ async fn snapshot_round_trips_the_whole_exchange() {
     let book_before = book(&v, &x).await;
     let acct_before = v.account(&alice).await;
     let hash = |v: Value| v["hash"].as_str().unwrap().to_string();
+    // A reload is stamped with the intake clock, which an earlier clock step that changed nothing can leave ahead
+    // of the exchange's own clock; one reload first brings the two together.
+    ok(v.admin("POST", "/api/test/reload", json!({ "downMs": 0 })).await);
     let hash_before = hash(ok(v.admin("GET", "/api/test/hash", Value::Null).await));
     assert_eq!(ok(v.admin("POST", "/api/test/reload", json!({ "downMs": 0 })).await)["identical"], true);
     assert_eq!(hash(ok(v.admin("GET", "/api/test/hash", Value::Null).await)), hash_before); // the whole exchange, hashed

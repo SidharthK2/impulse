@@ -9,7 +9,8 @@ use crate::book::{Side, Tif};
 use crate::command::Command;
 use crate::exchange::{Exchange, Kind, OrderInput};
 use crate::rng::Rng;
-use crate::units::{coins_from_lots, dec, usd, ONE};
+use crate::money::{Amount, Dec, Tokens};
+use crate::units::{coins_dec, usd, ONE};
 use impulse_engine::{leverage_now, Status};
 use serde::Serialize;
 
@@ -53,6 +54,11 @@ pub struct BotSummary {
 
 /// The bots' intake side: which market to requote next, and the randomness behind every trader's choice. The bots
 /// are ordinary clients: they read the exchange and submit commands like anyone; nothing here is exchange state.
+/// Whole dollars as a wallet amount.
+fn whole_usd(usd: i64) -> Amount {
+    Amount::Exact(Dec::from_nano(usd as i128 * ONE))
+}
+
 pub struct Bots {
     cursor: usize,
     rng: Rng,
@@ -75,7 +81,7 @@ impl Bots {
             .flat_map(|(id, deposit)| {
                 [
                     Command::CreateAccount { name: id.into(), api_key: crate::intake::api_key(), bot: true },
-                    Command::Deposit { account: id.into(), amount: deposit.into() },
+                    Command::Deposit { account: id.into(), amount: Dec::parse(deposit).expect("a bot deposit") },
                 ]
             })
             .collect()
@@ -113,13 +119,13 @@ impl Bots {
             let size = x.size_of(id, t.id);
             let sz = x.markets[id.as_str()].sz_decimals;
             let side = if size > 0 { Side::Sell } else { Side::Buy };
-            let order = OrderInput { reduce_only: true, slippage: Some(0.03), ..OrderInput::market(id, side, coins_from_lots(sz, size.abs())) };
+            let order = OrderInput { reduce_only: true, slippage: Some(0.03), ..OrderInput::market(id, side, coins_dec(sz, size.abs())) };
             return (vec![Command::PlaceOrder { account: t.id.into(), order }], None);
         }
 
         if wallet < 50 * ONE {
             if open.is_empty() {
-                let refill = Command::Deposit { account: t.id.into(), amount: t.deposit.into() };
+                let refill = Command::Deposit { account: t.id.into(), amount: Dec::parse(t.deposit).expect("a bot deposit") };
                 return (vec![refill], Some(format!("{} is broke; refilled ${}", t.id, t.deposit)));
             }
             return (vec![], None);
@@ -162,7 +168,7 @@ impl Bots {
             0.5
         };
         let side = if self.rng.next() < p_buy { Side::Buy } else { Side::Sell };
-        let order = OrderInput { leverage: Some(lev.min(max_lev)), slippage: Some(0.03), ..OrderInput::market(id, side, coins_from_lots(sz, lots as i128)) };
+        let order = OrderInput { leverage: Some(lev.min(max_lev)), slippage: Some(0.03), ..OrderInput::market(id, side, coins_dec(sz, lots as i128)) };
         (vec![Command::PlaceOrder { account: t.id.into(), order }], None)
     }
 
@@ -178,7 +184,7 @@ impl Bots {
         if !sniping.is_empty() && self.rng.next() < 0.5 {
             let coin = &sniping[self.rng.below(sniping.len())];
             let usdc = 20 + (self.rng.next() * 280.0) as i64;
-            return Some(Command::Snipe { account: id.into(), market: coin.clone(), usdc: usdc.to_string() });
+            return Some(Command::Snipe { account: id.into(), market: coin.clone(), usdc: whole_usd(usdc) });
         }
         if self.rng.next() >= 0.15 {
             return None;
@@ -196,10 +202,10 @@ impl Bots {
         let coin = curves[self.rng.below(curves.len())].clone();
         let held = x.state.accounts.get(id).and_then(|a| a.spot.get(&coin)).copied().unwrap_or(0);
         Some(if held > 1 && self.rng.next() < 0.4 {
-            Command::SpotSell { account: id.into(), market: coin, tokens: (held / 2).to_string() }
+            Command::SpotSell { account: id.into(), market: coin, tokens: Tokens::Exact(held / 2) }
         } else {
             let usdc = 20 + (self.rng.next() * 180.0) as i64;
-            Command::SpotBuy { account: id.into(), market: coin, usdc: usdc.to_string() }
+            Command::SpotBuy { account: id.into(), market: coin, usdc: whole_usd(usdc) }
         })
     }
 
@@ -221,7 +227,7 @@ pub fn quote(x: &mut Exchange, id: &str) {
     let lev = leverage_now(m).0 as f64;
     let pos = x.size_of(id, MM);
     if x.wallet(MM) < 500_000 * ONE {
-        let _ = x.deposit(MM, "1000000");
+        let _ = x.deposit(MM, Dec::from_nano(1_000_000 * ONE));
     }
 
     let ladder = ladder(meta.kind);
@@ -257,7 +263,7 @@ fn place(x: &mut Exchange, id: &str, side: Side, price: f64, notional: f64, leve
     }
     let scale = 10f64.powi(meta.sz_decimals as i32);
     let lots = ((notional / price) * scale).floor().max(1.0) as i128;
-    let size = coins_from_lots(meta.sz_decimals, lots);
-    let input = OrderInput { tif: Some(Tif::Alo), leverage: Some(leverage), ..OrderInput::limit(id, side, dec(price_nano), size) };
+    let size = coins_dec(meta.sz_decimals, lots);
+    let input = OrderInput { tif: Some(Tif::Alo), leverage: Some(leverage), ..OrderInput::limit(id, side, Dec::from_nano(price_nano), size) };
     let _ = x.place_order(crate::bots::MM, input); // crossed a user's resting order, or margin: skip this level
 }

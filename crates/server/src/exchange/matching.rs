@@ -25,7 +25,7 @@ impl Exchange {
         if m.launch.as_ref().is_some_and(|l| !l.open) {
             return Err(ExError::bad(format!("{} is in its snipe window: trading starts at the open", meta.id)));
         }
-        let mut size = lots_from_coins(meta.sz_decimals, &input.size).map_err(|e| ExError::bad(format!("size: {e}")))?;
+        let mut size = lots_from_coins(meta.sz_decimals, input.size).map_err(|e| ExError::bad(format!("size: {e}")))?;
         if size <= 0 {
             return Err(ExError::bad("size must be positive"));
         }
@@ -52,10 +52,9 @@ impl Exchange {
                 (price.max(lower.max(if upper.is_none() { 1 } else { lower })), Tif::Ioc)
             }
             OrderType::Limit => {
-                let Some(p) = input.price.as_deref() else {
+                let Some(coin) = input.price.map(Dec::nano) else {
                     return Err(ExError::bad("limit orders need a price"));
                 };
-                let coin = parse_fixed(p).map_err(|e| ExError::bad(format!("price: {e}")))?;
                 if coin <= 0 {
                     return Err(ExError::bad("price must be positive"));
                 }

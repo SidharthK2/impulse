@@ -5,6 +5,7 @@
 use crate::api::{App, Node};
 use crate::logging::log;
 use crate::command::{Bar, Command, Reply, Tick};
+use crate::money::Dec;
 use crate::exchange::{Exchange, ExError, Kind, MarketSpec, Source};
 use crate::intake::wall_ms;
 use crate::units::{nano_from_f64, nano_from_feed};
@@ -184,7 +185,7 @@ fn pm_spec(pm: &PmMarket, price: f64) -> MarketSpec {
     MarketSpec {
         name: Some(pm.question.clone()),
         base: Some(outcome.clone().unwrap_or_else(|| "YES".into())),
-        price: Some(price3(price)),
+        price: Dec::parse(&price3(price)).ok(),
         description: Some(format!(
             "Leveraged mirror of a Polymarket outcome: the oracle is Polymarket's midpoint for \"{}\", and it settles when Polymarket resolves. Polymarket ends {}.",
             outcome.clone().unwrap_or_else(|| "undefined".into()),
@@ -235,7 +236,7 @@ pub async fn list_defaults(app: &App, offline: bool) {
                 },
                 |i| i.sz_decimals,
             )),
-            price: Some(if live { mid.clone().unwrap_or_default() } else { l.fallback.into() }),
+            price: Dec::parse(if live { mid.as_deref().unwrap_or_default() } else { l.fallback }).ok(),
             description: Some(if live {
                 format!("Mirrors Hyperliquid's {} mid price as the oracle. Liquidity comes from Impulse's own order book.", l.coin)
             } else {
@@ -264,7 +265,7 @@ pub async fn list_defaults(app: &App, offline: bool) {
         specs.push(MarketSpec {
             name: Some("Simulated election (binary)".into()),
             base: Some("YES".into()),
-            price: Some("0.5".into()),
+            price: Dec::parse("0.5").ok(),
             ..MarketSpec::new("SIM-ELECTION", Kind::Binary, Source::Sim { vol_bps: 40.0 })
         });
     }
@@ -272,7 +273,7 @@ pub async fn list_defaults(app: &App, offline: bool) {
         name: Some("Stripe (pre-IPO)".into()),
         base: Some("STRIPE".into()),
         sz_decimals: Some(2),
-        price: Some("91.50".into()),
+        price: Dec::parse("91.50").ok(),
         description: Some(
             "Pre-IPO perp on Stripe. There is no outside price: the mark is the median of this market's own best bid, best ask and last trade. Seeded at $91.50 a share, about a $91.5B valuation at 1B shares. At the IPO the admin sets the public price and the mark gaps to it."
                 .into(),
@@ -357,7 +358,7 @@ pub async fn list_hyperliquid(app: &App, coin: &str) -> Result<String, ExError> 
         name: Some(format!("{base}{}", dex.as_ref().map(|d| format!(" (HIP-3, {d})")).unwrap_or_default())),
         base: Some(base.clone()),
         sz_decimals: Some(info.sz_decimals),
-        price: Some(text(mid)),
+        price: Dec::parse(&text(mid)).ok(),
         description: Some(format!("Mirrors Hyperliquid's {coin} mid price as the oracle. Liquidity comes from Impulse's own order book.")),
         url: Some(format!("https://app.hyperliquid.xyz/trade/{coin}")),
         creator: Some("admin".into()),
@@ -481,7 +482,8 @@ async fn check_resolutions(app: &App) -> Result<(), String> {
         if !pm.closed || ![0.0, 0.5, 1.0].contains(&p) {
             continue;
         }
-        app.lock().submit(Command::Resolve { market: id.clone(), price: p.to_string() }).map_err(|e| e.message().to_string())?;
+        let price = Dec::parse(&p.to_string())?;
+        app.lock().submit(Command::Resolve { market: id.clone(), price }).map_err(|e| e.message().to_string())?;
         log(&format!("{id} resolved at {p} (Polymarket closed)"));
     }
     Ok(())

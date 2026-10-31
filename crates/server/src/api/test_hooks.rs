@@ -15,7 +15,7 @@ pub(super) async fn market(State(app): State<App>, _: Admin, b: Body) -> ApiResu
         None => Source::Manual,
     };
     let spec = MarketSpec {
-        price: b.opt_str("price"),
+        price: b.opt_str("price").map(|p| crate::money::Dec::parse(&p)).transpose().map_err(ExError::bad)?,
         sz_decimals: b.num("szDecimals").map(|v| v as u32),
         oracle_window: b.num("oracleWindow"),
         fee_bps: b.num("feeBps"),

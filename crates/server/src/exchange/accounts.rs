@@ -23,9 +23,9 @@ impl Exchange {
     }
 
     /// Paper money in. Bypasses the faucet's limits: for bots, tests and admin.
-    pub fn deposit(&mut self, account: &str, amount: &str) -> XResult<()> {
+    pub fn deposit(&mut self, account: &str, amount: Dec) -> XResult<()> {
         self.account(account)?;
-        self.commit(&[ev_deposit(account, amount.into())])?;
+        self.commit(&[ev_deposit(account, dec(amount.nano()))])?;
         Ok(())
     }
 
@@ -45,20 +45,20 @@ impl Exchange {
         Ok(FAUCET_AMOUNT)
     }
 
-    pub fn withdraw(&mut self, account: &str, amount: &str) -> XResult<()> {
+    pub fn withdraw(&mut self, account: &str, amount: Amount) -> XResult<()> {
         self.account(account)?;
-        self.commit(&[Event::Withdraw { account: account.into(), amount: amount.into() }])?;
+        self.commit(&[Event::Withdraw { account: account.into(), amount: engine_amount(amount) }])?;
         Ok(())
     }
 
     /// Add (positive) or remove (negative) isolated margin on an open position.
-    pub fn adjust_margin(&mut self, account: &str, market: &str, amount: &str) -> XResult<()> {
+    pub fn adjust_margin(&mut self, account: &str, market: &str, amount: Dec) -> XResult<()> {
         self.account(account)?;
         let m = self.engine_market(market)?;
         if m.positions.get(account).is_none_or(|p| p.size == 0) {
             return Err(ExError::bad(format!("no open position in {market}")));
         }
-        let v = parse(amount)?;
+        let v = amount.nano();
         if v == 0 {
             return Err(ExError::bad("amount must be non-zero"));
         }
@@ -67,18 +67,15 @@ impl Exchange {
         Ok(())
     }
 
-    pub fn spot_buy(&mut self, account: &str, market: &str, usdc: &str) -> XResult<Vec<Effect>> {
+    pub fn spot_buy(&mut self, account: &str, market: &str, usdc: Amount) -> XResult<Vec<Effect>> {
         self.account(account)?;
         self.market(market)?;
-        self.commit(&[Event::SpotBuy { account: account.into(), market: market.into(), amount: usdc.into() }])
+        self.commit(&[Event::SpotBuy { account: account.into(), market: market.into(), amount: engine_amount(usdc) }])
     }
 
-    pub fn spot_sell(&mut self, account: &str, market: &str, tokens: &str) -> XResult<Vec<Effect>> {
+    pub fn spot_sell(&mut self, account: &str, market: &str, tokens: Tokens) -> XResult<Vec<Effect>> {
         self.account(account)?;
         self.market(market)?;
-        if tokens != "all" && (tokens.is_empty() || !tokens.bytes().all(|b| b.is_ascii_digit())) {
-            return Err(ExError::bad("tokens must be a whole number or \"all\""));
-        }
-        self.commit(&[Event::SpotSell { account: account.into(), market: market.into(), tokens: tokens.into() }])
+        self.commit(&[Event::SpotSell { account: account.into(), market: market.into(), tokens: tokens.to_string().into() }])
     }
 }

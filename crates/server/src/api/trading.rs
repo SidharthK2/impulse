@@ -12,7 +12,7 @@ pub(super) async fn faucet(State(app): State<App>, User(id): User) -> ApiResult 
 }
 
 pub(super) async fn withdraw(State(app): State<App>, User(id): User, b: Body) -> ApiResult {
-    app.lock().submit(Command::Withdraw { account: id, amount: b.str("amount")? })?;
+    app.lock().submit(Command::Withdraw { account: id, amount: b.amount("amount")? })?;
     ok(json!({ "ok": true }))
 }
 
@@ -29,11 +29,11 @@ pub(super) async fn place_order(State(app): State<App>, User(id): User, b: Body)
             "market" => OrderType::Market,
             _ => return Err(ExError::bad("type must be limit or market").into()),
         },
-        size: b.str("size")?,
+        size: b.dec("size")?,
         price: match b.0.get("price") {
             None => None,
             Some(Value::String(s)) if s.is_empty() => None,
-            _ => Some(b.str("price")?),
+            _ => Some(b.dec("price")?),
         },
         leverage: b.num("leverage"),
         reduce_only: b.truthy("reduceOnly"),
@@ -75,17 +75,17 @@ pub(super) async fn close_position(State(app): State<App>, User(id): User, b: Bo
 }
 
 pub(super) async fn margin(State(app): State<App>, User(id): User, b: Body) -> ApiResult {
-    app.lock().submit(Command::Margin { account: id, market: b.str("market")?, amount: b.str("amount")? })?;
+    app.lock().submit(Command::Margin { account: id, market: b.str("market")?, amount: b.dec("amount")? })?;
     ok(json!({ "ok": true }))
 }
 
 pub(super) async fn spot_buy(State(app): State<App>, User(id): User, b: Body) -> ApiResult {
-    app.lock().submit(Command::SpotBuy { account: id, market: b.str("market")?, usdc: b.str("usdc")? })?;
+    app.lock().submit(Command::SpotBuy { account: id, market: b.str("market")?, usdc: b.amount("usdc")? })?;
     ok(json!({ "ok": true }))
 }
 
 pub(super) async fn spot_sell(State(app): State<App>, User(id): User, b: Body) -> ApiResult {
-    app.lock().submit(Command::SpotSell { account: id, market: b.str("market")?, tokens: b.str("tokens")? })?;
+    app.lock().submit(Command::SpotSell { account: id, market: b.str("market")?, tokens: b.tokens("tokens")? })?;
     ok(json!({ "ok": true }))
 }
 
@@ -124,6 +124,6 @@ pub(super) async fn attention(State(app): State<App>, User(id): User, b: Body) -
 }
 
 pub(super) async fn snipe(State(app): State<App>, User(id): User, b: Body) -> ApiResult {
-    app.lock().submit(Command::Snipe { account: id, market: b.str("market")?, usdc: b.str("usdc")? })?;
+    app.lock().submit(Command::Snipe { account: id, market: b.str("market")?, usdc: b.amount("usdc")? })?;
     ok(json!({ "ok": true }))
 }

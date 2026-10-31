@@ -6,7 +6,8 @@
 
 use crate::book::Side;
 use crate::exchange::{AccountMeta, ExError, Exchange, MarketSpec, OrderInput, OrderResult, XResult};
-use crate::units::coins_from_lots;
+use crate::money::{Amount, Dec, Tokens};
+use crate::units::coins_dec;
 use impulse_engine::ser::big;
 use impulse_engine::Effect;
 use serde::{Deserialize, Serialize};
@@ -47,25 +48,25 @@ pub enum Command {
     /// A bot account (no faucet).
     CreateAccount { name: String, api_key: String, bot: bool },
     Faucet { account: String },
-    Deposit { account: String, amount: String },
-    Withdraw { account: String, amount: String },
+    Deposit { account: String, amount: Dec },
+    Withdraw { account: String, amount: Amount },
     PlaceOrder { account: String, order: OrderInput },
     /// Close a whole position with a reduce-only market order.
     ClosePosition { account: String, market: String, slippage: f64 },
     Cancel { account: String, order: String },
     CancelAll { account: String, market: Option<String> },
-    Margin { account: String, market: String, amount: String },
-    SpotBuy { account: String, market: String, usdc: String },
-    SpotSell { account: String, market: String, tokens: String },
-    Snipe { account: String, market: String, usdc: String },
+    Margin { account: String, market: String, amount: Dec },
+    SpotBuy { account: String, market: String, usdc: Amount },
+    SpotSell { account: String, market: String, tokens: Tokens },
+    Snipe { account: String, market: String, usdc: Amount },
     /// Any listing: creator coins, admin markets, venue mirrors (their fetched metadata is in the spec), pre-IPO.
     ListMarket { spec: MarketSpec },
-    AdminPrice { market: String, price: String, hold_seconds: f64 },
+    AdminPrice { market: String, price: Dec, hold_seconds: f64 },
     ReleaseHold { market: String },
-    Resolve { market: String, price: String },
-    Ipo { market: String, price: String },
+    Resolve { market: String, price: Dec },
+    Ipo { market: String, price: Dec },
     /// `house_key` is the house account's API key, used if this pump creates it.
-    Pump { market: String, usdc: String, house_key: String },
+    Pump { market: String, usdc: Dec, house_key: String },
     SetBots { enabled: bool },
     /// One feed tick (test hook): the reply says whether it applied (None while an admin hold is on).
     Tick { tick: Tick },
@@ -162,11 +163,11 @@ pub fn apply(x: &mut Exchange, cmd: &Command) -> XResult<Reply> {
         Command::CreateAccount { name, api_key, bot } => Reply::Account(x.create_account(name, *bot, api_key)?),
         Command::Faucet { account } => Reply::Faucet(x.faucet(account)?),
         Command::Deposit { account, amount } => {
-            x.deposit(account, amount)?;
+            x.deposit(account, *amount)?;
             Reply::Done
         }
         Command::Withdraw { account, amount } => {
-            x.withdraw(account, amount)?;
+            x.withdraw(account, *amount)?;
             Reply::Done
         }
         Command::PlaceOrder { account, order } => Reply::Order(x.place_order(account, order.clone())?),
@@ -177,7 +178,7 @@ pub fn apply(x: &mut Exchange, cmd: &Command) -> XResult<Reply> {
                 return Err(ExError::bad(format!("no open position in {market}")));
             }
             let side = if size > 0 { Side::Sell } else { Side::Buy };
-            let order = OrderInput { reduce_only: true, slippage: Some(*slippage), ..OrderInput::market(market, side, coins_from_lots(sz, size.abs())) };
+            let order = OrderInput { reduce_only: true, slippage: Some(*slippage), ..OrderInput::market(market, side, coins_dec(sz, size.abs())) };
             Reply::Order(x.place_order(account, order)?)
         }
         Command::Cancel { account, order } => {
@@ -186,24 +187,24 @@ pub fn apply(x: &mut Exchange, cmd: &Command) -> XResult<Reply> {
         }
         Command::CancelAll { account, market } => Reply::Cancelled(x.cancel_all(account, market.as_deref())?),
         Command::Margin { account, market, amount } => {
-            x.adjust_margin(account, market, amount)?;
+            x.adjust_margin(account, market, *amount)?;
             Reply::Done
         }
-        Command::SpotBuy { account, market, usdc } => Reply::Effects(x.spot_buy(account, market, usdc)?),
-        Command::SpotSell { account, market, tokens } => Reply::Effects(x.spot_sell(account, market, tokens)?),
+        Command::SpotBuy { account, market, usdc } => Reply::Effects(x.spot_buy(account, market, *usdc)?),
+        Command::SpotSell { account, market, tokens } => Reply::Effects(x.spot_sell(account, market, *tokens)?),
         Command::Snipe { account, market, usdc } => {
-            x.snipe(account, market, usdc)?;
+            x.snipe(account, market, *usdc)?;
             Reply::Done
         }
         Command::ListMarket { spec } => Reply::Market(x.create_market(spec.clone())?.id.clone()),
-        Command::AdminPrice { market, price, hold_seconds } => Reply::Effects(x.admin_price(market, price, *hold_seconds)?),
+        Command::AdminPrice { market, price, hold_seconds } => Reply::Effects(x.admin_price(market, *price, *hold_seconds)?),
         Command::ReleaseHold { market } => {
             x.release_hold(market)?;
             Reply::Done
         }
-        Command::Resolve { market, price } => Reply::Effects(x.resolve(market, price)?),
-        Command::Ipo { market, price } => Reply::Effects(x.ipo(market, price)?),
-        Command::Pump { market, usdc, house_key } => Reply::Effects(x.pump(market, usdc, house_key)?),
+        Command::Resolve { market, price } => Reply::Effects(x.resolve(market, *price)?),
+        Command::Ipo { market, price } => Reply::Effects(x.ipo(market, *price)?),
+        Command::Pump { market, usdc, house_key } => Reply::Effects(x.pump(market, *usdc, house_key)?),
         Command::SetBots { enabled } => {
             x.bots_enabled = *enabled;
             x.version += 1;

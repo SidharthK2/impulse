@@ -12,6 +12,7 @@ mod exchange;
 mod feeds;
 mod intake;
 mod logging;
+mod money;
 mod persist;
 mod rng;
 mod sequencer;

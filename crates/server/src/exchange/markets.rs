@@ -13,12 +13,12 @@ impl Exchange {
         let kind = spec.kind;
         let sz = if matches!(kind, Kind::Perp | Kind::Preipo) { spec.sz_decimals.unwrap_or(0) } else { 0 };
         let source = if kind == Kind::Preipo { Source::Book } else { spec.source };
-        let start = spec.price.as_deref().map(parse).transpose()?;
+        let start = spec.price.map(Dec::nano);
         if kind != Kind::Attention && source != Source::Manual && start.is_none() {
             return Err(ExError::bad("externally priced markets need a starting price"));
         }
         let tick = match (&spec.tick, kind) {
-            (Some(t), _) => parse(t)?,
+            (Some(t), _) => t.nano(),
             (None, Kind::Binary) => 1_000_000,
             (None, Kind::Attention) => 1,
             (None, _) => auto_tick(start.unwrap_or(impulse_engine::fixed::ONE), sz),
@@ -109,7 +109,7 @@ impl Exchange {
     }
 
     /// Admin price override: set the oracle now and ignore the feed for `hold_seconds`.
-    pub fn admin_price(&mut self, market: &str, price: &str, hold_seconds: f64) -> XResult<Vec<Effect>> {
+    pub fn admin_price(&mut self, market: &str, price: Dec, hold_seconds: f64) -> XResult<Vec<Effect>> {
         let now = self.now();
         let meta = self.market(market)?;
         if meta.source == Source::Curve {
@@ -120,7 +120,7 @@ impl Exchange {
         }
         let sz = meta.sz_decimals;
         let before = self.state.markets[market].mark;
-        let coin = parse(price)?;
+        let coin = price.nano();
         self.market_mut(market)?.held_until = if hold_seconds > 0.0 { Some(now + (hold_seconds * 1000.0) as i64) } else { None };
         let effects = self.tick(market, coin, true)?.unwrap_or_default();
         let busts = effects.iter().filter(|e| matches!(e, Effect::Liquidation { .. } | Effect::Bankrupt { .. })).count();
@@ -141,9 +141,9 @@ impl Exchange {
         Ok(())
     }
 
-    pub fn resolve(&mut self, market: &str, price: &str) -> XResult<Vec<Effect>> {
+    pub fn resolve(&mut self, market: &str, price: Dec) -> XResult<Vec<Effect>> {
         let sz = self.market(market)?.sz_decimals;
-        let coin = parse(price)?;
+        let coin = price.nano();
         self.commit(&[Event::Resolve { market: market.into(), price: dec(lot_price(sz, coin)).into() }])
     }
 

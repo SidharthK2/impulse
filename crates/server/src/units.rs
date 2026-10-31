@@ -8,29 +8,6 @@ pub fn pow10(n: u32) -> i128 {
     10i128.pow(n)
 }
 
-/// Parse a non-negative decimal with at most `decimals` places into an integer scaled by 10^decimals.
-pub fn parse_scaled(s: &str, decimals: u32) -> Result<i128, String> {
-    let str = s.trim();
-    let bad = || format!("invalid number \"{str}\"");
-    let (int, frac) = match str.split_once('.') {
-        Some((i, f)) => (i, f),
-        None => (str, ""),
-    };
-    if int.is_empty() || !int.bytes().all(|b| b.is_ascii_digit()) || !frac.bytes().all(|b| b.is_ascii_digit()) {
-        return Err(bad());
-    }
-    if str.contains('.') && frac.is_empty() {
-        return Err(bad());
-    }
-    let trimmed = frac.trim_end_matches('0');
-    if trimmed.len() > decimals as usize {
-        return Err(format!("\"{str}\" has more than {decimals} decimals"));
-    }
-    let i: i128 = int.parse().map_err(|_| bad())?;
-    let f: i128 = if decimals == 0 { 0 } else { format!("{trimmed:0<w$}", w = decimals as usize).parse().map_err(|_| bad())? };
-    Ok(i * pow10(decimals) + f)
-}
-
 /// Exact decimal string of an integer scaled by 10^decimals, trailing zeros trimmed.
 pub fn fmt_scaled(v: i128, decimals: u32) -> String {
     if decimals == 0 {
@@ -53,8 +30,19 @@ pub fn usd(v: i128) -> String {
     fmt(v, 2)
 }
 
-pub fn lots_from_coins(sz: u32, coins: &str) -> Result<i128, String> {
-    parse_scaled(coins, sz)
+/// Coins → whole lots; refuses more decimals than the market's lot size allows.
+pub fn lots_from_coins(sz: u32, coins: crate::money::Dec) -> Result<i128, String> {
+    let per_lot = pow10(9 - sz.min(9));
+    let nano = coins.nano();
+    if nano % per_lot != 0 {
+        return Err(format!("\"{coins}\" has more than {sz} decimals"));
+    }
+    Ok(nano / per_lot)
+}
+
+/// Whole lots → coins, as an exact decimal.
+pub fn coins_dec(sz: u32, lots: i128) -> crate::money::Dec {
+    crate::money::Dec::from_nano(lots * pow10(9 - sz.min(9)))
 }
 
 pub fn coins_from_lots(sz: u32, lots: i128) -> String {
@@ -133,15 +121,19 @@ pub fn group(int: &str) -> String {
 mod tests {
     use super::*;
 
+    fn d(s: &str) -> crate::money::Dec {
+        crate::money::Dec::parse(s).unwrap()
+    }
+
     #[test]
     fn scaled_and_lots() {
-        assert_eq!(parse_scaled("1.25", 2).unwrap(), 125);
-        assert_eq!(parse_scaled("3", 0).unwrap(), 3);
-        assert_eq!(parse_scaled("3.000", 0).unwrap(), 3);
-        assert!(parse_scaled("1.234", 2).is_err());
+        assert_eq!(lots_from_coins(2, d("1.25")).unwrap(), 125);
+        assert_eq!(lots_from_coins(0, d("3")).unwrap(), 3);
+        assert_eq!(lots_from_coins(0, d("3.000")).unwrap(), 3);
+        assert!(lots_from_coins(2, d("1.234")).is_err());
         assert_eq!(fmt_scaled(125, 2), "1.25");
         assert_eq!(fmt_scaled(-5, 3), "-0.005");
-        assert_eq!(lots_from_coins(5, "0.01").unwrap(), 1000);
+        assert_eq!(lots_from_coins(5, d("0.01")).unwrap(), 1000);
         assert_eq!(lot_price(5, 80_000 * ONE), 800_000_000);
         assert_eq!(auto_tick(80_123 * ONE, 5), 1_000_000_000);
         assert_eq!(nano_from_feed("0.1234567891").unwrap(), 123_456_789);
@@ -153,16 +145,16 @@ mod tests {
 
     #[test]
     fn round_trips_scaled_decimals() {
-        assert_eq!(parse_scaled("1.25", 2).unwrap(), 125);
-        assert_eq!(parse_scaled("3", 0).unwrap(), 3);
-        assert!(parse_scaled("1.234", 2).is_err());
+        assert_eq!(lots_from_coins(2, d("1.25")).unwrap(), 125);
+        assert_eq!(lots_from_coins(0, d("3")).unwrap(), 3);
+        assert_eq!(lots_from_coins(2, d("1.234")).unwrap_err(), "\"1.234\" has more than 2 decimals");
         assert_eq!(fmt_scaled(125, 2), "1.25");
         assert_eq!(fmt_scaled(-5, 3), "-0.005");
     }
 
     #[test]
     fn converts_coins_to_lots_and_prices_per_coin_to_per_lot() {
-        assert_eq!(lots_from_coins(5, "0.01").unwrap(), 1000);
+        assert_eq!(lots_from_coins(5, d("0.01")).unwrap(), 1000);
         assert_eq!(coins_from_lots(5, 1000), "0.01");
         assert_eq!(lot_price(5, parse_fixed("80000").unwrap()), parse_fixed("0.8").unwrap());
     }

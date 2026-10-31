@@ -14,7 +14,7 @@ fn requote(node: &mut Node, market: &str) {
 pub(super) async fn price(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
     let market = b.str("market")?;
     let mut node = app.lock();
-    let r = node.submit(Command::AdminPrice { market: market.clone(), price: b.str("price")?, hold_seconds: b.num("holdSeconds").unwrap_or(60.0) })?;
+    let r = node.submit(Command::AdminPrice { market: market.clone(), price: b.dec("price")?, hold_seconds: b.num("holdSeconds").unwrap_or(60.0) })?;
     requote(&mut node, &market);
     ok(json!({ "effects": effects_of(r) }))
 }
@@ -25,7 +25,7 @@ pub(super) async fn release(State(app): State<App>, _: Admin, b: Body) -> ApiRes
 }
 
 pub(super) async fn resolve(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
-    app.lock().submit(Command::Resolve { market: b.str("market")?, price: b.str("price")? })?;
+    app.lock().submit(Command::Resolve { market: b.str("market")?, price: b.dec("price")? })?;
     ok(json!({ "ok": true }))
 }
 
@@ -47,7 +47,7 @@ pub(super) async fn market(State(app): State<App>, _: Admin, b: Body) -> ApiResu
     };
     let spec = MarketSpec {
         name: Some(b.opt_str("name").unwrap_or_else(|| id.clone())),
-        price: Some(b.str("price")?),
+        price: Some(b.dec("price")?),
         base: b.opt_str("base"),
         sz_decimals: sz,
         adl: b.opt_str("adl"),
@@ -88,15 +88,15 @@ pub(super) async fn demo_coin(State(app): State<App>, _: Admin, b: Body) -> ApiR
 }
 
 pub(super) async fn pump(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
-    let r = app.lock().submit(Command::Pump { market: b.str("market")?, usdc: b.str("usdc")?, house_key: api_key() })?;
+    let r = app.lock().submit(Command::Pump { market: b.str("market")?, usdc: b.dec("usdc")?, house_key: api_key() })?;
     ok(json!({ "effects": effects_of(r) }))
 }
 
 /// A pre-IPO perp: no outside price, the mark is the market's own book until the admin IPO.
 pub(super) async fn preipo(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
     let id = b.str("id")?;
-    let price = b.str("price")?;
-    let seed: f64 = price.parse().unwrap_or(0.0);
+    let price = b.dec("price")?;
+    let seed = price.nano() as f64 / 1e9;
     let spec = MarketSpec {
         name: Some(b.opt_str("name").unwrap_or_else(|| id.clone())),
         price: Some(price),
@@ -111,13 +111,13 @@ pub(super) async fn preipo(State(app): State<App>, _: Admin, b: Body) -> ApiResu
 pub(super) async fn ipo(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
     let market = b.str("market")?;
     let mut node = app.lock();
-    let r = node.submit(Command::Ipo { market: market.clone(), price: b.str("price")? })?;
+    let r = node.submit(Command::Ipo { market: market.clone(), price: b.dec("price")? })?;
     requote(&mut node, &market);
     ok(json!({ "effects": effects_of(r) }))
 }
 
 pub(super) async fn deposit(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
-    app.lock().submit(Command::Deposit { account: b.str("account")?, amount: b.str("amount")? })?;
+    app.lock().submit(Command::Deposit { account: b.str("account")?, amount: b.dec("amount")? })?;
     ok(json!({ "ok": true }))
 }
 

@@ -40,7 +40,7 @@ impl Exchange {
 
     /// Admin IPO: the market leaves its book for an admin-set public price. The mark gaps to it, and liquidation
     /// and ADL run in that transaction.
-    pub fn ipo(&mut self, market: &str, price: &str) -> XResult<Vec<Effect>> {
+    pub fn ipo(&mut self, market: &str, price: Dec) -> XResult<Vec<Effect>> {
         let meta = self.market(market)?;
         if meta.preipo.is_none() {
             return Err(ExError::bad(format!("{market} is not a pre-IPO market")));
@@ -49,7 +49,7 @@ impl Exchange {
             return Err(ExError::bad(format!("{market} has already had its IPO")));
         }
         let sz = meta.sz_decimals;
-        let coin = parse(price)?;
+        let coin = price.nano();
         if coin <= 0 {
             return Err(ExError::bad("price must be positive"));
         }
