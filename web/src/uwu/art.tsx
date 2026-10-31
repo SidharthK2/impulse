@@ -304,7 +304,8 @@ const CLOUD =
 
 /**
  * The chart's backdrop: a night sky with twinkling stars, a sleepy moon, shooting stars and drifting clouds. In
- * light mode a smiling sun takes the moon's place.
+ * light mode it's a clear day instead: a smiling sun in the moon's place, little clouds drifting across, and now and
+ * then a pair of birds.
  */
 export function ChartScene() {
   const stars = useMemo(() => {
@@ -365,6 +366,22 @@ export function ChartScene() {
         <ellipse cx="28.5" cy="45.5" rx="3.6" ry="2.2" fill="#ff9fb8" opacity="0.85" />
         <ellipse cx="51.5" cy="45.5" rx="3.6" ry="2.2" fill="#ff9fb8" opacity="0.85" />
       </svg>
+      <div className="uwu-day">
+        <span className="uwu-sun-glow" />
+        {(["c", "a", "b"] as const).map((lane) => (
+          <div key={lane} className={`uwu-lane ${lane}`}>
+            <svg className="uwu-puff" viewBox="0 0 190 64">
+              <path d={CLOUD} />
+            </svg>
+          </div>
+        ))}
+        <div className="uwu-lane birds">
+          <svg className="uwu-birds" viewBox="0 0 46 20">
+            <path d="M2 9 q5 -6 10 0 q5 -6 10 0" />
+            <path d="M27 15 q3.5 -4.5 7 0 q3.5 -4.5 7 0" />
+          </svg>
+        </div>
+      </div>
       <div className="uwu-clouds back">
         <svg viewBox="0 0 760 70" preserveAspectRatio="none">
           {[0, 190, 380, 570].map((x) => (

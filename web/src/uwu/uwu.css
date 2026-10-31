@@ -61,7 +61,8 @@
   --info-bg: rgba(91, 116, 224, 0.08);
   --uwu-glass: rgba(255, 255, 255, 0.84);
   --uwu-glow: 0 0 0 1px rgba(233, 194, 220, 0.6), 0 8px 26px rgba(214, 140, 190, 0.18);
-  --uwu-sky: linear-gradient(180deg, #a9c8ff 0%, #c9c2ff 42%, #ffd0e8 80%, #fff0f6 100%);
+  /* A clear day: fresh blue overhead, warming to a soft white at the horizon. */
+  --uwu-sky: linear-gradient(180deg, #86cbff 0%, #b3dfff 42%, #d6edff 70%, #ffe4f0 100%);
   --chart-grid: rgba(80, 40, 120, 0.08);
   --chart-faint: #5e4a78;
   color-scheme: light;
@@ -346,8 +347,9 @@
   inset: 0;
   fill: #fff;
 }
-[data-theme="light"] .uwu-stars {
-  opacity: 0.55;
+[data-theme="light"] .uwu-stars,
+[data-theme="light"] .uwu-shoot {
+  display: none;
 }
 .uwu-stars .tw {
   animation: uwu-twinkle 3.2s ease-in-out infinite;
@@ -452,10 +454,122 @@
   opacity: 0.6;
   fill: #ffd6ec;
 }
-[data-theme="light"] .uwu-clouds.back,
+[data-theme="light"] .uwu-clouds.back {
+  fill: #cfe5fb;
+  opacity: 1;
+}
 [data-theme="light"] .uwu-clouds.front {
   fill: #fff;
-  opacity: 0.85;
+  opacity: 0.95;
+}
+
+/* ---------- by day: the sun's glow, little clouds drifting across, and now and then a pair of birds ---------- */
+.uwu-day {
+  display: none;
+  position: absolute;
+  inset: 0;
+}
+[data-theme="light"] .uwu-day {
+  display: block;
+}
+/* Centred on the sun (64px, 10px from the top and 96px from the right). */
+.uwu-sun-glow {
+  position: absolute;
+  top: -78px;
+  right: 8px;
+  width: 240px;
+  height: 240px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 228, 140, 0.6), rgba(255, 228, 140, 0) 65%);
+}
+/* A lane spans the scene, so translateX(%) moves its cloud across the whole width. Its resting spot (no motion)
+   is --x. */
+.uwu-lane {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  transform: translateX(var(--x));
+  animation: uwu-across linear infinite;
+}
+@keyframes uwu-across {
+  from {
+    transform: translateX(-20%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+.uwu-puff {
+  display: block;
+  fill: #fff;
+  filter: drop-shadow(0 5px 0 rgba(140, 186, 236, 0.28));
+}
+.uwu-lane.a {
+  top: 13%;
+  --x: 30%;
+  animation-duration: 110s;
+  animation-delay: -40s;
+}
+.uwu-lane.a .uwu-puff {
+  width: 104px;
+}
+.uwu-lane.b {
+  top: 31%;
+  --x: 62%;
+  opacity: 0.8;
+  animation-duration: 150s;
+  animation-delay: -105s;
+}
+.uwu-lane.b .uwu-puff {
+  width: 66px;
+}
+.uwu-lane.c {
+  top: 5%;
+  --x: 8%;
+  opacity: 0.7;
+  animation-duration: 190s;
+  animation-delay: -20s;
+}
+.uwu-lane.c .uwu-puff {
+  width: 78px;
+}
+/* The birds cross in the first third of each minute, then the sky is theirs again. */
+.uwu-lane.birds {
+  top: 21%;
+  --x: 120%;
+  animation: uwu-fly 60s linear 8s infinite;
+}
+@keyframes uwu-fly {
+  0% {
+    transform: translateX(-10%);
+  }
+  35%,
+  100% {
+    transform: translateX(110%);
+  }
+}
+.uwu-birds {
+  display: block;
+  width: 46px;
+  stroke: #6a7fa6;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  opacity: 0.7;
+}
+.uwu-birds path {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: uwu-flap 0.5s ease-in-out infinite alternate;
+}
+.uwu-birds path + path {
+  animation-delay: 0.2s;
+}
+@keyframes uwu-flap {
+  to {
+    transform: scaleY(0.45);
+  }
 }
 @keyframes uwu-drift {
   to {
