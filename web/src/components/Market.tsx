@@ -204,9 +204,11 @@ export function MarketBar({
   );
 }
 
+/** How far a is towards b, from 0 to 1. */
+const progress = (a: string, b: string) => Math.min(1, num(a) / Math.max(num(b), 1e-9));
+
 export function InfoPanel({ market }: { market: MarketView }) {
   const g = market.graduation;
-  const progress = (a: string, b: string) => Math.min(1, num(a) / Math.max(num(b), 1e-9));
   return (
     <div className="panel">
       <div className="panel-head">

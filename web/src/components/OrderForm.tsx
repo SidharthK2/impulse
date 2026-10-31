@@ -211,9 +211,10 @@ export function OrderForm({
   const effOnMaxLoss = binary && Number.isFinite(maxLoss) && margin > 0 ? maxLoss / margin : null;
 
   const setPct = (p: number) => {
-    const ref = refPrice(market, v);
-    const lev = v.leverage;
-    if (!Number.isFinite(wallet) || !Number.isFinite(ref) || ref <= 0) return;
+    // The live inputs, not the debounced preview values above.
+    const liveRef = refPrice(market, v);
+    const liveLev = v.leverage;
+    if (!Number.isFinite(wallet) || !Number.isFinite(liveRef) || liveRef <= 0) return;
     if (v.reduceOnly && position) {
       form.setFieldValue("unit", "coin");
       form.setFieldValue(
@@ -223,12 +224,12 @@ export function OrderForm({
       return;
     }
     const perCoin = binary
-      ? Math.min(ref / lev, (v.side === "buy" ? ref : 1 - ref) * 1.05)
-      : ref / lev;
+      ? Math.min(liveRef / liveLev, (v.side === "buy" ? liveRef : 1 - liveRef) * 1.05)
+      : liveRef / liveLev;
     const n = floorTo(((wallet * 0.98) / perCoin) * p, market.szDecimals);
     form.setFieldValue(
       "size",
-      v.unit === "coin" ? toInput(n, market.szDecimals) : toInput(n * ref, 2),
+      v.unit === "coin" ? toInput(n, market.szDecimals) : toInput(n * liveRef, 2),
     );
   };
 

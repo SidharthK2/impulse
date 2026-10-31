@@ -87,13 +87,13 @@ class Live {
     const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;
     const ws = new WebSocket(url);
     this.ws = ws;
-    ws.onopen = () => {
+    ws.addEventListener("open", () => {
       this.retry = 500;
       this.setConnected(true);
       if (this.key) ws.send(JSON.stringify({ op: "auth", key: this.key }));
       for (const ch of this.listeners.keys()) ws.send(JSON.stringify({ op: "sub", ch }));
-    };
-    ws.onmessage = (ev) => {
+    });
+    ws.addEventListener("message", (ev) => {
       let msg: { ch: string; data: unknown };
       try {
         msg = JSON.parse(String(ev.data));
@@ -102,12 +102,12 @@ class Live {
       }
       this.last.set(msg.ch, msg.data);
       for (const l of this.listeners.get(msg.ch) ?? []) l(msg.data);
-    };
-    ws.onclose = () => {
+    });
+    ws.addEventListener("close", () => {
       this.setConnected(false);
       setTimeout(() => this.connect(), this.retry);
       this.retry = Math.min(this.retry * 2, 8000);
-    };
+    });
   }
 
   private setConnected(c: boolean) {

@@ -491,6 +491,18 @@ function MirrorMarket() {
   );
 }
 
+/** Validates a minutes field: blank, or a number 0 or more. */
+const minutes = (v: string, what: string) =>
+  v.trim() === "" || (Number(v) >= 0 && Number.isFinite(Number(v)))
+    ? undefined
+    : `${what} must be 0 or more minutes`;
+
+/** Validates a market picker: something from the list must be picked. */
+const marketRequired =
+  (list: MarketView[], what: string) =>
+  ({ value }: { value: string }) =>
+    pick(value, list) ? undefined : `No ${what} to pick`;
+
 function CreateMarket() {
   const toast = useToast();
   const server = useServerError();
@@ -533,10 +545,6 @@ function CreateMarket() {
   });
   const kind = useSelector(form.store, (s) => s.values.kind);
   const pending = useSelector(form.store, (s) => s.isSubmitting);
-  const minutes = (v: string, what: string) =>
-    v.trim() === "" || (Number(v) >= 0 && Number.isFinite(Number(v)))
-      ? undefined
-      : `${what} must be 0 or more minutes`;
   return (
     <>
       <h2>List a market</h2>
@@ -878,11 +886,6 @@ function DemoControls({ markets }: { markets: MarketView[] }) {
     resolve: useSelector(resolve.store, (s) => s.isSubmitting),
   };
   const usdc = useSelector(pump.store, (s) => s.values.usdc);
-  const marketRequired =
-    (list: MarketView[], what: string) =>
-    ({ value }: { value: string }) =>
-      pick(value, list) ? undefined : `No ${what} to pick`;
-
   return (
     <>
       <h2>Demo</h2>

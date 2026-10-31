@@ -77,12 +77,14 @@ export function PulseField({ className = "" }: { className?: string }) {
       rows = Math.ceil(h / ch) + 1;
     };
 
+    // An empty grid of the current size, one string per cell.
+    const blank = () => Array.from({ length: rows }, () => Array.from({ length: cols }, () => " "));
+
     const draw = (t: number) => {
       ctx.clearRect(0, 0, w, h);
       ctx.font = font;
       ctx.textBaseline = "top";
       // Per row: background grain, the flat stretches, the spike bands, and their hottest cells, each one string.
-      const blank = () => Array.from({ length: rows }, () => new Array<string>(cols).fill(" "));
       const bg = blank();
       const flat = blank();
       const body = blank();

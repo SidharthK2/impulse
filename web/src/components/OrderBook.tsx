@@ -7,6 +7,9 @@ import type { Level, MarketView } from "../types";
 
 const DEPTH = 20;
 
+/** Total size of the levels the book shows. */
+const sum = (ls: Level[]) => ls.slice(0, DEPTH).reduce((s, l) => s + Number(l.size), 0);
+
 function Side({
   levels,
   kind,
@@ -86,7 +89,6 @@ export function OrderBook({ market, onPick }: { market: MarketView; onPick: (p: 
   const book = useBook(market.id);
   const bids = book?.bids ?? [];
   const asks = book?.asks ?? [];
-  const sum = (ls: Level[]) => ls.slice(0, DEPTH).reduce((s, l) => s + Number(l.size), 0);
   const max = Math.max(sum(bids), sum(asks));
   const bestBid = bids[0] ? Number(bids[0].price) : NaN;
   const bestAsk = asks[0] ? Number(asks[0].price) : NaN;

@@ -87,7 +87,7 @@ export function fixtureCall(
     publish();
     return { value: v };
   } catch (e) {
-    if (e instanceof FixtureError) throw new Error(e.message);
+    if (e instanceof FixtureError) throw new Error(e.message, { cause: e });
     throw e;
   }
 }

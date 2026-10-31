@@ -185,8 +185,8 @@ function snipeView(
 /** Bids behind every fixture snipe, kept outside MarketView (which only exposes the top and latest 10). */
 const snipeBids: Record<string, { account: string; usdc: number; time: number }[]> = {};
 
-function newCoin(w: World, handle: string, opensIn: number, seedBids: number): MarketView {
-  const id = handle.startsWith("@") ? handle : `@${handle}`;
+function newCoin(w: World, name: string, opensIn: number, seedBids: number): MarketView {
+  const id = name.startsWith("@") ? name : `@${name}`;
   const bids: { account: string; usdc: number; time: number }[] = [];
   for (let i = 0; i < seedBids; i++)
     bids.push({
@@ -560,7 +560,7 @@ export function createWorld(now: number): World {
 /** One bankruptcy and the haircuts that paid for it, all in one transaction (same time, same price). */
 function cluster(
   w: World,
-  market: string,
+  marketId: string,
   time: number,
   price: number,
   bankrupt: string,
@@ -572,7 +572,7 @@ function cluster(
   const px = fix(price, d);
   event(w, {
     time,
-    market,
+    market: marketId,
     kind: "bankrupt",
     accounts: [bankrupt],
     text: `${bankrupt} bankrupt: ${what} closed at ${px}, $${money(shortfall)} shortfall charged to the other side`,
@@ -582,7 +582,7 @@ function cluster(
   for (const [who, amt] of payers) {
     event(w, {
       time,
-      market,
+      market: marketId,
       kind: "haircut",
       accounts: [who],
       text: `${who} paid a $${money(amt)} ADL haircut (from profit)`,
@@ -592,7 +592,7 @@ function cluster(
   }
   event(w, {
     time,
-    market,
+    market: marketId,
     kind: "adl",
     accounts: [payers[0]![0]],
     text: `${payers[0]![0]} auto-deleveraged: position force-closed at ${px}`,
@@ -882,21 +882,21 @@ export function handle(
     case "/api/admin/demo-coin": {
       if (!force) return undefined;
       const words = ["orbit", "pixel", "mango", "quasar", "ember", "drift", "fable", "gecko"];
-      const handle =
+      const name =
         str(body.handle).trim() ||
         `@${words[Math.floor(rand() * words.length)]}_${Math.floor(rand() * 90 + 10)}`;
-      const id = (handle.startsWith("@") ? handle : `@${handle}`).toLowerCase();
-      if (w.markets[id]) throw new FixtureError(`${id} is already listed`);
-      const coin = newCoin(w, id, 5 * MIN, path === "/api/admin/demo-coin" ? 6 : 0);
-      w.markets[id] = coin;
-      w.candles[id] = [];
-      w.trades[id] = [];
+      const coinId = (name.startsWith("@") ? name : `@${name}`).toLowerCase();
+      if (w.markets[coinId]) throw new FixtureError(`${coinId} is already listed`);
+      const coin = newCoin(w, coinId, 5 * MIN, path === "/api/admin/demo-coin" ? 6 : 0);
+      w.markets[coinId] = coin;
+      w.candles[coinId] = [];
+      w.trades[coinId] = [];
       event(w, {
         time: w.now,
-        market: id,
+        market: coinId,
         kind: "listing",
         accounts: [],
-        text: `${id} listed: snipe window open for 5 minutes`,
+        text: `${coinId} listed: snipe window open for 5 minutes`,
         amount: null,
         price: null,
       });

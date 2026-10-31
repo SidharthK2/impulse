@@ -208,23 +208,29 @@ function Th({
   );
 }
 
+/** The value a market sorts by in the given column. */
+function sortValue(m: MarketView, key: SortKey): number | string {
+  switch (key) {
+    case "name":
+      return m.id.toLowerCase();
+    case "price":
+      return num(headline(m));
+    case "change":
+      return change24h(m);
+    case "oi":
+      return num(m.openInterestUsd);
+    case "volume":
+      return num(m.volume24h);
+  }
+}
+
 /** Sniping coins first (soonest open first), then by the chosen column. */
 const order = (now: number, key: SortKey, desc: boolean) => (a: MarketView, b: MarketView) => {
   const sa = a.snipe && a.snipe.opensAt > now ? a.snipe.opensAt : Infinity;
   const sb = b.snipe && b.snipe.opensAt > now ? b.snipe.opensAt : Infinity;
   if (sa !== sb) return sa - sb;
-  const val = (m: MarketView): number | string =>
-    key === "name"
-      ? m.id.toLowerCase()
-      : key === "price"
-        ? num(headline(m))
-        : key === "change"
-          ? change24h(m)
-          : key === "oi"
-            ? num(m.openInterestUsd)
-            : num(m.volume24h);
-  const x = val(a);
-  const y = val(b);
+  const x = sortValue(a, key);
+  const y = sortValue(b, key);
   const cmp =
     typeof x === "string"
       ? x.localeCompare(y as string)
