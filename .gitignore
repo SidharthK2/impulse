@@ -4,5 +4,3 @@ target
 data
 .claude/worktrees/
 .wrangler
-# UwU mode media (copyrighted demo art and clips): fetched by web/scripts/uwu-assets.sh, never committed or deployed
-web/public/uwu/
