@@ -60,6 +60,12 @@ export const LogoutIcon = (p: SVGProps<SVGSVGElement>) => (
   </svg>
 );
 
+export const MenuIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <path d="M4 7h16M4 12h16M4 17h16" />
+  </svg>
+);
+
 export const PieIcon = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base(p)}>
     <path d="M21 12A9 9 0 1 1 12 3v9Z" />

@@ -7,7 +7,7 @@ import { countdown, num, tone, usd } from "../format";
 import { useNow } from "../hooks";
 import { useAccount, useMarkets } from "../queries";
 import { usePrefs, useSession, useUi } from "../store";
-import { ChevronDown, DropIcon, KeyIcon, LogoutIcon, MoonIcon, PieIcon, SearchIcon, SunIcon } from "./icons";
+import { ChevronDown, DropIcon, KeyIcon, LogoutIcon, MenuIcon, MoonIcon, PieIcon, SearchIcon, SunIcon } from "./icons";
 import { Roll } from "./Roll";
 import { useToast } from "./ui";
 
@@ -119,6 +119,34 @@ export function Header() {
         {theme === "dark" ? <SunIcon /> : <MoonIcon />}
       </button>
       <AccountButton />
+      <div className="nav-burger">
+        <Menu align="right" className="icon-btn" label={<MenuIcon />}>
+          {(close) => (
+            <>
+              {(
+                [
+                  ["/", "Markets"],
+                  ["/portfolio", "Portfolio"],
+                  ["/leaderboard", "Leaderboard"],
+                ] as const
+              ).map(([to, label]) => (
+                <Link key={to} to={to} className={`menu-item ${is(to) ? "on" : ""}`} onClick={close} role="menuitem">
+                  {label}
+                </Link>
+              ))}
+              <Link to="/trade/$market" params={{ market: tradeTo }} className={`menu-item ${is("/trade") ? "on" : ""}`} onClick={close} role="menuitem">
+                Trade
+              </Link>
+              <div className="menu-sep" />
+              {MORE.map((m) => (
+                <Link key={m.to} to={m.to} className={`menu-item ${is(m.to) ? "on" : ""}`} onClick={close} role="menuitem">
+                  {m.label}
+                </Link>
+              ))}
+            </>
+          )}
+        </Menu>
+      </div>
     </header>
   );
 }
