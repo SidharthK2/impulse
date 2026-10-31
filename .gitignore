@@ -3,3 +3,4 @@ web/dist
 target
 data
 .claude/worktrees/
+.wrangler

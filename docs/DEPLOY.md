@@ -37,6 +37,30 @@ Pushes don't deploy.
 2. GitHub repo → Settings → Secrets and variables → Actions → New secret `FLY_API_TOKEN` with that token.
 3. Run the workflow when you want to ship.
 
+## Web app on Cloudflare
+
+The web app is also served from Cloudflare's edge by a Worker with static assets (`web/wrangler.jsonc`,
+`web/worker/index.ts`): Cloudflare serves `web/dist` (unknown paths get `index.html`), and the Worker forwards
+`/api/*` and `/ws` to `API_ORIGIN` (`https://impulse-sid.fly.dev`) unchanged, websockets included. The browser
+sees one origin, so the web app needs no API URL and no CORS. A frontend change ships without restarting the
+exchange, and the site still loads while the Fly machine is stopped or deploying.
+
+`.github/workflows/web-deploy.yml` deploys **on every push to main that touches `web/`**, and on demand
+(`gh workflow run web-deploy.yml`). It builds the app and runs `wrangler deploy`.
+
+**Setup (once)**
+1. Cloudflare dashboard → Add a domain → `sidkap.xyz` (Free plan). Check the imported DNS records against
+   Porkbun's, then set the two Cloudflare nameservers at Porkbun. Wait until the domain shows **Active**.
+2. Cloudflare → My Profile → API Tokens → Create Token → template **Edit Cloudflare Workers** (account: yours,
+   zone: `sidkap.xyz`). Note the account ID from the Workers & Pages overview.
+3. `gh secret set CLOUDFLARE_API_TOKEN` and `gh secret set CLOUDFLARE_ACCOUNT_ID` (each prompts for the value).
+4. Run the workflow. The site comes up at `https://impulse-web.<your-subdomain>.workers.dev`.
+5. Custom domain: in Cloudflare DNS, delete the imported `impulse` CNAME (it points at Fly), then add to
+   `web/wrangler.jsonc`: `"routes": [{ "pattern": "impulse.sidkap.xyz", "custom_domain": true }]` and deploy.
+
+To try the Worker locally: `cd web && pnpm run build && npx wrangler@4.151.1 dev --port 8788`. It forwards to
+the live API on Fly (`API_ORIGIN`), not to a local server.
+
 ## Day to day
 
 | Task | Command |
