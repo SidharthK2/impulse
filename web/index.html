@@ -42,6 +42,8 @@
         var p = JSON.parse(localStorage.getItem("impulse.prefs") || "{}").state || {};
         document.documentElement.dataset.theme =
           p.theme || (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+        var u = JSON.parse(localStorage.getItem("impulse.uwu") || "{}").state || {};
+        if (u.on) document.documentElement.dataset.skin = "uwu";
       } catch (e) {}
       // One canonical address per page: this path on impulse.sidkap.xyz, whichever host served it (localhost too).
       document.querySelector('link[rel="canonical"]').href =
