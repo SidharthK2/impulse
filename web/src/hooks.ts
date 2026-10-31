@@ -1,22 +1,5 @@
 import { useEffect, useState } from "react";
 import { live } from "./api";
-import { paced } from "./pacing";
-
-/** Latest payload on a websocket channel (null channel = not subscribed). */
-export function useChannel<T>(ch: string | null): T | undefined {
-  const [data, setData] = useState<T | undefined>(undefined);
-  useEffect(() => {
-    setData(undefined);
-    if (!ch) return;
-    const p = paced<T>(ch, setData);
-    const off = live.subscribe(ch, (d) => p.push(d as T));
-    return () => {
-      off();
-      p.cancel();
-    };
-  }, [ch]);
-  return data;
-}
 
 export function useConnected(): boolean {
   const [c, setC] = useState(live.connected);
@@ -38,20 +21,6 @@ export function useNow(ms = 1000): number {
     return () => clearInterval(t);
   }, [ms]);
   return now;
-}
-
-export function useHashRoute(): [string[], (path: string) => void] {
-  const parse = () => location.hash.replace(/^#\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
-  const [parts, setParts] = useState(parse);
-  useEffect(() => {
-    const on = () => setParts(parse());
-    window.addEventListener("hashchange", on);
-    return () => window.removeEventListener("hashchange", on);
-  }, []);
-  const go = (path: string) => {
-    location.hash = `#/${path}`;
-  };
-  return [parts, go];
 }
 
 /** Whether a media query matches, kept current as the window changes. */

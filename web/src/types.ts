@@ -193,9 +193,3 @@ export interface LeaderRow {
   haircuts: string;
   open: number;
 }
-
-export interface ConfigView {
-  genesis: number;
-  graduation: { leverage: number; volume: string; depth: string }[];
-  fundingBasePerHour: number[];
-}

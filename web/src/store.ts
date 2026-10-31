@@ -93,9 +93,6 @@ const applyTheme = (t: Theme) => {
 applyTheme(usePrefs.getState().theme);
 usePrefs.subscribe((s) => applyTheme(s.theme));
 
-/** Whether fixtures are merged in right now. */
-export const useFixturesOn = () => usePrefs((s) => s.fixtures);
-
 interface Session {
   key: string | null;
   signIn: (key: string | null) => void;

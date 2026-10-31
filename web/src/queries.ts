@@ -8,7 +8,7 @@ import { fixtureCall, fixtureCandles, isFixtureMarket, setRealMarketIds, useFixt
 import { normalizeAccount, normalizeEvents, normalizeMarkets } from "./normalize";
 import { paced } from "./pacing";
 import { useSession } from "./store";
-import type { AccountView, BookView, Candle, ConfigView, FillView, LeaderRow, MarketView, RiskEvent } from "./types";
+import type { AccountView, BookView, Candle, FillView, LeaderRow, MarketView, RiskEvent } from "./types";
 
 export const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: Infinity, retry: 1, refetchOnWindowFocus: false } },
@@ -44,11 +44,6 @@ export function useMarkets(): MarketView[] | undefined {
     const ids = new Set((real ?? []).map((m) => m.id));
     return [...(real ?? []), ...fx.filter((m) => !ids.has(m.id))];
   }, [real, fx]);
-}
-
-export function useMarket(id: string | undefined): MarketView | undefined {
-  const markets = useMarkets();
-  return useMemo(() => markets?.find((m) => m.id === id), [markets, id]);
 }
 
 export function useFeed(): RiskEvent[] {
@@ -137,10 +132,6 @@ function mergeCandles(old: Candle[] | undefined, fresh: Candle[]): Candle[] {
 
 export function useLeaderboard(): LeaderRow[] {
   return useLive(["leaderboard"], "leaderboard", "/api/leaderboard", same<LeaderRow[]>).data ?? [];
-}
-
-export function useConfig(): ConfigView | undefined {
-  return useQuery({ queryKey: ["config"], queryFn: () => api<ConfigView>("GET", "/api/config") }).data;
 }
 
 /**
