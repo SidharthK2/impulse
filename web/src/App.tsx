@@ -113,7 +113,7 @@ function useRiskToasts(account: AccountView | undefined) {
         ["liquidation", "bankrupt", "haircut", "adl", "settlement"].includes(e.kind),
     );
     seen.current = Math.max(seen.current, latest);
-    for (const e of fresh.reverse())
+    for (const e of fresh.toReversed())
       toast(
         e.text,
         e.kind === "bankrupt" || e.kind === "haircut"

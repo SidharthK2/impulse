@@ -172,11 +172,11 @@ function snipeView(
     snipers: by.size,
     projectedOpenPrice: fix(p, decimalsFor(p)),
     top: [...by]
-      .sort((a, b) => b[1] - a[1])
+      .toSorted((a, b) => b[1] - a[1])
       .slice(0, 10)
       .map(([account, usdc]) => ({ account, usdc: money(usdc) })),
-    recent: [...bids]
-      .sort((a, b) => b.time - a.time)
+    recent: bids
+      .toSorted((a, b) => b.time - a.time)
       .slice(0, 10)
       .map((b) => ({ ...b, usdc: money(b.usdc) })),
   };
@@ -1142,7 +1142,7 @@ function fail(id: string): never {
 
 /** A big move bankrupts someone on the losing side, and the winners pay for it: liquidation, bankruptcy, haircuts. */
 function crash(w: World, m: MarketView, price: number, losing: "long" | "short"): string[] {
-  const [victim, ...payers] = [...BOTS].sort(() => rand() - 0.5);
+  const [victim, ...payers] = BOTS.toSorted(() => rand() - 0.5);
   const shortfall = Math.round(300 + rand() * 2400) + rand();
   const shares = payers.slice(0, 3).map((p) => [p!, rand() + 0.2] as [string, number]);
   const sum = shares.reduce((s, [, x]) => s + x, 0);

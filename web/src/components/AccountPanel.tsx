@@ -605,7 +605,7 @@ function Holders({ market }: { market: MarketView }) {
       clearInterval(t);
     };
   }, [market.id]);
-  const sorted = [...positions].sort((a, b) => Math.abs(num(b.size)) - Math.abs(num(a.size)));
+  const sorted = positions.toSorted((a, b) => Math.abs(num(b.size)) - Math.abs(num(a.size)));
   return (
     <div>
       <div>

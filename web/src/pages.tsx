@@ -35,13 +35,13 @@ export function FeedPage() {
     const seen = new Set<number>();
     return [...live, ...history]
       .filter((e) => !seen.has(e.id) && (seen.add(e.id), true))
-      .sort((a, b) => b.id - a.id);
+      .toSorted((a, b) => b.id - a.id);
   }, [live, history]);
   const shown = all.filter((e) => kinds.has(e.kind) && (!market || e.market === market));
   const sum = (k: RiskKind) =>
     all.filter((e) => e.kind === k).reduce((s, e) => s + num(e.amount ?? "0"), 0);
   const count = (k: RiskKind) => all.filter((e) => e.kind === k).length;
-  const markets = [...new Set(all.map((e) => e.market))].sort();
+  const markets = [...new Set(all.map((e) => e.market))].toSorted();
   return (
     <div className="page">
       <h1>Risk feed</h1>

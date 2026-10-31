@@ -72,7 +72,7 @@ export function HomePage() {
   }, [category, sort, q]);
 
   const matches = (m: MarketView) => !q || `${m.id} ${m.name} ${m.base}`.toLowerCase().includes(q);
-  const sorted = (xs: MarketView[]) => xs.filter(matches).sort(order(now, sort.key, sort.desc));
+  const sorted = (xs: MarketView[]) => xs.filter(matches).toSorted(order(now, sort.key, sort.desc));
   const cat = CATEGORIES.find((c) => c.id === category)!;
   const groups =
     category === "all"
@@ -352,7 +352,7 @@ function MarketRow({ market: m, now }: { market: MarketView; now: number }) {
 function SnipingNow({ markets, now }: { markets: MarketView[]; now: number }) {
   const sniping = markets
     .filter((m) => m.snipe && m.snipe.opensAt > now)
-    .sort((a, b) => a.snipe!.opensAt - b.snipe!.opensAt);
+    .toSorted((a, b) => a.snipe!.opensAt - b.snipe!.opensAt);
   if (sniping.length === 0) return null;
   return (
     <div className="panel side-panel">
@@ -409,7 +409,7 @@ function RecentPaid({ now }: { now: number }) {
         <ul className="side-list">
           {recent.map((i) => {
             const paid = i.haircuts.reduce((s, e) => s + num(e.amount ?? "0"), 0);
-            const top = [...i.haircuts].sort(
+            const top = i.haircuts.toSorted(
               (a, b) => num(b.amount ?? "0") - num(a.amount ?? "0"),
             )[0];
             return (

@@ -54,7 +54,7 @@ export function incidents(events: RiskEvent[]): Incident[] {
     else if (e.kind === "adl") i.closes.push(e);
     else i.other.push(e);
   }
-  return [...by.values()].sort((a, b) => b.time - a.time);
+  return [...by.values()].toSorted((a, b) => b.time - a.time);
 }
 
 interface Row {
@@ -101,7 +101,7 @@ export function byAccount(events: RiskEvent[]): Row[] {
     }
     if (e.kind === "adl") r.closes++;
   }
-  return [...rows.values()].sort(
+  return [...rows.values()].toSorted(
     (a, b) => b.paid - a.paid || b.shortfall - a.shortfall || b.liquidations - a.liquidations,
   );
 }

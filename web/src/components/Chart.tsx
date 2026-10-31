@@ -87,7 +87,7 @@ function buildSeries(
     if (t >= from - 60_000 && t < cut) pts.push({ t, p: c.c });
   }
   for (const s of samples) if (s.t >= cut) pts.push(s);
-  return pts.sort((a, b) => a.t - b.t);
+  return pts.toSorted((a, b) => a.t - b.t);
 }
 
 function priceAt(pts: Pt[], t: number): number | null {

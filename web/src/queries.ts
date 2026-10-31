@@ -74,7 +74,7 @@ export function useFeed(): RiskEvent[] {
   const fx = useFixtureWorld((s) => s.snap?.events);
   return useMemo(() => {
     if (!fx) return real ?? [];
-    return [...(real ?? []), ...fx].sort((a, b) => b.time - a.time || b.id - a.id);
+    return [...(real ?? []), ...fx].toSorted((a, b) => b.time - a.time || b.id - a.id);
   }, [real, fx]);
 }
 
@@ -113,7 +113,7 @@ export function useAccount(): AccountView | undefined {
       positions: [...base.positions, ...snap.positions],
       spot: [...base.spot, ...snap.spot],
       snipes: [...base.snipes, ...snap.snipes],
-      risk: [...base.risk, ...mine].sort((a, b) => b.time - a.time),
+      risk: [...base.risk, ...mine].toSorted((a, b) => b.time - a.time),
     };
   }, [real, snap]);
 }

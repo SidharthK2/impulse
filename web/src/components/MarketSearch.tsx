@@ -57,7 +57,7 @@ function Palette({ onClose }: { onClose: () => void }) {
     const hit = (m: MarketView) => `${m.id} ${m.name} ${m.base}`.toLowerCase();
     return markets
       .filter((m) => !t || hit(m).includes(t))
-      .sort(
+      .toSorted(
         (a, b) =>
           (t
             ? Number(!a.id.toLowerCase().startsWith(t)) - Number(!b.id.toLowerCase().startsWith(t))
