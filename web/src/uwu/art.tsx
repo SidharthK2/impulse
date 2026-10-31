@@ -302,7 +302,10 @@ function rng(seed: number) {
 const CLOUD =
   "M0 60 Q0 34 26 34 Q30 12 56 14 Q74 0 96 12 Q122 6 132 28 Q160 26 164 46 Q186 46 190 60 Z";
 
-/** The chart's backdrop: a night sky with twinkling stars, a sleepy moon, shooting stars and drifting clouds. */
+/**
+ * The chart's backdrop: a night sky with twinkling stars, a sleepy moon, shooting stars and drifting clouds. In
+ * light mode a smiling sun takes the moon's place.
+ */
 export function ChartScene() {
   const stars = useMemo(() => {
     const r = rng(7);
@@ -346,6 +349,21 @@ export function ChartScene() {
           strokeLinecap="round"
         />
         <ellipse cx="22" cy="52" rx="4" ry="2.4" fill="#ffb0c8" opacity="0.7" />
+      </svg>
+      <svg className="uwu-sun" viewBox="0 0 80 80" width="64" height="64">
+        <g className="uwu-sun-rays" stroke="#ffc54a" strokeWidth="5" strokeLinecap="round">
+          {[0, 45, 90, 135, 180, 225, 270, 315].map((a) => (
+            <line key={a} x1="40" y1="12" x2="40" y2="5" transform={`rotate(${a} 40 40)`} />
+          ))}
+        </g>
+        <circle cx="40" cy="40" r="22" fill="#ffd95e" stroke="#ffbf3f" strokeWidth="2" />
+        <g stroke="#8a5216" strokeWidth="2.2" strokeLinecap="round" fill="none">
+          <path d="M30.5 38 q3 -4 6 0" />
+          <path d="M43.5 38 q3 -4 6 0" />
+          <path d="M36 45.5 q4 4 8 0" />
+        </g>
+        <ellipse cx="28.5" cy="45.5" rx="3.6" ry="2.2" fill="#ff9fb8" opacity="0.85" />
+        <ellipse cx="51.5" cy="45.5" rx="3.6" ry="2.2" fill="#ff9fb8" opacity="0.85" />
       </svg>
       <div className="uwu-clouds back">
         <svg viewBox="0 0 760 70" preserveAspectRatio="none">
