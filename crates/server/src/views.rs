@@ -586,20 +586,25 @@ pub struct CandleView {
 }
 
 pub fn candles_view(x: &Exchange, id: &str) -> Vec<CandleView> {
+    recent_candles_view(x, id, usize::MAX)
+}
+
+/// The latest `n` candles (the websocket sends the last two, which are all a tick can change).
+pub fn recent_candles_view(x: &Exchange, id: &str, n: usize) -> Vec<CandleView> {
     let sz = x.markets[id].sz_decimals;
-    let n = |lot: i128| coin_price(sz, lot) as f64 / 1e9;
-    x.candles.get(id).map_or(vec![], |cs| {
-        cs.iter()
-            .map(|c| CandleView {
-                t: c.t,
-                o: n(c.o),
-                h: n(c.h),
-                l: n(c.l),
-                c: n(c.c),
-                v: c.v as f64 / 1e9,
-            })
-            .collect()
-    })
+    let px = |lot: i128| coin_price(sz, lot) as f64 / 1e9;
+    let cs = x.candles.get(id).map_or(&[][..], Vec::as_slice);
+    cs[cs.len().saturating_sub(n)..]
+        .iter()
+        .map(|c| CandleView {
+            t: c.t,
+            o: px(c.o),
+            h: px(c.h),
+            l: px(c.l),
+            c: px(c.c),
+            v: c.v as f64 / 1e9,
+        })
+        .collect()
 }
 
 /// Price at which equity meets a requirement of |size|·P / L (maintenance) or 0 (bankruptcy), ignoring the

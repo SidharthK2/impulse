@@ -22,7 +22,7 @@ mod views;
 mod ws;
 
 use api::App;
-use command::{Clock, Command, Genesis, Resume};
+use command::{Clock, Command, CommandKind, Genesis, Resume};
 use intake::IntakeClock;
 use logging::log;
 use std::path::PathBuf;

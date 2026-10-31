@@ -1,11 +1,12 @@
 // Websocket hub. Channels: markets, feed, leaderboard, book:<id>, trades:<id>, candles:<id>, account (after
 // {op:"auth"}). Every 500 ms, if the exchange changed, each client gets the channels whose payload changed since
-// the last send.
+// the last send. A payload is serialized once per tick and shared: `Utf8Bytes` clones are reference-counted, so
+// every client that gets it (and its record of what it last sent) holds the same buffer.
 
 use crate::api::{App, Node};
 use crate::exchange::Exchange;
 use crate::views;
-use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
+use axum::extract::ws::{Message, Utf8Bytes, WebSocket, WebSocketUpgrade};
 use axum::extract::State;
 use axum::response::Response;
 use futures_util::{SinkExt, StreamExt};
@@ -19,10 +20,18 @@ const QUEUE: usize = 64;
 
 struct Client {
     subs: Vec<String>, // in subscription order
-    account: Option<String>,
-    sent: HashMap<String, String>,
-    tx: mpsc::Sender<String>,
+    out: Outbox,
 }
+
+/// Where a client's messages go, and what it was last sent on each channel.
+struct Outbox {
+    account: Option<String>,
+    sent: HashMap<String, Utf8Bytes>,
+    tx: mpsc::Sender<Utf8Bytes>,
+}
+
+/// Payloads already built this tick, by channel (and viewer, for `account`). None: no such channel.
+type Cache = HashMap<String, Option<Utf8Bytes>>;
 
 #[derive(Default)]
 pub struct Hub {
@@ -32,17 +41,19 @@ pub struct Hub {
 }
 
 #[derive(Serialize)]
-struct Msg<'a, T: Serialize> {
+struct Msg<'a, T> {
     ch: &'a str,
     data: T,
 }
 
-fn text<T: Serialize>(ch: &str, data: T) -> String {
-    serde_json::to_string(&Msg { ch, data }).expect("view serializes")
+fn text<T: Serialize>(ch: &str, data: T) -> Utf8Bytes {
+    serde_json::to_string(&Msg { ch, data })
+        .expect("view serializes")
+        .into()
 }
 
 /// The channel's message, or None for a channel that doesn't exist.
-fn payload(x: &Exchange, ch: &str, account: Option<&str>) -> Option<String> {
+fn payload(x: &Exchange, ch: &str, account: Option<&str>) -> Option<Utf8Bytes> {
     match ch {
         "markets" => return Some(text(ch, views::markets_view(x))),
         "feed" => return Some(text(ch, x.risk.iter().rev().take(60).collect::<Vec<_>>())),
@@ -57,33 +68,32 @@ fn payload(x: &Exchange, ch: &str, account: Option<&str>) -> Option<String> {
     match kind {
         "book" => Some(text(ch, views::book_view(x, id, 20))),
         "trades" => Some(text(ch, views::trades_view(x, id, 40))),
-        "candles" => {
-            let cs = views::candles_view(x, id);
-            Some(text(ch, &cs[cs.len().saturating_sub(2)..]))
-        }
+        "candles" => Some(text(ch, views::recent_candles_view(x, id, 2))),
         _ => None,
     }
 }
 
-/// Send one channel if its payload changed. `cache` shares payloads across clients within a tick.
-fn push(x: &Exchange, c: &mut Client, ch: &str, cache: &mut HashMap<String, Option<String>>) {
-    if c.tx.capacity() == 0 {
-        return;
-    }
-    let key = if ch == "account" {
-        format!("account:{}", c.account.as_deref().unwrap_or("null"))
-    } else {
-        ch.to_string()
-    };
-    let msg = cache
-        .entry(key)
-        .or_insert_with(|| payload(x, ch, c.account.as_deref()));
-    let Some(msg) = msg else { return };
-    if c.sent.get(ch) == Some(msg) {
-        return;
-    }
-    if c.tx.try_send(msg.clone()).is_ok() {
-        c.sent.insert(ch.to_string(), msg.clone());
+impl Outbox {
+    /// Send one channel if its payload changed since this client's last send of it.
+    fn push(&mut self, x: &Exchange, ch: &str, cache: &mut Cache) {
+        if self.tx.capacity() == 0 {
+            return;
+        }
+        let key = if ch == "account" {
+            format!("account:{}", self.account.as_deref().unwrap_or("null"))
+        } else {
+            ch.to_string()
+        };
+        let msg = cache
+            .entry(key)
+            .or_insert_with(|| payload(x, ch, self.account.as_deref()));
+        let Some(msg) = msg else { return };
+        if self.sent.get(ch) == Some(msg) {
+            return;
+        }
+        if self.tx.try_send(msg.clone()).is_ok() {
+            self.sent.insert(ch.to_string(), msg.clone());
+        }
     }
 }
 
@@ -96,10 +106,10 @@ impl Hub {
             return;
         }
         hub.last_version = Some(x.version);
-        let mut cache = HashMap::new();
+        let mut cache = Cache::new();
         for c in hub.clients.values_mut() {
-            for ch in c.subs.clone() {
-                push(x, c, &ch, &mut cache);
+            for ch in &c.subs {
+                c.out.push(x, ch, &mut cache);
             }
         }
     }
@@ -119,24 +129,24 @@ impl Hub {
                 if !c.subs.iter().any(|s| s == ch) {
                     c.subs.push(ch.to_string());
                 }
-                push(x, c, ch, &mut HashMap::new());
+                c.out.push(x, ch, &mut Cache::new());
             }
             (Some("unsub"), Some(ch)) => {
                 c.subs.retain(|s| s != ch);
-                c.sent.remove(ch);
+                c.out.sent.remove(ch);
             }
             (Some("auth"), _) => {
-                c.account = msg["key"]
+                let out = &mut c.out;
+                out.account = msg["key"]
                     .as_str()
                     .filter(|k| !k.is_empty())
                     .and_then(|k| x.account_by_key(k))
                     .map(|a| a.id.clone());
-                c.sent.remove("account");
-                let _ = c.tx.try_send(
-                    json!({ "ch": "auth", "data": { "account": c.account } }).to_string(),
-                );
+                out.sent.remove("account");
+                let reply = json!({ "ch": "auth", "data": { "account": out.account } });
+                let _ = out.tx.try_send(reply.to_string().into());
                 if c.subs.iter().any(|s| s == "account") {
-                    push(x, c, "account", &mut HashMap::new());
+                    out.push(x, "account", &mut Cache::new());
                 }
             }
             _ => {}
@@ -150,25 +160,22 @@ pub async fn upgrade(State(app): State<App>, ws: WebSocketUpgrade) -> Response {
 
 async fn serve(socket: WebSocket, app: App) {
     let (mut sink, mut stream) = socket.split();
-    let (tx, mut rx) = mpsc::channel::<String>(QUEUE);
+    let (tx, mut rx) = mpsc::channel::<Utf8Bytes>(QUEUE);
     let id = {
         let mut node = app.lock();
         let hub = &mut node.hub;
         hub.next += 1;
-        hub.clients.insert(
-            hub.next,
-            Client {
-                subs: vec![],
-                account: None,
-                sent: HashMap::new(),
-                tx,
-            },
-        );
+        let out = Outbox {
+            account: None,
+            sent: HashMap::new(),
+            tx,
+        };
+        hub.clients.insert(hub.next, Client { subs: vec![], out });
         hub.next
     };
     let writer = tokio::spawn(async move {
         while let Some(text) = rx.recv().await {
-            if sink.send(Message::Text(text.into())).await.is_err() {
+            if sink.send(Message::Text(text)).await.is_err() {
                 break;
             }
         }

@@ -10,7 +10,7 @@
 // `command::apply`, with no feeds, bots or timers running.
 
 use crate::bots::Bots;
-use crate::command::{Apply, Command};
+use crate::command::{Apply, Command, CommandKind};
 use crate::exchange::{Exchange, XResult};
 use crate::intake::IntakeClock;
 use crate::rng::Rng;
@@ -23,6 +23,8 @@ use std::time::{Duration, Instant};
 /// Snapshot every this many commands, or this often, whichever comes first.
 const SNAPSHOT_EVERY: u64 = 1000;
 const SNAPSHOT_INTERVAL: Duration = Duration::from_secs(60);
+/// How many step timings the throughput report keeps.
+const MAX_TIMINGS: usize = 1_000_000;
 
 /// Everything behind the one lock: the deterministic core, the intake around it, and the websocket hub that
 /// reads the core's views. One lock, held for one synchronous step at a time.
@@ -55,7 +57,7 @@ impl Node {
     }
 
     /// Submit a command at the intake clock's time; its own reply comes back.
-    pub fn submit<C: Apply + Clone + Into<Command>>(&mut self, cmd: C) -> XResult<C::Reply> {
+    pub fn submit<C: Apply + CommandKind + Into<Command>>(&mut self, cmd: C) -> XResult<C::Reply> {
         let ts = self.intake.clock.now();
         self.core.submit(cmd, ts)
     }
@@ -72,8 +74,9 @@ pub struct Core {
     history: HistoryMarks,
     since_snapshot: u64,
     snapshot_at: Instant,
-    /// Time spent in submit (apply + journal), per step, for the throughput report.
-    pub timings: Vec<Duration>,
+    /// Microseconds spent in submit (apply + journal) per journaled step, for the throughput report. The first
+    /// million steps: 4 MB at most.
+    pub timings: Vec<u32>,
     /// With step verification on (VERIFY_STEPS=1, the test servers): the state hash after the last step.
     verified: Option<String>,
 }
@@ -130,12 +133,12 @@ impl Core {
     }
 
     /// The sequencer: every state change enters here, with the time intake gave it. See the module comment.
-    pub fn submit<C: Apply + Clone + Into<Command>>(
+    pub fn submit<C: Apply + CommandKind + Into<Command>>(
         &mut self,
         cmd: C,
         ts: i64,
     ) -> XResult<C::Reply> {
-        let journaled: Command = cmd.clone().into();
+        let kind = cmd.kind();
         let started = Instant::now();
         let prev = self.x.now;
         let version = self.x.version;
@@ -145,7 +148,7 @@ impl Core {
             }
         }
         self.x.now = ts.max(prev); // time never runs backwards in the journal
-        let r = run(&mut self.x, &cmd, journaled.kind());
+        let r = run(&mut self.x, &cmd, kind);
         if self.x.version == version {
             self.x.now = prev; // a refused command leaves no trace, not even in the clock
             if let Some(s) = &self.store {
@@ -153,7 +156,7 @@ impl Core {
             }
             if let Some(before) = &self.verified {
                 if *before != self.x.state_hash() {
-                    fail_stop(&format!("command {} changed the exchange without bumping its version, so the journal would miss it", journaled.kind()));
+                    fail_stop(&format!("command {kind} changed the exchange without bumping its version, so the journal would miss it"));
                 }
             }
             return r;
@@ -164,9 +167,10 @@ impl Core {
         self.seq += 1;
         if let Some(s) = &self.store {
             // The command and the history it produced, in one transaction.
+            let journaled: Command = cmd.into();
             let payload = serde_json::to_string(&journaled).expect("commands serialize");
             let written = s
-                .insert_command(self.seq, self.x.now, journaled.kind(), &payload)
+                .insert_command(self.seq, self.x.now, kind, &payload)
                 .and_then(|_| s.write_history(self.seq, &mut self.x, self.history))
                 .and_then(|marks| s.commit().map(|_| marks));
             match written {
@@ -174,8 +178,9 @@ impl Core {
                 Err(e) => fail_stop(&format!("journal write failed at seq {}: {e}", self.seq)),
             }
         }
-        if self.timings.len() < 1_000_000 {
-            self.timings.push(started.elapsed());
+        if self.timings.len() < MAX_TIMINGS {
+            let us = started.elapsed().as_micros();
+            self.timings.push(u32::try_from(us).unwrap_or(u32::MAX));
         }
         self.since_snapshot += 1;
         if self.since_snapshot >= SNAPSHOT_EVERY || self.snapshot_at.elapsed() >= SNAPSHOT_INTERVAL
@@ -185,12 +190,12 @@ impl Core {
         r
     }
 
-    /// Store a snapshot of the exchange at the current sequence number. A failure is logged, not fatal: the
-    /// journal alone is enough to recover.
     pub fn store(&self) -> Option<&Store> {
         self.store.as_ref()
     }
 
+    /// Store a snapshot of the exchange at the current sequence number. A failure is logged, not fatal: the
+    /// journal alone is enough to recover.
     pub fn snapshot(&mut self) {
         self.since_snapshot = 0;
         self.snapshot_at = Instant::now();

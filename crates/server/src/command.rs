@@ -46,6 +46,11 @@ pub struct Bar {
     pub c: i128,
 }
 
+/// A command's journal `kind` tag, known without converting it to a `Command` (so the sequencer needn't clone it).
+pub trait CommandKind {
+    fn kind(&self) -> &'static str;
+}
+
 /// Declares the commands' journal enum: one variant per command struct, with its `kind` tag.
 macro_rules! commands {
     ($($variant:ident = $kind:literal,)*) => {
@@ -55,14 +60,19 @@ macro_rules! commands {
             $(#[serde(rename = $kind)] $variant($variant),)*
         }
 
-        impl Command {
-            /// The journal's `kind` column.
-            pub fn kind(&self) -> &'static str {
+        impl CommandKind for Command {
+            fn kind(&self) -> &'static str {
                 match self {
                     $(Command::$variant(_) => $kind,)*
                 }
             }
         }
+
+        $(impl CommandKind for $variant {
+            fn kind(&self) -> &'static str {
+                $kind
+            }
+        })*
 
         /// Any command, its reply dropped: for replay, and for clients that submit a mix (the bots).
         impl Apply for Command {

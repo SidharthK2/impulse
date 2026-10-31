@@ -148,10 +148,8 @@ impl Store {
         payload: &str,
     ) -> Result<(), String> {
         self.conn
-            .execute(
-                "INSERT INTO commands (seq, ts, kind, payload) VALUES (?1, ?2, ?3, ?4)",
-                params![seq as i64, ts, kind, payload],
-            )
+            .prepare_cached("INSERT INTO commands (seq, ts, kind, payload) VALUES (?1, ?2, ?3, ?4)")
+            .and_then(|mut st| st.execute(params![seq as i64, ts, kind, payload]))
             .map_err(err)
             .map(|_| ())
     }
@@ -238,10 +236,12 @@ impl Store {
         let v = serde_json::to_value(crate::views::fill_view(x, f, None))
             .expect("fill view serializes");
         self.conn
-            .execute(
+            .prepare_cached(
                 "INSERT OR REPLACE INTO fills (id, seq, ts, market, kind, price, size, notional, side, taker, maker, taker_order, maker_order)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
-                params![
+            )
+            .and_then(|mut st| {
+                st.execute(params![
                     f.id as i64,
                     seq as i64,
                     f.time,
@@ -255,19 +255,22 @@ impl Store {
                     f.maker,
                     f.taker_order.map(|o| o as i64),
                     f.maker_order.map(|o| o as i64)
-                ],
-            )
+                ])
+            })
             .map_err(err)
             .map(|_| ())
     }
 
     fn insert_risk(&self, seq: u64, r: &RiskEvent) -> Result<(), String> {
         let kind = serde_json::to_value(r.kind).expect("kind serializes");
+        let accounts = serde_json::to_string(&r.accounts).expect("accounts serialize");
         self.conn
-            .execute(
+            .prepare_cached(
                 "INSERT OR REPLACE INTO risk_events (id, seq, ts, market, kind, accounts, text, amount, price) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-                params![r.id as i64, seq as i64, r.time, r.market, kind.as_str(), serde_json::to_string(&r.accounts).unwrap(), r.text, r.amount, r.price],
             )
+            .and_then(|mut st| {
+                st.execute(params![r.id as i64, seq as i64, r.time, r.market, kind.as_str(), accounts, r.text, r.amount, r.price])
+            })
             .map_err(err)
             .map(|_| ())
     }
@@ -282,10 +285,10 @@ impl Store {
         let c = &cs[i];
         let p = |lot: i128| fmt(coin_price(meta.sz_decimals, lot), 0);
         self.conn
-            .execute(
+            .prepare_cached(
                 "INSERT OR REPLACE INTO candles (market, t, o, h, l, c, v) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-                params![market, t, p(c.o), p(c.h), p(c.l), p(c.c), usd(c.v)],
             )
+            .and_then(|mut st| st.execute(params![market, t, p(c.o), p(c.h), p(c.l), p(c.c), usd(c.v)]))
             .map_err(err)
             .map(|_| ())
     }
@@ -309,10 +312,10 @@ impl Store {
         }
         for a in x.accounts.values().skip(marks.accounts) {
             self.conn
-                .execute(
+                .prepare_cached(
                     "INSERT OR REPLACE INTO accounts (id, created_at, bot) VALUES (?1, ?2, ?3)",
-                    params![a.id, a.created_at, a.bot as i64],
                 )
+                .and_then(|mut st| st.execute(params![a.id, a.created_at, i64::from(a.bot)]))
                 .map_err(err)?;
         }
         next.accounts = x.accounts.len();

@@ -296,13 +296,11 @@ pub(super) async fn status(State(app): State<App>, _: Admin) -> ApiResult {
 
 /// The journal's position and the time each journaled command took (apply + journal commit), since the start.
 pub(super) async fn stats(State(app): State<App>, _: Admin) -> ApiResult {
-    let node = app.lock();
-    let mut us: Vec<u64> = node
-        .core
-        .timings
-        .iter()
-        .map(|d| d.as_micros() as u64)
-        .collect();
+    // Copy under the lock, sort after releasing it: sorting up to a million timings would stall the exchange.
+    let (seq, mut us) = {
+        let node = app.lock();
+        (node.core.seq, node.core.timings.clone())
+    };
     us.sort_unstable();
     let at = |q: f64| {
         us.get(((us.len() as f64 - 1.0) * q).round() as usize)
@@ -312,9 +310,9 @@ pub(super) async fn stats(State(app): State<App>, _: Admin) -> ApiResult {
     let mean = if us.is_empty() {
         0
     } else {
-        us.iter().sum::<u64>() / us.len() as u64
+        us.iter().map(|&t| u64::from(t)).sum::<u64>() / us.len() as u64
     };
     ok(
-        json!({ "seq": node.core.seq, "n": us.len(), "p50_us": at(0.5), "p99_us": at(0.99), "max_us": us.last().copied().unwrap_or(0), "mean_us": mean }),
+        json!({ "seq": seq, "n": us.len(), "p50_us": at(0.5), "p99_us": at(0.99), "max_us": us.last().copied().unwrap_or(0), "mean_us": mean }),
     )
 }
