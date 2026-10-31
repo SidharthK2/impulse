@@ -21,9 +21,9 @@ fn session(key: &str) -> Exchange {
         x.deposit(id, d("1000")).unwrap();
     }
     x.now += 1000;
-    x.place_order("bob", OrderInput::limit("X", Side::Sell, d("100"), d("5")))
+    x.place_order("bob", &OrderInput::limit("X", Side::Sell, d("100"), d("5")))
         .unwrap();
-    x.place_order("alice", OrderInput::market("X", Side::Buy, d("2")))
+    x.place_order("alice", &OrderInput::market("X", Side::Buy, d("2")))
         .unwrap();
     x
 }

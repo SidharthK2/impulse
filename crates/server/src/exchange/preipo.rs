@@ -13,7 +13,7 @@ impl Exchange {
         Some(match (book.best(Side::Buy), book.best(Side::Sell)) {
             (Some(bid), Some(ask)) => {
                 let mut v = [bid.price, ask.price, last];
-                v.sort();
+                v.sort_unstable();
                 v[1]
             }
             _ => last,

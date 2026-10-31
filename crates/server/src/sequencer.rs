@@ -220,14 +220,11 @@ impl Core {
                 Some((mut x, saved_at)) => {
                     x.now = saved_at.unwrap_or(x.now);
                     // The read tables start with whatever history the snapshot carries.
-                    for c in x
+                    let candles = x
                         .candles
                         .iter()
-                        .flat_map(|(m, cs)| cs.iter().map(move |c| (m.clone(), c.t)))
-                        .collect::<Vec<_>>()
-                    {
-                        x.dirty_candles.insert(c);
-                    }
+                        .flat_map(|(m, cs)| cs.iter().map(move |c| (m.clone(), c.t)));
+                    x.dirty_candles.extend(candles);
                     store.begin()?;
                     store.write_history(0, &mut x, HistoryMarks::default())?;
                     store.commit()?;

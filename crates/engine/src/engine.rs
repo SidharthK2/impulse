@@ -68,7 +68,7 @@ pub enum AdlPolicy {
     Pnl,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MarketConfig {
     #[serde(with = "big")]
@@ -89,7 +89,7 @@ pub struct MarketConfig {
     pub taper_seconds: i128,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Position {
     pub account: String,
@@ -110,7 +110,7 @@ pub struct Position {
 }
 
 /// Mirror-style spot market: xy=k bonding curve on virtual reserves (USDC x, tokens y).
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Curve {
     #[serde(with = "big")]
@@ -125,7 +125,7 @@ pub struct Curve {
     pub fee_bps: i128,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OraclePoint {
     #[serde(with = "big")]
     pub t: i128,
@@ -134,7 +134,7 @@ pub struct OraclePoint {
 }
 
 /// Perp oracle read from the market's own curve: instant (window 0) or a time-weighted average.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CurveOracle {
     #[serde(with = "big")]
     pub window: i128,
@@ -143,7 +143,7 @@ pub struct CurveOracle {
 
 /// Creator-coin launch: a snipe window before the curve opens. Bids are USDC from the wallet (net of the spot fee)
 /// and can't be cancelled. At the open, the whole book of bids buys from the curve at one price (see on_open).
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Launch {
     pub open: bool,
     /// net USDC per account, waiting for the open
@@ -189,7 +189,7 @@ pub struct Market {
     pub positions: BTreeMap<String, Position>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Account {
     pub id: String,
     #[serde(with = "big")]
@@ -218,13 +218,13 @@ pub struct State {
     pub markets: BTreeMap<String, Market>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CurveSpec {
     pub usdc: Option<Num>,
     pub tokens: Option<Num>,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MarketEvent {
     pub id: String,
@@ -327,7 +327,7 @@ pub enum Event {
     },
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LaunchFill {
     pub account: String,
     /// net bid
@@ -337,7 +337,7 @@ pub struct LaunchFill {
     pub tokens: i128,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ForcedClose {
     pub account: String,
     #[serde(with = "big")]
@@ -346,7 +346,7 @@ pub struct ForcedClose {
     pub price: i128,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum Effect {
     Liquidation {
@@ -458,7 +458,7 @@ impl Effect {
 
 /// Why a transition didn't commit. `Rejected` is an ordinary refusal (the TS engine's `Rejected`); `Fatal` is
 /// what the TS engine throws as a plain Error: malformed input or a broken invariant.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ApplyError {
     Rejected(String),
     Fatal(String),
@@ -694,7 +694,7 @@ fn get_position(m: &Market, account: &str) -> R<Position> {
 fn parse_price(m: &Market, p: &str) -> R<i128> {
     let v = fixed(p)?;
     if v < m.config.lower || m.config.upper.is_some_and(|u| v > u) {
-        let hi = m.config.upper.map_or("∞".to_string(), fmt_price);
+        let hi = m.config.upper.map_or_else(|| "∞".to_string(), fmt_price);
         return rej(format!(
             "price {p} outside [{}, {hi}] for {}",
             fmt_price(m.config.lower),
@@ -1279,7 +1279,7 @@ fn resolve_distress(m: &mut Market) -> R<Vec<Effect>> {
     }
 }
 
-fn on_book(s: &mut State, market: &str, mid: &Option<Num>) -> R<()> {
+fn on_book(s: &mut State, market: &str, mid: Option<&Num>) -> R<()> {
     let m = get_market(&mut s.markets, market)?;
     if m.status != Status::Open {
         return rej(format!("{} is resolved", m.id));
@@ -1765,7 +1765,7 @@ pub fn apply(state: &State, event: &Event) -> Result<(State, Vec<Effect>), Apply
             amount,
         } => on_snipe(&mut s, account, market, amount).map(|_| vec![]),
         Event::Open { market } => on_open(&mut s, market),
-        Event::Book { market, mid } => on_book(&mut s, market, mid).map(|_| vec![]),
+        Event::Book { market, mid } => on_book(&mut s, market, mid.as_ref()).map(|_| vec![]),
     }?;
     let errs = check_invariants(&s);
     if !errs.is_empty() {

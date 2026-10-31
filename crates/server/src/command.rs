@@ -243,7 +243,7 @@ pub struct PlaceOrder {
 impl Apply for PlaceOrder {
     type Reply = OrderResult;
     fn apply(&self, x: &mut Exchange) -> XResult<OrderResult> {
-        x.place_order(&self.account, self.order.clone())
+        x.place_order(&self.account, &self.order)
     }
 }
 
@@ -269,7 +269,7 @@ impl Apply for ClosePosition {
             slippage: Some(self.slippage),
             ..OrderInput::market(&self.market, side, coins_dec(sz, size.abs()))
         };
-        x.place_order(&self.account, order)
+        x.place_order(&self.account, &order)
     }
 }
 

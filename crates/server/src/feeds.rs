@@ -557,10 +557,9 @@ async fn backfill(app: App, only: Option<Vec<String>>) {
         };
         match bars {
             Ok(bars) => {
-                if let Err(e) = app.lock().submit(History {
-                    market: id.clone(),
-                    bars,
-                }) {
+                let market = id.clone();
+                let result = app.lock().submit(History { market, bars });
+                if let Err(e) = result {
                     log(&format!("history for {id}: {}", e.message()));
                 }
             }

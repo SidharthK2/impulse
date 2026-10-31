@@ -233,11 +233,7 @@ impl Bots {
             return (vec![], None);
         }
         // Mild momentum: follow the last few minutes of the chart more often than not.
-        let cs = x
-            .candles
-            .get(id.as_str())
-            .map(|c| c.as_slice())
-            .unwrap_or(&[]);
+        let cs = x.candles.get(id.as_str()).map(Vec::as_slice).unwrap_or(&[]);
         let recent = &cs[cs.len().saturating_sub(5)..];
         let drift = if recent.len() > 1 {
             recent[recent.len() - 1].c - recent[0].o
@@ -427,5 +423,5 @@ fn place(x: &mut Exchange, id: &str, side: Side, price: f64, notional: f64, leve
         leverage: Some(leverage),
         ..OrderInput::limit(id, side, Dec::from_nano(price_nano), size)
     };
-    let _ = x.place_order(crate::bots::MM, input); // crossed a user's resting order, or margin: skip this level
+    let _ = x.place_order(crate::bots::MM, &input); // crossed a user's resting order, or margin: skip this level
 }

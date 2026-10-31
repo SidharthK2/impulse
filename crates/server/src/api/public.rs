@@ -62,15 +62,15 @@ pub(super) async fn feed(
             .risk_page(market.map(String::as_str), before, limit)
             .map_err(ExError::Internal)?);
     }
-    let mut rows: Vec<_> = node
+    let rows: Vec<_> = node
         .core
         .x
         .risk
         .iter()
+        .rev()
         .filter(|r| market.is_none_or(|m| *m == r.market))
+        .take(200)
         .collect();
-    rows = rows.split_off(rows.len().saturating_sub(200));
-    rows.reverse();
     ok(rows)
 }
 

@@ -17,23 +17,26 @@ impl Exchange {
             .filter_map(move |(id, r)| self.books.get(&r.market)?.orders().find(|o| o.id == *id))
     }
 
-    pub fn place_order(&mut self, account: &str, input: OrderInput) -> XResult<OrderResult> {
+    pub fn place_order(&mut self, account: &str, input: &OrderInput) -> XResult<OrderResult> {
         self.account(account)?;
-        let meta = self.market(&input.market)?.clone();
-        let m = &self.state.markets[&meta.id];
+        // Only these three of the market's metadata are needed, and self is borrowed mutably below.
+        let (id, sz_decimals, tick) = {
+            let meta = self.market(&input.market)?;
+            (meta.id.clone(), meta.sz_decimals, meta.tick)
+        };
+        let m = &self.state.markets[&id];
         if m.status != Status::Open {
-            return Err(ExError::bad(format!("{} is resolved", meta.id)));
+            return Err(ExError::bad(format!("{id} is resolved")));
         }
         let Some(mark) = m.mark else {
-            return Err(ExError::bad(format!("{} has no price yet", meta.id)));
+            return Err(ExError::bad(format!("{id} has no price yet")));
         };
         if m.launch.as_ref().is_some_and(|l| !l.open) {
             return Err(ExError::bad(format!(
-                "{} is in its snipe window: trading starts at the open",
-                meta.id
+                "{id} is in its snipe window: trading starts at the open"
             )));
         }
-        let mut size = lots_from_coins(meta.sz_decimals, input.size)
+        let mut size = lots_from_coins(sz_decimals, input.size)
             .map_err(|e| ExError::bad(format!("size: {e}")))?;
         if size <= 0 {
             return Err(ExError::bad("size must be positive"));
@@ -47,8 +50,7 @@ impl Exchange {
         };
         if leverage < 1 || leverage > max_lev {
             return Err(ExError::bad(format!(
-                "leverage must be 1–{max_lev}× in {} right now",
-                meta.id
+                "leverage must be 1–{max_lev}× in {id} right now"
             )));
         }
 
@@ -57,7 +59,7 @@ impl Exchange {
             OrderType::Market => {
                 let slip =
                     (input.slippage.unwrap_or(0.05).clamp(0.001, 0.5) * 10_000.0).round() as i128;
-                let band = (mark * slip / 10_000).max((meta.tick / pow10(meta.sz_decimals)) * 5);
+                let band = (mark * slip / 10_000).max((tick / pow10(sz_decimals)) * 5);
                 let mut price = if input.side == Side::Buy {
                     mark + band
                 } else {
@@ -78,13 +80,13 @@ impl Exchange {
                 if coin <= 0 {
                     return Err(ExError::bad("price must be positive"));
                 }
-                if coin % meta.tick != 0 {
+                if coin % tick != 0 {
                     return Err(ExError::bad(format!(
                         "price must be a multiple of the tick {}",
-                        fmt(meta.tick, 0)
+                        fmt(tick, 0)
                     )));
                 }
-                let price = lot_price(meta.sz_decimals, coin);
+                let price = lot_price(sz_decimals, coin);
                 if price < lower || upper.is_some_and(|u| price > u) {
                     return Err(ExError::bad("price outside the market's bounds"));
                 }
@@ -93,7 +95,7 @@ impl Exchange {
         };
 
         let dir = input.side.dir();
-        let cur = self.size_of(&meta.id, account);
+        let cur = self.size_of(&id, account);
         if input.reduce_only {
             if cur == 0 || cur.signum() == dir {
                 return Err(ExError::bad(
@@ -102,9 +104,9 @@ impl Exchange {
             }
             size = size.min(cur.abs());
         } else {
-            self.check_affordable(&meta.id, account, dir * size, price, leverage)?;
+            self.check_affordable(&id, account, dir * size, price, leverage)?;
         }
-        if tif == Tif::Alo && self.books[&meta.id].crosses(input.side, price) {
+        if tif == Tif::Alo && self.books[&id].crosses(input.side, price) {
             return Err(ExError::bad("post-only order would take liquidity"));
         }
         if tif != Tif::Ioc && self.orders_of(account, None).count() >= MAX_OPEN_ORDERS {
@@ -116,7 +118,7 @@ impl Exchange {
         let mut order = Order {
             id: self.bump_id(),
             account: account.into(),
-            market: meta.id.clone(),
+            market: id.clone(),
             side: input.side,
             price,
             size,
@@ -133,14 +135,11 @@ impl Exchange {
             self.orders.insert(
                 order.id,
                 Resting {
-                    market: meta.id.clone(),
+                    market: id.clone(),
                     account: account.into(),
                 },
             );
-            self.books
-                .get_mut(&meta.id)
-                .expect("book")
-                .add(order.clone());
+            self.books.get_mut(&id).expect("book").add(order.clone());
             if order.filled > 0 {
                 OrderStatus::Partial
             } else {
@@ -152,7 +151,7 @@ impl Exchange {
             OrderStatus::Cancelled
         };
         self.version += 1;
-        self.reprice(&meta.id)?;
+        self.reprice(&id)?;
         let reason = stop.or_else(|| {
             (status == OrderStatus::Cancelled)
                 .then(|| "no liquidity at or inside the limit price".into())

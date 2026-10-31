@@ -2,7 +2,7 @@
 
 use super::*;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExError {
     /// A refusal the caller can see: HTTP status and message.
     Http(u16, String),

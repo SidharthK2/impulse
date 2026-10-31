@@ -72,7 +72,7 @@ pub fn spawn(data_dir: PathBuf, env: &[(&str, &str)]) -> Server {
         if let Some(i) = line.find("listening on http://localhost:") {
             let port: String = line[i + "listening on http://localhost:".len()..]
                 .chars()
-                .take_while(|c| c.is_ascii_digit())
+                .take_while(char::is_ascii_digit)
                 .collect();
             break format!("http://127.0.0.1:{port}");
         }
