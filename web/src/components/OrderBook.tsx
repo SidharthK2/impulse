@@ -23,11 +23,11 @@ function Side({
   max: number;
   onPick: (p: string) => void;
 }) {
-  let cum = 0;
-  const rows = levels.slice(0, DEPTH).map((l) => {
-    cum += Number(l.size);
-    return { ...l, cum };
-  });
+  // Each level with the running total size up to and including it.
+  const rows = levels.slice(0, DEPTH).reduce<(Level & { cum: number })[]>((acc, l) => {
+    acc.push({ ...l, cum: (acc.at(-1)?.cum ?? 0) + Number(l.size) });
+    return acc;
+  }, []);
   return (
     <div className={`rows ${kind}`}>
       {rows.map((l) => (
@@ -88,7 +88,11 @@ export function BookPanel({ market, onPick }: { market: MarketView; onPick: (p: 
           {market.base}
         </span>
       </div>
-      {tab === "book" ? <OrderBook market={market} onPick={onPick} /> : <Trades market={market} />}
+      {tab === "book" ? (
+        <OrderBook key={market.id} market={market} onPick={onPick} />
+      ) : (
+        <Trades market={market} />
+      )}
     </div>
   );
 }
@@ -104,16 +108,14 @@ export function OrderBook({ market, onPick }: { market: MarketView; onPick: (p: 
   const mid = (bestAsk + bestBid) / 2;
 
   // Asks read upward from the spread, so their list starts scrolled to the bottom and stays there as the book
-  // updates, unless the user has scrolled up to look at higher asks.
+  // updates (after every render), unless the user has scrolled up to look at higher asks. The book is keyed by
+  // market, so switching markets starts pinned again.
   const asksBox = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
   useLayoutEffect(() => {
     const el = asksBox.current;
     if (el && pinned.current) el.scrollTop = el.scrollHeight;
-  }, [asks]);
-  useLayoutEffect(() => {
-    pinned.current = true;
-  }, [market.id]);
+  });
 
   return (
     <div className="book">

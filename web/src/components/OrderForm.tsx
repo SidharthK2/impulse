@@ -163,6 +163,7 @@ export function OrderForm({
   // The market moved under the form (graduation, a new tick, a position opened or closed): check again. Only
   // fields the user has touched (validateAllFields would mark every field touched and flag empty ones).
   const hasPosition = position?.side ?? "none";
+  const [lowerBound, upperBound] = market.bounds;
   useEffect(() => {
     for (const name of ["price", "size", "leverage", "reduceOnly"] as const)
       void form.getFieldInfo(name).instance?.validate("change");
@@ -170,8 +171,8 @@ export function OrderForm({
     form,
     market.maxLeverage,
     market.tick,
-    market.bounds[0],
-    market.bounds[1],
+    lowerBound,
+    upperBound,
     market.szDecimals,
     hasPosition,
   ]);

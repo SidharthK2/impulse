@@ -1,6 +1,7 @@
 import { type AnyFieldApi, useForm, useSelector } from "@tanstack/react-form";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useState } from "react";
 import { api, getAdminToken, setAdminToken } from "../api";
 import {
   FieldError,
@@ -12,7 +13,7 @@ import {
 } from "../components/form";
 import { useToast } from "../components/ui";
 import { num, price, toInput, usd } from "../format";
-import { act, useMarkets } from "../queries";
+import { act, NO_MARKETS, useMarkets } from "../queries";
 import type { MarketView } from "../types";
 
 // ---------- admin ----------
@@ -36,21 +37,20 @@ function holdError(v: string) {
 }
 
 export function AdminPage() {
-  const markets = useMarkets() ?? [];
+  const markets = useMarkets() ?? NO_MARKETS;
   const toast = useToast();
-  const [status, setStatus] = useState<Status>(null);
-
-  const refresh = async () => {
-    if (!getAdminToken()) return setStatus(null);
-    try {
-      setStatus(await api("GET", "/api/admin/status", undefined, { admin: true }));
-    } catch {
-      setStatus(null);
-    }
-  };
-  useEffect(() => {
-    void refresh();
-  }, []);
+  // Null without a token or when the token is refused. Fetched fresh each time the page opens.
+  const statusQuery = useQuery({
+    queryKey: ["admin", "status"],
+    queryFn: async (): Promise<Status> => {
+      if (!getAdminToken()) return null;
+      return api<Status>("GET", "/api/admin/status", undefined, { admin: true }).catch(() => null);
+    },
+    staleTime: 0,
+    retry: false,
+  });
+  const status = statusQuery.data ?? null;
+  const refresh = () => statusQuery.refetch();
 
   // One-click buttons (gaps, release, resolve, bots) aren't forms; they report through toasts.
   const call = async (path: string, body: Record<string, unknown>, ok: string) => {
@@ -769,6 +769,7 @@ function DemoControls({ markets }: { markets: MarketView[] }) {
   async function run<T>(title: string, path: string, body: Record<string, unknown>): Promise<T> {
     const r = await adminPost<T>(path, body);
     const effects = (r as { effects?: string[] } | null)?.effects;
+    // oxlint-disable-next-line react/purity -- run() is only called from submit handlers, never during render
     setLast({ title, lines: Array.isArray(effects) ? effects : [], time: Date.now() });
     toast(title, "up");
     return r;

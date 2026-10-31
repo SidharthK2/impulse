@@ -1,7 +1,7 @@
 // Creator coin launch: the snipe window before the open, and the launch facts after it.
 
 import { useForm, useSelector } from "@tanstack/react-form";
-import { useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { ago, compact, countdown, num, price, usd } from "../format";
 import { useNow } from "../hooks";
 import { act } from "../queries";
@@ -27,8 +27,12 @@ export function SnipePanel({
   const now = useNow(250);
   const server = useServerError();
   const s = market.snipe!;
-  const live = useRef({ opensAt: s.opensAt, wallet: account?.wallet ?? null });
-  live.current = { opensAt: s.opensAt, wallet: account?.wallet ?? null };
+  // The latest values, for the submit handler.
+  const latest = { opensAt: s.opensAt, wallet: account?.wallet ?? null };
+  const live = useRef(latest);
+  useLayoutEffect(() => {
+    live.current = latest;
+  });
   const form = useForm({
     defaultValues: { usdc: "" },
     onSubmit: async ({ value, formApi }) => {

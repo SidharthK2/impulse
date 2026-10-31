@@ -1,12 +1,12 @@
 import { AccountPanel } from "../components/AccountPanel";
 import { useMemo } from "react";
 import { num, tone, usd } from "../format";
-import { useAccount, useMarkets } from "../queries";
+import { useAccount, NO_MARKETS, useMarkets } from "../queries";
 import { useCanTrade, useUi } from "../store";
 
 export function PortfolioPage() {
   const account = useAccount();
-  const markets = useMarkets() ?? [];
+  const markets = useMarkets() ?? NO_MARKETS;
   const signedIn = useCanTrade();
   const open = useUi((s) => s.open);
   const byId = useMemo(() => Object.fromEntries(markets.map((m) => [m.id, m])), [markets]);

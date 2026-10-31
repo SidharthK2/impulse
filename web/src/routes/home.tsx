@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useForm, useSelector } from "@tanstack/react-form";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { change24h } from "../components/Market";
 import { PulseField } from "../components/PulseField";
 import { Sparkline } from "../components/Sparkline";
@@ -10,7 +10,7 @@ import { useToast } from "../components/ui";
 import { incidents } from "../components/WhoPaid";
 import { ago, countdown, num, pct, price, tone, usd } from "../format";
 import { useNow } from "../hooks";
-import { act, useCandles, useFeed, useLeaderboard, useMarkets } from "../queries";
+import { act, useCandles, useFeed, useLeaderboard, NO_MARKETS, useMarkets } from "../queries";
 import { useCanTrade, usePrefs, useUi } from "../store";
 import type { MarketView } from "../types";
 
@@ -40,7 +40,7 @@ const KIND: Record<MarketView["kind"], string> = {
 };
 
 export function HomePage() {
-  const markets = useMarkets() ?? [];
+  const markets = useMarkets() ?? NO_MARKETS;
   const now = useNow(1000);
   const [category, setCategory] = useState<Category>("all");
   const [query, setQuery] = useState("");
@@ -53,15 +53,11 @@ export function HomePage() {
 
   // Switching category, sort or search swaps the table under the sticky toolbar. If you'd scrolled past the
   // toolbar, keep it pinned and start the new rows right under it, instead of letting a shorter page clamp the
-  // scroll and jump. Runs before paint; .home-results is at least a viewport tall, so the target is reachable.
+  // scroll and jump. Called from those handlers; React renders clicks and typing before the next paint, and
+  // .home-results is at least a viewport tall, so the target is reachable.
   const toolbarRef = useRef<HTMLDivElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
-  const firstRender = useRef(true);
-  useLayoutEffect(() => {
-    if (firstRender.current) {
-      firstRender.current = false;
-      return;
-    }
+  const keepToolbarPinned = () => {
     const bar = toolbarRef.current;
     const results = resultsRef.current;
     if (!bar || !results) return;
@@ -69,7 +65,7 @@ export function HomePage() {
     const target =
       results.getBoundingClientRect().top + window.scrollY - bar.offsetHeight - stuckAt - 12;
     if (window.scrollY > target) window.scrollTo({ top: target });
-  }, [category, sort, q]);
+  };
 
   const matches = (m: MarketView) => !q || `${m.id} ${m.name} ${m.base}`.toLowerCase().includes(q);
   const sorted = (xs: MarketView[]) => xs.filter(matches).toSorted(order(now, sort.key, sort.desc));
@@ -82,8 +78,10 @@ export function HomePage() {
         })).filter((g) => g.items.length > 0)
       : [{ title: "", items: sorted(markets.filter((m) => cat.kinds.includes(m.kind))) }];
   const shown = groups.reduce((n, g) => n + g.items.length, 0);
-  const sortBy = (key: SortKey) =>
+  const sortBy = (key: SortKey) => {
+    keepToolbarPinned();
     setSort((s) => (s.key === key ? { key, desc: !s.desc } : { key, desc: key !== "name" }));
+  };
 
   return (
     <div className="page wide home">
@@ -104,7 +102,10 @@ export function HomePage() {
                     role="tab"
                     aria-selected={category === c.id}
                     className={category === c.id ? "on" : ""}
-                    onClick={() => setCategory(c.id)}
+                    onClick={() => {
+                      keepToolbarPinned();
+                      setCategory(c.id);
+                    }}
                   >
                     {c.label}
                     <span className="count">{n}</span>
@@ -118,7 +119,10 @@ export function HomePage() {
               type="search"
               placeholder="Filter"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => {
+                keepToolbarPinned();
+                setQuery(e.target.value);
+              }}
               aria-label="Filter markets"
             />
           </div>

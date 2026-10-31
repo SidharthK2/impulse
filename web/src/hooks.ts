@@ -1,21 +1,21 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { live } from "./api";
 
+const subscribeToStatus = (onChange: () => void) => {
+  const off = live.onStatus(onChange);
+  return () => {
+    off();
+  };
+};
+
+/** Whether the websocket is connected, kept current as it drops and reconnects. */
 export function useConnected(): boolean {
-  const [c, setC] = useState(live.connected);
-  useEffect(() => {
-    const off = live.onStatus(setC);
-    setC(live.connected); // the socket may have opened between render and subscribe
-    return () => {
-      off();
-    };
-  }, []);
-  return c;
+  return useSyncExternalStore(subscribeToStatus, () => live.connected);
 }
 
 /** Re-render every `ms` (for countdowns and "x seconds ago"). */
 export function useNow(ms = 1000): number {
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), ms);
     return () => clearInterval(t);

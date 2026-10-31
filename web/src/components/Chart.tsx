@@ -1,7 +1,7 @@
 // Mark price chart on a 2D canvas: an animated line and area, a crosshair, the viewer's entry and liquidation
 // lines, and markers for the risk events that carry a price (who paid, on hover).
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { num, price as fmtPrice } from "../format";
 import { useCandles, useFeed } from "../queries";
 import { type Range, usePrefs } from "../store";
@@ -135,7 +135,7 @@ export function Chart({ market, position }: { market: MarketView; position?: Pos
   const candles = useCandles(market.id);
   const feed = useFeed();
   const samples = useRef<Pt[]>([]);
-  const [hover, setHover] = useState<{ marker: Marker; left: number; top: number } | null>(null);
+  const [hover, setHover] = useState<Hover | null>(null);
 
   const events = useMemo(
     () =>
@@ -143,10 +143,7 @@ export function Chart({ market, position }: { market: MarketView; position?: Pos
     [feed, market.id],
   );
 
-  // Live marks between candles, for the short ranges.
-  useEffect(() => {
-    samples.current = [];
-  }, [market.id]);
+  // Live marks between candles, for the short ranges. (The chart is keyed by market, so these start empty.)
   useEffect(() => {
     const p = num(market.mark);
     if (!Number.isFinite(p)) return;
@@ -157,29 +154,21 @@ export function Chart({ market, position }: { market: MarketView; position?: Pos
     while (s.length && s[0]!.t < now - 15 * 60_000) s.shift();
   }, [market.mark]);
 
-  // Everything the frame loop reads, refreshed on every render without restarting the loop.
-  const input = useRef({
+  // Everything the frame loop reads, refreshed after every render without restarting the loop.
+  const latest = {
     candles,
     events,
     range,
-    decimals: market.priceDecimals,
-    entry: num(position?.entry),
-    liq: num(position?.liquidationPrice),
-    mark: num(market.mark),
-  });
-  input.current = {
-    candles,
-    events,
-    range,
+    theme,
     decimals: market.priceDecimals,
     entry: num(position?.entry),
     liq: num(position?.liquidationPrice),
     mark: num(market.mark),
   };
-  const colors = useRef<Colors | null>(null);
-  useEffect(() => {
-    colors.current = readColors();
-  }, [theme]);
+  const input = useRef(latest);
+  useLayoutEffect(() => {
+    input.current = latest;
+  });
 
   useEffect(() => {
     const el = canvas.current!;
@@ -212,14 +201,21 @@ export function Chart({ market, position }: { market: MarketView; position?: Pos
     let hi = NaN;
     let last = performance.now();
     let raf = 0;
+    // The theme's colours, re-read when the theme changes.
+    let colors = readColors();
+    let colorsTheme = input.current.theme;
 
     const frame = (tf: number) => {
       raf = requestAnimationFrame(frame);
       const dt = Math.min(100, tf - last);
       last = tf;
       const ease = (ms: number) => (reduce ? 1 : 1 - Math.exp(-dt / ms));
-      const c = colors.current ?? readColors();
       const inp = input.current;
+      if (inp.theme !== colorsTheme) {
+        colors = readColors();
+        colorsTheme = inp.theme;
+      }
+      const c = colors;
       const now = Date.now();
       const target = RANGES[inp.range];
       span = Math.exp(Math.log(span) + (Math.log(target) - Math.log(span)) * ease(140));
@@ -505,7 +501,7 @@ export function Chart({ market, position }: { market: MarketView; position?: Pos
       const m = pick(mouse.x, mouse.y);
       if (m?.incident.key !== hovered?.incident.key) {
         hovered = m;
-        setHover(m ? { marker: m, left: m.x, top: m.y } : null);
+        setHover(m ? { marker: m, left: m.x, top: m.y, boxWidth: w, boxHeight: h } : null);
       }
       el.style.cursor = m ? "pointer" : "crosshair";
     };
@@ -524,7 +520,7 @@ export function Chart({ market, position }: { market: MarketView; position?: Pos
       el.removeEventListener("pointerdown", move);
       el.removeEventListener("pointerleave", leave);
     };
-  }, [market.id]);
+  }, []);
 
   return (
     <div className="panel chart-panel">
@@ -547,24 +543,19 @@ export function Chart({ market, position }: { market: MarketView; position?: Pos
       </div>
       <div className="chart" ref={wrap}>
         <canvas ref={canvas} aria-label={`${market.id} mark price chart`} role="img" />
-        {hover && <HoverCard hover={hover} market={market} box={wrap.current} />}
+        {hover && <HoverCard hover={hover} market={market} />}
       </div>
     </div>
   );
 }
 
-function HoverCard({
-  hover,
-  market,
-  box,
-}: {
-  hover: { marker: Marker; left: number; top: number };
-  market: MarketView;
-  box: HTMLDivElement | null;
-}) {
+/** The marker under the pointer, where it is, and the chart's size to keep the card inside it. */
+type Hover = { marker: Marker; left: number; top: number; boxWidth: number; boxHeight: number };
+
+function HoverCard({ hover, market }: { hover: Hover; market: MarketView }) {
   const W = 280;
-  const bw = box?.clientWidth ?? 600;
-  const bh = box?.clientHeight ?? 400;
+  const bw = hover.boxWidth;
+  const bh = hover.boxHeight;
   const left = hover.left + 14 + W > bw ? Math.max(4, hover.left - 14 - W) : hover.left + 14;
   const top = Math.min(Math.max(4, hover.top - 40), Math.max(4, bh - 200));
   const i = hover.marker.incident;

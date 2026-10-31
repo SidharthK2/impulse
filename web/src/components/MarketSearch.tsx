@@ -3,7 +3,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { pct, price, tone } from "../format";
-import { useMarkets } from "../queries";
+import { NO_MARKETS, useMarkets } from "../queries";
 import { useUi } from "../store";
 import type { MarketView } from "../types";
 import { SearchIcon } from "./icons";
@@ -47,7 +47,7 @@ export function MarketSearch() {
 }
 
 function Palette({ onClose }: { onClose: () => void }) {
-  const markets = useMarkets() ?? [];
+  const markets = useMarkets() ?? NO_MARKETS;
   const navigate = useNavigate();
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(0);
@@ -65,7 +65,6 @@ function Palette({ onClose }: { onClose: () => void }) {
       )
       .slice(0, 50);
   }, [markets, q]);
-  useEffect(() => setSel(0), [q]);
   useEffect(() => {
     list.current?.querySelector(`[data-i="${sel}"]`)?.scrollIntoView({ block: "nearest" });
   }, [sel]);
@@ -89,7 +88,10 @@ function Palette({ onClose }: { onClose: () => void }) {
             autoFocus
             placeholder="Search markets by name or symbol"
             value={q}
-            onChange={(e) => setQ(e.target.value)}
+            onChange={(e) => {
+              setQ(e.target.value);
+              setSel(0);
+            }}
             aria-label="Search markets"
             aria-controls="palette-results"
             aria-activedescendant={results[sel] ? `pal-${sel}` : undefined}

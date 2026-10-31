@@ -152,6 +152,8 @@ export function PulseField({ className = "" }: { className?: string }) {
       ro.disconnect();
       io.disconnect();
     };
+    // The ink colours read at the top come from the theme's CSS variables: restart to pick up new ones.
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies
   }, [theme]);
 
   return <canvas ref={canvas} className={`pulse-field ${className}`} aria-hidden="true" />;

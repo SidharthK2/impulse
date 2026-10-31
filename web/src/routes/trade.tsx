@@ -9,14 +9,14 @@ import { PreIpoPanel } from "../components/PreIpo";
 import { Sheet } from "../components/Sheet";
 import { LaunchPanel, SnipePanel } from "../components/Snipe";
 import { useMediaQuery } from "../hooks";
-import { useAccount, useMarkets } from "../queries";
+import { useAccount, NO_MARKETS, useMarkets } from "../queries";
 import type { AccountView, MarketView, PositionView } from "../types";
 import { useCanTrade, usePrefs, useUi } from "../store";
 
 export function TradePage() {
   const { market: id } = useParams({ from: "/trade/$market" });
   const navigate = useNavigate();
-  const markets = useMarkets() ?? [];
+  const markets = useMarkets() ?? NO_MARKETS;
   const account = useAccount();
   const signedIn = useCanTrade();
   const openModal = useUi((s) => s.open);
@@ -26,12 +26,14 @@ export function TradePage() {
   const byId = useMemo(() => Object.fromEntries(markets.map((m) => [m.id, m])), [markets]);
   const market = byId[id];
 
+  const marketId = market?.id;
+  const mark = market?.mark;
   useEffect(() => {
-    if (market) setLastMarket(market.id);
-  }, [market?.id, setLastMarket]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (marketId) setLastMarket(marketId);
+  }, [marketId, setLastMarket]);
   useEffect(() => {
-    if (market) document.title = `${market.mark ?? ""} ${market.id} · Impulse`;
-  }, [market?.mark, market?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (marketId) document.title = `${mark ?? ""} ${marketId} · Impulse`;
+  }, [mark, marketId]);
 
   if (!market)
     return <div className="empty">No market called {id}. Pick one from the markets page.</div>;
@@ -64,7 +66,7 @@ export function TradePage() {
           onSignUp={() => openModal("signup")}
         />
       ) : (
-        <Chart market={market} position={position} />
+        <Chart key={market.id} market={market} position={position} />
       )}
       <div className="book-col">
         {sniping ? (
@@ -152,7 +154,7 @@ function PhoneTrade(props: {
           (sniping ? (
             <SnipePanel market={market} account={account} canTrade={signedIn} onSignUp={onSignUp} />
           ) : (
-            <Chart market={market} position={position} />
+            <Chart key={market.id} market={market} position={position} />
           ))}
         {pane === "book" &&
           (sniping ? (
@@ -161,6 +163,7 @@ function PhoneTrade(props: {
             </div>
           ) : (
             <OrderBook
+              key={market.id}
               market={market}
               onPick={(p) => {
                 setPicked({ price: p, n: Date.now() });

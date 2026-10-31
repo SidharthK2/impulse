@@ -58,6 +58,9 @@ function useLive<T>(
 
 const same = <T>(x: unknown) => x as T;
 
+/** A stable empty list for while markets load, so memos that depend on it don't recompute every render. */
+export const NO_MARKETS: MarketView[] = [];
+
 export function useMarkets(): MarketView[] | undefined {
   const real = useLive(["markets"], "markets", "/api/markets", normalizeMarkets).data;
   const fx = useFixtureWorld((s) => s.snap?.markets);
@@ -78,6 +81,9 @@ export function useFeed(): RiskEvent[] {
   }, [real, fx]);
 }
 
+/** When the page loaded: the creation time of the stand-in account fixtures mode shows before you sign up. */
+const FIXTURE_ACCOUNT_CREATED = Date.now();
+
 export function useAccount(): AccountView | undefined {
   const key = useSession((s) => s.key);
   const real = useLive(
@@ -92,7 +98,7 @@ export function useAccount(): AccountView | undefined {
     const base: AccountView = real ?? {
       id: "you",
       bot: false,
-      createdAt: Date.now(),
+      createdAt: FIXTURE_ACCOUNT_CREATED,
       nextFaucet: 0,
       wallet: "10000.00",
       deposited: "10000.00",

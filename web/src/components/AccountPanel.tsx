@@ -1,6 +1,7 @@
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useForm, useSelector } from "@tanstack/react-form";
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useState } from "react";
 import { api } from "../api";
 import { isFixtureMarket } from "../fixtures";
 import { clock, num, price, size, tone, usd } from "../format";
@@ -591,24 +592,15 @@ interface PublicPosition {
 
 /** The whole market is public: who holds what, so who would absorb the next shortfall. */
 function Holders({ market }: { market: MarketView }) {
-  const [positions, setPositions] = useState<PublicPosition[]>([]);
-  useEffect(() => {
-    let alive = true;
-    if (isFixtureMarket(market.id)) {
-      setPositions([]);
-      return;
-    }
-    const load = () =>
-      api<PublicPosition[]>("GET", `/api/markets/${encodeURIComponent(market.id)}/positions`)
-        .then((p) => alive && setPositions(p))
-        .catch(() => {});
-    void load();
-    const t = setInterval(load, 3000);
-    return () => {
-      alive = false;
-      clearInterval(t);
-    };
-  }, [market.id]);
+  const fixture = isFixtureMarket(market.id);
+  const holders = useQuery({
+    queryKey: ["positions", market.id],
+    queryFn: () =>
+      api<PublicPosition[]>("GET", `/api/markets/${encodeURIComponent(market.id)}/positions`),
+    enabled: !fixture,
+    refetchInterval: 3000,
+  });
+  const positions = fixture ? [] : (holders.data ?? []);
   const sorted = positions.toSorted((a, b) => Math.abs(num(b.size)) - Math.abs(num(a.size)));
   return (
     <div>
