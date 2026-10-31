@@ -2,7 +2,7 @@
 
 One Fly app runs the exchange: the Rust server serves the API and the websocket, and keeps its SQLite database on
 a Fly volume. The web app is on Cloudflare (below), which forwards `/api` and `/ws` to it. Files: `Dockerfile`, `.dockerignore`, `fly.toml`,
-`.github/workflows/fly-deploy.yml`.
+`.github/workflows/ci.yml`.
 
 **Rules that keep it correct**
 - **One machine, always.** The exchange is one process holding its state in memory, journaled to SQLite on one
@@ -29,14 +29,13 @@ Optional: `fly secrets set OFFLINE=1` (or uncomment it in `fly.toml`) for simula
 
 ## Deploys from GitHub
 
-`.github/workflows/fly-deploy.yml` deploys on every push to `main` that changes the server (`crates/`, `Cargo.*`,
-`Dockerfile`, `fly.toml`), after `cargo test` passes. Pushes that only touch `web/` or docs don't deploy to Fly.
-You can also deploy on demand: GitHub → Actions → "Deploy to Fly" → Run workflow (pick the branch, default `main`),
-or from a terminal: `gh workflow run fly-deploy.yml --repo SidharthK2/impulse`.
+CI (`.github/workflows/ci.yml`) deploys from every push to `main`, after that push's checks pass. Its `deploy-fly`
+job runs when the push changes the server (`crates/`, `Cargo.*`, `Dockerfile`, `.dockerignore`, `fly.toml`) and
+the `rust` job (formatting, clippy, tests) passed. Pushes that only touch `web/` or docs don't deploy to Fly.
 
 1. `fly tokens create deploy -x 999999h --app <your-app-name>`
 2. GitHub repo → Settings → Secrets and variables → Actions → New secret `FLY_API_TOKEN` with that token.
-3. Push to `main`, or run the workflow by hand.
+3. Push a server change to `main`.
 
 ## Web app on Cloudflare
 
@@ -46,8 +45,8 @@ The web app is served from Cloudflare's edge by a Worker with static assets (`we
 sees one origin, so the web app needs no API URL and no CORS. A frontend change ships without restarting the
 exchange, and the site still loads while the Fly machine is stopped or deploying.
 
-`.github/workflows/web-deploy.yml` deploys **on every push to main that touches `web/`**, and on demand
-(`gh workflow run web-deploy.yml`). It builds the app and runs `wrangler deploy`.
+CI's `deploy-web` job deploys **every push to main that touches `web/`**, once the `web` job (formatting, oxlint,
+typecheck, build) passes. It ships that job's build of `web/dist` with `wrangler deploy`.
 
 **Setup (once)**
 1. Cloudflare dashboard → Add a domain → `sidkap.xyz` (Free plan). Check the imported DNS records against
@@ -55,7 +54,7 @@ exchange, and the site still loads while the Fly machine is stopped or deploying
 2. Cloudflare → My Profile → API Tokens → Create Token → template **Edit Cloudflare Workers** (account: yours,
    zone: `sidkap.xyz`). Note the account ID from the Workers & Pages overview.
 3. `gh secret set CLOUDFLARE_API_TOKEN` and `gh secret set CLOUDFLARE_ACCOUNT_ID` (each prompts for the value).
-4. Run the workflow. `routes` in `web/wrangler.jsonc` attaches `impulse.sidkap.xyz`; Cloudflare creates its DNS
+4. Push a change under `web/` to `main`. `routes` in `web/wrangler.jsonc` attaches `impulse.sidkap.xyz`; Cloudflare creates its DNS
    record and certificate (delete any existing `impulse` record first, or the deploy fails).
 
 To try the Worker locally: `cd web && pnpm run build && npx wrangler@4.151.1 dev --port 8788`. It forwards to

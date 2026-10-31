@@ -1,6 +1,6 @@
 // The web app on Cloudflare: a Worker with static assets. web/dist is served from Cloudflare's edge (unknown paths
 // get index.html, for client-side routes); /api/* and /ws go to worker/index.ts, which forwards them to the exchange
-// on Fly. Deployed by .github/workflows/web-deploy.yml; setup in docs/DEPLOY.md.
+// on Fly. Deployed by CI's deploy-web job (.github/workflows/ci.yml); setup in docs/DEPLOY.md.
 {
   "name": "impulse-web",
   "main": "worker/index.ts",

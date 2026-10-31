@@ -1,23 +1,30 @@
-# Checks every push to main and every pull request. Rust: formatting, clippy, tests. Web: formatting, oxlint,
-# typecheck, build. `make lint` runs the same checks locally, minus the tests and build.
-# Deploys don't wait on this run; each deploy workflow repeats the checks it needs before it ships.
+# Checks every push to main and every pull request, and deploys what changed on main once its checks pass.
+#   rust: formatting, clippy, tests      → deploy-fly: the exchange on Fly.io, when the server changed
+#   web:  formatting, oxlint, typecheck, build → deploy-web: the web app on Cloudflare, when web/ changed
+# `make lint` runs the same checks locally, minus the tests and build. Every deploy of the server restarts it: it
+# snapshots on SIGTERM and replays its journal on start, and the web app's websocket reconnects by itself.
+# Secrets: FLY_API_TOKEN, CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID (docs/DEPLOY.md).
 name: CI
 
 on:
   push:
     branches: [main]
   pull_request:
-  workflow_dispatch:
 
-# A newer push to a PR branch makes the older run pointless. On main every commit finishes its run, so each one
-# has a result.
+# A newer push to a PR branch cancels the older run. Runs on main each get their own group, so none is cancelled
+# or dropped from the queue: every commit's changes get checked and deployed.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  group: ci-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  cancel-in-progress: true
 
-# Checks only read the code.
+# The deploys authenticate with their own secrets, so the GitHub token only needs to read the code.
 permissions:
   contents: read
+
+env:
+  # What each deploy ships, as git pathspecs: the Docker build context (see .dockerignore) plus fly.toml, and web/.
+  SERVER_PATHS: Cargo.toml Cargo.lock crates Dockerfile .dockerignore fly.toml
+  WEB_PATHS: web
 
 jobs:
   rust:
@@ -50,5 +57,109 @@ jobs:
       - run: pnpm install --frozen-lockfile --ignore-workspace
       - run: pnpm run fmt:check
       - run: pnpm run lint
+      # vite build doesn't typecheck.
       - run: pnpm run typecheck
       - run: pnpm run build
+      # On main, deploy-web ships this exact build rather than making its own.
+      - if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v7
+        with:
+          name: web-dist
+          path: web/dist
+          retention-days: 1
+
+  # Which deploys this push needs: the server, the web app, both or neither.
+  changes:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      server: ${{ steps.diff.outputs.server }}
+      web: ${{ steps.diff.outputs.web }}
+    steps:
+      - uses: actions/checkout@v6
+      - id: diff
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          changed() { ! git diff --quiet "$BEFORE" "$GITHUB_SHA" -- $1; }
+          if git fetch -q --depth=1 origin "$BEFORE" 2>/dev/null; then
+            echo "server=$(changed "$SERVER_PATHS" && echo true || echo false)" >> "$GITHUB_OUTPUT"
+            echo "web=$(changed "$WEB_PATHS" && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          else
+            # No previous commit to compare with (rewritten history): deploy both.
+            echo "server=true" >> "$GITHUB_OUTPUT"
+            echo "web=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy-fly:
+    needs: [changes, rust]
+    if: needs.changes.outputs.server == 'true'
+    runs-on: ubuntu-latest
+    # Fly's remote builder; a cold build takes a few minutes.
+    timeout-minutes: 20
+    # One deploy at a time; a newer one waits rather than racing the running one.
+    concurrency:
+      group: deploy-fly
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v6
+      # Runs on main can finish out of order. If a newer commit on main has changed the server since this one, that
+      # commit's run deploys it, and deploying this older tree now would roll it back.
+      - id: latest
+        run: |
+          git fetch -q --depth=1 origin main
+          if git diff --quiet "$GITHUB_SHA" FETCH_HEAD -- $SERVER_PATHS; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipped: a newer commit on main changes the server and deploys it."
+          fi
+      # A release tag, not @master, so a deploy never picks up an unreleased change to the action.
+      - if: steps.latest.outputs.deploy == 'true'
+        uses: superfly/flyctl-actions/setup-flyctl@1.6
+      # --ha=false: exactly one machine; the exchange can't run as two copies over one volume.
+      - if: steps.latest.outputs.deploy == 'true'
+        run: flyctl deploy --remote-only --ha=false
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+  deploy-web:
+    needs: [changes, web]
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: deploy-web
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v6
+      # As in deploy-fly: don't let an older run overwrite a newer web app.
+      - id: latest
+        run: |
+          git fetch -q --depth=1 origin main
+          if git diff --quiet "$GITHUB_SHA" FETCH_HEAD -- $WEB_PATHS; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipped: a newer commit on main changes the web app and deploys it."
+          fi
+      - if: steps.latest.outputs.deploy == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          name: web-dist
+          path: web/dist
+      - if: steps.latest.outputs.deploy == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      # wrangler.jsonc serves web/dist and bundles worker/index.ts (no dependencies). npx keeps wrangler out of
+      # web/'s dependencies; pinned so a deploy never picks up a fresh release.
+      - if: steps.latest.outputs.deploy == 'true'
+        run: npx --yes wrangler@4.151.1 deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
