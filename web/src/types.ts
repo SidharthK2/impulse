@@ -115,6 +115,23 @@ export interface FillView {
   maker: string;
   mySide?: "buy" | "sell";
   liquidity?: "taker" | "maker";
+  /** In an account's own perp fills: the trading fee it paid (USD). */
+  fee?: string;
+}
+
+/** A stop-loss or take-profit order waiting for the mark. */
+export interface TriggerView {
+  id: number;
+  market: string;
+  side: "buy" | "sell";
+  kind: "stop" | "takeProfit";
+  triggerPrice: string;
+  size: string;
+  /** The limit order it places when it fires; null: a market order. */
+  price: string | null;
+  reduceOnly: boolean;
+  leverage: number;
+  time: number;
 }
 
 export interface OrderView {
@@ -144,6 +161,8 @@ export interface PositionView {
   realized: string;
   funding: string;
   adl: string;
+  /** Trading fees paid from this position's margin. */
+  fees: string;
   allocated: string;
   pnl: string;
   initialMargin: string;
@@ -164,7 +183,8 @@ export type RiskKind =
   | "gap"
   | "listing"
   | "open"
-  | "ipo";
+  | "ipo"
+  | "trigger";
 
 export interface RiskEvent {
   id: number;
@@ -184,6 +204,10 @@ export interface AccountView {
   createdAt: number;
   nextFaucet: number;
   wallet: string;
+  /** Held back from the wallet by open orders. */
+  reserved: string;
+  /** wallet − reserved: what new orders, withdrawals and margin can use. */
+  available: string;
   deposited: string;
   withdrawn: string;
   equity: string;
@@ -192,6 +216,7 @@ export interface AccountView {
   ledger: { realized: string; funding: string; adlPaid: string; adlCovered: string };
   spot: { market: string; tokens: string; value: string; price: string | null }[];
   orders: OrderView[];
+  triggers: TriggerView[];
   fills: FillView[];
   risk: RiskEvent[];
   /** Snipe bids still waiting for their market to open. */

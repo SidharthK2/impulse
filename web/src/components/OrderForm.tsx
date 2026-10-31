@@ -30,10 +30,16 @@ interface Props {
 
 type Side = "buy" | "sell";
 
+/** Market and limit orders go to the book; stop and take-profit orders wait for the mark (POST /api/triggers). */
+type OrderKind = "market" | "limit" | "stop" | "takeProfit";
+const isTrigger = (t: OrderKind) => t === "stop" || t === "takeProfit";
+
 interface Values {
   side: Side;
-  type: "market" | "limit";
+  type: OrderKind;
   price: string;
+  /** Stop and take-profit orders: the mark that fires them. */
+  triggerPrice: string;
   size: string;
   unit: "usd" | "coin";
   leverage: number;
@@ -43,9 +49,20 @@ interface Values {
 
 const floorTo = (v: number, d: number) => Math.floor(v * 10 ** d + 1e-9) / 10 ** d;
 
-/** The reference price for sizing: the limit price, or the touch (falling back to the mark) for a market order. */
-function refPrice(m: MarketView, v: Pick<Values, "side" | "type" | "price">): number {
+/** Has the mark already reached a trigger? (Then the server refuses it: it would fire at once.) */
+function reached(kind: "stop" | "takeProfit", side: Side, mark: number, trigger: number): boolean {
+  const below = (kind === "stop" && side === "sell") || (kind === "takeProfit" && side === "buy");
+  return below ? mark <= trigger : mark >= trigger;
+}
+
+/** The reference price for sizing: the limit or trigger price, or the touch (falling back to the mark) for a
+ *  market order. */
+function refPrice(
+  m: MarketView,
+  v: Pick<Values, "side" | "type" | "price" | "triggerPrice">,
+): number {
   if (v.type === "limit") return num(v.price);
+  if (isTrigger(v.type)) return num(v.triggerPrice);
   const touch = v.side === "buy" ? num(m.bestAsk) : num(m.bestBid);
   return Number.isFinite(touch) ? touch : num(m.mark);
 }
@@ -84,6 +101,7 @@ export function OrderForm({
     side: initialSide,
     type: defaults.type,
     price: "",
+    triggerPrice: "",
     size: "",
     unit: defaults.unit,
     leverage: Math.min(defaults.leverage ?? market.maxLeverage, market.maxLeverage),
@@ -96,6 +114,28 @@ export function OrderForm({
       server.clear();
       const m = live.current.market;
       const size = coins(m, value);
+      if (value.type === "stop" || value.type === "takeProfit") {
+        try {
+          await act("POST", "/api/triggers", {
+            market: m.id,
+            side: value.side,
+            kind: value.type,
+            triggerPrice: value.triggerPrice,
+            size: size.toFixed(m.szDecimals),
+            reduceOnly: value.reduceOnly,
+            leverage: value.leverage,
+          });
+          toast(
+            `${value.type === "stop" ? "Stop" : "Take profit"} set: ${value.side} ${fmtSize(size, m.szDecimals)} ${m.base} at market when the mark reaches ${fmtPrice(value.triggerPrice, m.priceDecimals)}`,
+            "info",
+          );
+          formApi.reset({ ...value, size: "" }, { keepDefaultValues: true });
+          onDone?.();
+        } catch (err) {
+          server.fail(err);
+        }
+        return;
+      }
       try {
         const r = await act<{ status: string; reason: string | null; fills: FillView[] }>(
           "POST",
@@ -165,7 +205,7 @@ export function OrderForm({
   const hasPosition = position?.side ?? "none";
   const [lowerBound, upperBound] = market.bounds;
   useEffect(() => {
-    for (const name of ["price", "size", "leverage", "reduceOnly"] as const)
+    for (const name of ["price", "triggerPrice", "size", "leverage", "reduceOnly"] as const)
       void form.getFieldInfo(name).instance?.validate("change");
   }, [
     form,
@@ -198,7 +238,7 @@ export function OrderForm({
   const maxLoss = binary ? sizeCoins * (pv.side === "buy" ? ref : 1 - ref) : Infinity;
   const capped = notional / lev >= maxLoss;
   const margin = capped ? maxLoss * 1.05 : notional / lev;
-  const wallet = num(account?.wallet);
+  const wallet = num(account?.available); // the wallet less what open orders hold back
   const reducing =
     position &&
     ((position.side === "long" && pv.side === "sell") ||
@@ -294,9 +334,80 @@ export function OrderForm({
               >
                 Limit
               </button>
+              {(["stop", "takeProfit"] as const).map((kind) => (
+                <button
+                  key={kind}
+                  type="button"
+                  className={f.state.value === kind ? "on" : ""}
+                  title={
+                    kind === "stop"
+                      ? "Stop: a market order when the mark moves against you to the trigger price"
+                      : "Take profit: a market order when the mark moves your way to the trigger price"
+                  }
+                  onClick={() => {
+                    f.handleChange(kind);
+                    if (!form.getFieldValue("triggerPrice") && Number.isFinite(num(market.mark)))
+                      form.setFieldValue(
+                        "triggerPrice",
+                        toInput(num(market.mark), market.priceDecimals),
+                      );
+                    // A stop or take profit usually closes: default to reduce-only when there's a position.
+                    if (live.current.position) form.setFieldValue("reduceOnly", true);
+                  }}
+                >
+                  {kind === "stop" ? "Stop" : "TP"}
+                </button>
+              ))}
             </div>
           )}
         </form.Field>
+
+        {isTrigger(v.type) && (
+          <form.Field
+            name="triggerPrice"
+            validators={{
+              onChangeListenTo: ["type", "side"],
+              onChange: ({ value, fieldApi }) => {
+                const kind = fieldApi.form.getFieldValue("type");
+                if (kind !== "stop" && kind !== "takeProfit") return undefined;
+                const m = live.current.market;
+                const bad = positive(value, "Trigger price");
+                if (bad) return bad;
+                if (!multipleOf(value, m.tick))
+                  return `Trigger price must be a multiple of the tick (${m.tick})`;
+                const mark = num(m.mark);
+                if (
+                  Number.isFinite(mark) &&
+                  reached(kind, fieldApi.form.getFieldValue("side"), mark, num(value))
+                )
+                  return `The mark (${m.mark}) is already past this price: it would fire at once`;
+                return undefined;
+              },
+            }}
+          >
+            {(f) => (
+              <div className="field">
+                <label htmlFor="trig">
+                  {v.type === "stop" ? "Stop" : "Take profit"} when the mark reaches
+                </label>
+                <div className="adorn">
+                  <input
+                    id="trig"
+                    className={`input mono ${invalid(f) ? "bad" : ""}`}
+                    inputMode="decimal"
+                    value={f.state.value}
+                    onChange={(e) => f.handleChange(e.target.value.trim())}
+                    onBlur={f.handleBlur}
+                    placeholder={market.mark ?? ""}
+                    aria-invalid={invalid(f)}
+                  />
+                  <span>then market</span>
+                </div>
+                <FieldError field={f} />
+              </div>
+            )}
+          </form.Field>
+        )}
 
         {v.type === "limit" && (
           <form.Field
@@ -342,7 +453,7 @@ export function OrderForm({
         <form.Field
           name="size"
           validators={{
-            onChangeListenTo: ["unit", "price", "type", "side"],
+            onChangeListenTo: ["unit", "price", "triggerPrice", "type", "side"],
             onChange: ({ value, fieldApi }) => {
               const m = live.current.market;
               const vals = fieldApi.form.state.values;
@@ -573,7 +684,9 @@ export function OrderForm({
               ? "Sign up to trade"
               : submitting
                 ? "Sending…"
-                : `${v.side === "buy" ? "Buy / Long" : "Sell / Short"} ${v.type === "market" ? "at market" : ""}`}
+                : isTrigger(v.type)
+                  ? `Set ${v.type === "stop" ? "stop" : "take profit"}: ${v.side === "buy" ? "buy" : "sell"} at market`
+                  : `${v.side === "buy" ? "Buy / Long" : "Sell / Short"} ${v.type === "market" ? "at market" : ""}`}
         </button>
       </div>
     </form>

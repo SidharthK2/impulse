@@ -630,6 +630,7 @@ function position(
     realized: "0",
     funding: "0",
     adl: "0",
+    fees: "0",
     allocated: money(collateral),
     pnl: "0",
     initialMargin: money(collateral),

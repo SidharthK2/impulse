@@ -36,7 +36,10 @@ export function normalizeAccount(raw: unknown): AccountView | null {
     positions: a.positions ?? [],
     spot: a.spot ?? [],
     orders: a.orders ?? [],
+    triggers: a.triggers ?? [],
     fills: a.fills ?? [],
+    reserved: a.reserved ?? "0",
+    available: a.available ?? a.wallet,
     risk: (a.risk ?? []).map((e) => normalizeEvent(e as Loose<RiskEvent>)),
     snipes: a.snipes ?? [],
   };

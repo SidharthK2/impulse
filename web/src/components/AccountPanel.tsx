@@ -35,7 +35,11 @@ export function AccountPanel({ account, markets, current, signedIn }: Props) {
     : (account?.risk.length ?? 0);
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: "positions", label: "Positions", count: open.length + (account?.spot.length ?? 0) },
-    { id: "orders", label: "Open orders", count: account?.orders.length },
+    {
+      id: "orders",
+      label: "Open orders",
+      count: account ? account.orders.length + account.triggers.length : undefined,
+    },
     { id: "fills", label: "Fills" },
     { id: "whopaid", label: "Who paid", count: incidents },
     ...(current ? [{ id: "holders" as const, label: "Holders" }] : []),
@@ -191,7 +195,7 @@ function Positions({
               {marginFor === p.market && (
                 <MarginForm
                   position={p}
-                  wallet={account.wallet}
+                  wallet={account.available}
                   onDone={() => setMarginFor(null)}
                 />
               )}
@@ -310,7 +314,7 @@ function Positions({
                   <td colSpan={12}>
                     <MarginForm
                       position={p}
-                      wallet={account.wallet}
+                      wallet={account.available}
                       onDone={() => setMarginFor(null)}
                     />
                   </td>
@@ -420,7 +424,7 @@ function MarginForm({
             if (fieldApi.form.getFieldValue("dir") === "remove" && num(value) > num(p.releasable))
               return `At most ${usd(p.releasable)} can be removed`;
             if (fieldApi.form.getFieldValue("dir") === "add" && num(value) > num(wallet))
-              return `More than your wallet (${usd(wallet)})`;
+              return `More than your available balance (${usd(wallet)})`;
             return undefined;
           },
         }}
@@ -471,7 +475,72 @@ function Orders({
   markets: Record<string, MarketView>;
 }) {
   const toast = useToast();
-  if (account.orders.length === 0) return <div className="empty">No open orders.</div>;
+  if (account.orders.length === 0 && account.triggers.length === 0)
+    return <div className="empty">No open orders.</div>;
+  const cancel = (id: number) =>
+    api("DELETE", `/api/orders/${id}`).catch((e) => toast((e as Error).message, "down"));
+  return (
+    <>
+      {account.orders.length > 0 && <RestingOrders account={account} markets={markets} />}
+      {account.triggers.length > 0 && (
+        <table className="grid">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Market</th>
+              <th>Trigger</th>
+              <th className="right">When mark reaches</th>
+              <th className="right">Then</th>
+              <th className="right">Size</th>
+              <th>
+                <span className="sr-only">Actions</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {account.triggers.map((t) => {
+              const m = markets[t.market];
+              const d = m?.priceDecimals ?? 4;
+              return (
+                <tr key={t.id}>
+                  <td className="mono faint">{clock(t.time)}</td>
+                  <td>{t.market}</td>
+                  <td className={t.side === "buy" ? "up" : "down"}>
+                    {t.kind === "stop" ? "stop" : "take profit"} · {t.side}
+                    {t.reduceOnly && (
+                      <span className="badge" style={{ marginLeft: 6 }}>
+                        reduce
+                      </span>
+                    )}
+                  </td>
+                  <td className="right mono">{price(t.triggerPrice, d)}</td>
+                  <td className="right mono muted">
+                    {t.price ? `limit ${price(t.price, d)}` : "market"}
+                  </td>
+                  <td className="right mono">{size(t.size, m?.szDecimals ?? 4)}</td>
+                  <td className="right">
+                    <button type="button" className="btn small" onClick={() => cancel(t.id)}>
+                      Cancel
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </>
+  );
+}
+
+function RestingOrders({
+  account,
+  markets,
+}: {
+  account: AccountView;
+  markets: Record<string, MarketView>;
+}) {
+  const toast = useToast();
   return (
     <table className="grid">
       <thead>
@@ -551,6 +620,7 @@ function Fills({
           <th className="right">Price</th>
           <th className="right">Size</th>
           <th className="right">Notional</th>
+          <th className="right">Fee</th>
           <th>Role</th>
           <th>Counterparty</th>
         </tr>
@@ -573,6 +643,7 @@ function Fills({
               <td className="right mono">{price(f.price, m?.priceDecimals ?? 4)}</td>
               <td className="right mono">{size(f.size, m?.szDecimals ?? 4)}</td>
               <td className="right mono">{usd(f.notional)}</td>
+              <td className="right mono muted">{f.fee ? usd(f.fee) : "—"}</td>
               <td className="muted">{f.liquidity}</td>
               <td className="muted">{f.taker === account.id ? f.maker : f.taker}</td>
             </tr>
