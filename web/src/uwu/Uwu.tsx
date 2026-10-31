@@ -121,7 +121,8 @@ export function ChartMascot() {
   /** A reaction's pose, shown over the phase's resting pose until it times out. */
   const [reaction, setReaction] = useState<Pose | null>(null);
   const [bubble, setBubble] = useState<{ line: string; sub?: string; n: number } | null>(null);
-  const [art, setArt] = useState<"anya" | "svg">("anya");
+  /** The pose whose image just failed to load: that pose shows Pulse-chan, and the next pose tries again. */
+  const [broken, setBroken] = useState<Pose | null>(null);
   /** The nodding-off clip; without it she sleeps in her sitting pose, dimmed. */
   const [sleepClip, setSleepClip] = useState(true);
   const reset = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -255,7 +256,7 @@ export function ChartMascot() {
         aria-label={phase === "asleep" ? "Wake Anya up" : "Poke Anya"}
         onClick={() => void click()}
       >
-        {art === "anya" && pose === "asleep" && sleepClip ? (
+        {broken !== pose && pose === "asleep" && sleepClip ? (
           <video
             className="uwu-sleep"
             src="/uwu/anya/asleep.mp4"
@@ -265,13 +266,13 @@ export function ChartMascot() {
             playsInline
             onError={() => setSleepClip(false)}
           />
-        ) : art === "anya" ? (
+        ) : broken !== pose ? (
           <img
             key={pose}
             src={sprite(pose)}
             alt=""
             draggable={false}
-            onError={() => setArt("svg")}
+            onError={() => setBroken(pose)}
           />
         ) : (
           <PulseChan mood={SVG_MOOD[pose]} size={120} />
