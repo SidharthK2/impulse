@@ -238,7 +238,7 @@ function MarketRow({ market: m, now }: { market: MarketView; now: number }) {
   const go = () => void navigate({ to: "/trade/$market", params: { market: m.id } });
   return (
     <tr ref={ref} className="click market-row" onClick={go}>
-      <td>
+      <td className="mr-cell">
         <Link to="/trade/$market" params={{ market: m.id }} className="mr-name" onClick={(e) => e.stopPropagation()}>
           <b>{displayName(m)}</b>
           <span className="mr-kind">{KIND[m.kind]}</span>

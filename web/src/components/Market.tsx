@@ -58,13 +58,13 @@ export function MarketPicker({ markets, current, onPick }: { markets: MarketView
                           setOpen(false);
                         }}
                       >
-                        <td style={{ maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis" }}>
+                        <td className="picker-name">
                           <b>{m.kind === "binary" ? m.name : m.id}</b>
                           {m.status === "resolved" && <span className="badge info" style={{ marginLeft: 6 }}>resolved</span>}
                         </td>
                         <td className="right mono">{price(headline(m), m.priceDecimals)}</td>
                         <td className={`right mono ${tone(ch)}`}>{pct(ch)}</td>
-                        <td className="right mono muted">{m.maxLeverage}×</td>
+                        <td className="right mono muted picker-lev">{m.maxLeverage}×</td>
                       </tr>
                     );
                   })}

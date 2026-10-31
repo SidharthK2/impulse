@@ -10,7 +10,7 @@ export function LeaderboardPage() {
     <div className="page">
       <h1>Leaderboard</h1>
       <p className="lead">Total PnL since sign-up, marked to the oracle. The haircuts column is how much of each account's profit (or principal) went to cover other people's bankruptcies.</p>
-      <div className="panel">
+      <div className="panel x-scroll">
         <table className="grid">
           <thead>
             <tr>

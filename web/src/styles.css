@@ -783,6 +783,8 @@ kbd {
 
 input[type="range"] {
   width: 100%;
+  margin-left: 0;
+  margin-right: 0;
   accent-color: var(--accent);
 }
 
@@ -1161,6 +1163,12 @@ table.grid tr.click:hover td {
 .picker {
   position: relative;
 }
+.mbar > .picker {
+  flex: none;
+}
+.mbar > .col {
+  flex: none;
+}
 .picker-btn {
   display: flex;
   align-items: center;
@@ -1170,7 +1178,7 @@ table.grid tr.click:hover td {
   border-radius: var(--radius);
   padding: 6px 10px;
   cursor: pointer;
-  max-width: 340px;
+  max-width: min(340px, 100%);
 }
 .picker-btn .name {
   font-weight: 600;
@@ -1190,6 +1198,12 @@ table.grid tr.click:hover td {
   border-radius: var(--radius);
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
   z-index: 30;
+}
+.picker-name {
+  width: 100%;
+  max-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .picker-menu .group {
   padding: 8px 12px 4px;
@@ -2028,6 +2042,10 @@ a.btn:hover {
 .home-results {
   min-height: 100vh;
 }
+/* A table that may be wider than a phone scrolls inside its panel, not the page. */
+.x-scroll {
+  overflow-x: auto;
+}
 .cat-tabs {
   overflow-x: auto;
   min-width: 0;
@@ -2549,6 +2567,14 @@ input[type="range"] {
   .mr-kind {
     display: none;
   }
+  /* Long prediction-market names ellipsise instead of widening the table past the screen. */
+  .markets-table td.mr-cell {
+    width: 100%;
+    max-width: 0;
+  }
+  .mr-name {
+    max-width: 100%;
+  }
 }
 
 /* ---------- trade page on phones ---------- */
@@ -2559,9 +2585,37 @@ input[type="range"] {
   min-height: calc(100vh - 90px);
 }
 .trade-m > .mbar {
+  position: relative;
   border-radius: 0;
   border-width: 0 0 1px;
   padding: 10px 12px;
+}
+/* The stats swipe sideways: fade the right edge so a stat cut by the screen reads as "more", not as a shorter
+   number, and pad the end so the last one scrolls clear of the fade. */
+.trade-m .mbar-stats {
+  padding-right: 24px;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+}
+/* A long market name (prediction markets) ellipsises instead of pushing the price off the screen. */
+.trade-m > .mbar > .picker {
+  max-width: 45vw;
+}
+/* The picker's menu hangs off the whole bar, not the (narrow) picker button. */
+.trade-m > .mbar > .picker {
+  position: static;
+}
+.trade-m .picker-menu {
+  left: 8px;
+  right: 8px;
+  width: auto;
+}
+.trade-m .picker-menu td {
+  padding-left: 8px;
+  padding-right: 8px;
+}
+.trade-m .picker-lev {
+  display: none;
 }
 .m-tabs {
   display: flex;
@@ -2603,6 +2657,14 @@ input[type="range"] {
 }
 .m-pane-chart .chart-panel .panel-head {
   min-height: 36px;
+}
+.chart-panel .panel-head h3 {
+  white-space: nowrap;
+}
+.chart-panel .panel-head > .faint {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .m-pane .book,
 .m-pane .tape {
@@ -2714,6 +2776,16 @@ input[type="range"] {
   .page {
     padding-left: 12px;
     padding-right: 12px;
+  }
+  /* iOS Safari zooms into any focused field under 16px, and the zoomed page then pans sideways. */
+  input:not([type="range"]):not([type="checkbox"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+  /* Safety net: nothing may widen the page past the screen. clip (not hidden) keeps sticky bars working. */
+  .app {
+    overflow-x: clip;
   }
 }
 

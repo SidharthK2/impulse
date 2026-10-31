@@ -162,7 +162,7 @@ export function AboutPage() {
         Everything the UI does goes through a JSON API. Send <code>Authorization: Bearer &lt;key&gt;</code> for trading. A websocket at <code>/ws</code> streams <code>markets</code>,{" "}
         <code>book:&lt;id&gt;</code>, <code>trades:&lt;id&gt;</code>, <code>candles:&lt;id&gt;</code>, <code>feed</code>, <code>leaderboard</code> and <code>account</code>. Example:
       </p>
-      <pre className="note mono" style={{ whiteSpace: "pre-wrap" }}>
+      <pre className="note mono" style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
         {`curl -X POST localhost:8787/api/orders -H "authorization: Bearer $KEY" \\
   -H "content-type: application/json" \\
   -d '{"market":"BTC-PERP","side":"buy","type":"market","size":"0.01","leverage":3}'`}
