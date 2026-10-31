@@ -12,6 +12,8 @@ export interface UwuPrefs {
   music: boolean;
   /** Anya's voice and the trade sounds */
   voice: boolean;
+  /** A soft pop on button presses */
+  blips: boolean;
   set: (p: Partial<Omit<UwuPrefs, "set">>) => void;
 }
 
@@ -48,6 +50,7 @@ export const useUwu = create<UwuPrefs>()(
       muted: false,
       music: true,
       voice: true,
+      blips: true,
       set: (p) => set(p),
     }),
     {

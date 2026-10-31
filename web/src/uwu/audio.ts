@@ -216,6 +216,26 @@ useUwu.subscribe((s, prev) => {
   }
 });
 
+// ---------- UI blips ----------
+
+/** A soft bubble pop for a button press: a quick upward sine sweep. */
+export function blip() {
+  if (!unlocked || !audible() || !useUwu.getState().blips) return;
+  const c = audio();
+  if (!c || !out) return;
+  const t = c.currentTime + 0.005;
+  const o = c.createOscillator();
+  const g = c.createGain();
+  o.frequency.setValueAtTime(520, t);
+  o.frequency.exponentialRampToValueAtTime(1400, t + 0.07);
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(0.12, t + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.07);
+  o.connect(g).connect(out);
+  o.start(t);
+  o.stop(t + 0.12);
+}
+
 // ---------- fallbacks: Web Audio synth ----------
 
 const hz = (midi: number) => 440 * 2 ** ((midi - 69) / 12);

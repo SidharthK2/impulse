@@ -5,7 +5,7 @@
 
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 import { type Mood, PulseChan } from "./art";
-import { type Cue, cue, play, preload, unlock } from "./audio";
+import { type Cue, blip, cue, play, preload, unlock } from "./audio";
 import { useUwu } from "./store";
 
 export interface ToastEvent {
@@ -83,7 +83,14 @@ const ASLEEP_AFTER = 120_000;
 /** Poke her this many times this fast and she snaps. */
 const SPAM = { count: 5, within: 4_000 };
 
-/** Mounted once in the layout: unlocks audio on the first gesture, greets, and voices every toast. */
+/** What blips when pressed (not Anya: she has her own sounds). */
+const BLIPS =
+  "button, a[href], [role=button], [role=tab], [role=switch], [role=menuitem], [role=option], input[type=checkbox], input[type=radio], .uwu-check";
+
+/**
+ * Mounted once in the layout: unlocks audio on the first gesture, greets, voices every toast, and blips on
+ * button presses.
+ */
 export function UwuLayer() {
   const on = useUwu((s) => s.on);
   useEffect(() => {
@@ -96,12 +103,19 @@ export function UwuLayer() {
       greet();
     };
     const toast = (e: Event) => void cue(REACT[(e as CustomEvent<ToastEvent>).detail.tone].cue);
+    const press = (e: PointerEvent) => {
+      const t = e.target as Element | null;
+      if (e.button === 0 && t?.closest(BLIPS) && !t.closest(".uwu-mascot-wrap")) blip();
+    };
     window.addEventListener("pointerdown", down, { capture: true });
     window.addEventListener("keydown", down, { capture: true });
+    // Added after `down`, so on the first press the audio is unlocked before it blips.
+    window.addEventListener("pointerdown", press, { capture: true });
     window.addEventListener(TOAST_EVENT, toast);
     return () => {
       window.removeEventListener("pointerdown", down, { capture: true });
       window.removeEventListener("keydown", down, { capture: true });
+      window.removeEventListener("pointerdown", press, { capture: true });
       window.removeEventListener(TOAST_EVENT, toast);
     };
   }, [on]);
@@ -356,7 +370,7 @@ function Check({
 function AudioMenu() {
   const s = useUwu();
   const { open, setOpen, ref } = usePopover();
-  const silent = s.muted || s.volume === 0 || (!s.music && !s.voice);
+  const silent = s.muted || s.volume === 0 || (!s.music && !s.voice && !s.blips);
   return (
     <div className="uwu-pop-wrap" ref={ref}>
       <button
@@ -398,6 +412,7 @@ function AudioMenu() {
           </div>
           <Check label="Music" checked={s.music} onChange={(v) => s.set({ music: v })} />
           <Check label="Anya's voice" checked={s.voice} onChange={(v) => s.set({ voice: v })} />
+          <Check label="UI blips" checked={s.blips} onChange={(v) => s.set({ blips: v })} />
         </div>
       )}
     </div>
