@@ -22,13 +22,26 @@ fn bin() -> std::process::Command {
 
 /// `impulse-server replay …` on a data dir: {seq, hash, replayed, fills, risk}.
 fn replay(dir: &Path, args: &[&str]) -> Value {
-    let out = bin().arg("replay").args(args).env("DATA_DIR", dir).output().unwrap();
-    assert!(out.status.success(), "replay {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+    let out = bin()
+        .arg("replay")
+        .args(args)
+        .env("DATA_DIR", dir)
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "replay {args:?}: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     serde_json::from_slice(&out.stdout).unwrap()
 }
 
 fn db(dir: &Path) -> rusqlite::Connection {
-    rusqlite::Connection::open_with_flags(dir.join("impulse.db"), rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap()
+    rusqlite::Connection::open_with_flags(
+        dir.join("impulse.db"),
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )
+    .unwrap()
 }
 
 fn count(dir: &Path, sql: &str) -> i64 {
@@ -37,7 +50,10 @@ fn count(dir: &Path, sql: &str) -> i64 {
 
 async fn hash(v: &Venue) -> (u64, String) {
     let h = ok(v.admin("GET", "/api/test/hash", Value::Null).await);
-    (h["seq"].as_u64().unwrap(), h["hash"].as_str().unwrap().to_string())
+    (
+        h["seq"].as_u64().unwrap(),
+        h["hash"].as_str().unwrap().to_string(),
+    )
 }
 
 /// Drive a session until the journal passes `target` commands: the bots trade, and the test adds launches, a
@@ -45,10 +61,30 @@ async fn hash(v: &Venue) -> (u64, String) {
 async fn busy_session(v: &Venue, target: u64) {
     let s = uid();
     let u = v.user(&format!("dr{s}"), 50_000).await;
-    let coin = ok(v.admin("POST", "/api/admin/demo-coin", json!({ "handle": format!("d{s}") })).await)["id"].as_str().unwrap().to_string();
-    ok(v.as_(&u, "POST", "/api/snipe", json!({ "market": coin, "usdc": "500" })).await);
+    let coin = ok(v
+        .admin(
+            "POST",
+            "/api/admin/demo-coin",
+            json!({ "handle": format!("d{s}") }),
+        )
+        .await)["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    ok(v.as_(
+        &u,
+        "POST",
+        "/api/snipe",
+        json!({ "market": coin, "usdc": "500" }),
+    )
+    .await);
     let pre = format!("P{s}");
-    ok(v.admin("POST", "/api/admin/preipo", json!({ "id": pre, "name": "Durable Co", "price": "50" })).await);
+    ok(v.admin(
+        "POST",
+        "/api/admin/preipo",
+        json!({ "id": pre, "name": "Durable Co", "price": "50" }),
+    )
+    .await);
     let started = Instant::now();
     let mut i = 0;
     loop {
@@ -57,7 +93,10 @@ async fn busy_session(v: &Venue, target: u64) {
         if seq >= target {
             break;
         }
-        assert!(started.elapsed() < Duration::from_secs(150), "session stalled at seq {seq}");
+        assert!(
+            started.elapsed() < Duration::from_secs(150),
+            "session stalled at seq {seq}"
+        );
         match i % 40 {
             5 => {
                 let _ = v.order(&u, json!({ "market": coin, "side": "buy", "type": "market", "size": "100000", "leverage": 2 })).await;
@@ -66,10 +105,22 @@ async fn busy_session(v: &Venue, target: u64) {
                 let _ = v.order(&u, json!({ "market": pre, "side": "buy", "type": "market", "size": "5", "leverage": 3 })).await;
             }
             20 => {
-                let _ = v.admin("POST", "/api/admin/price", json!({ "market": "SIM-ELECTION", "price": "0.2", "holdSeconds": 4 })).await;
+                let _ = v
+                    .admin(
+                        "POST",
+                        "/api/admin/price",
+                        json!({ "market": "SIM-ELECTION", "price": "0.2", "holdSeconds": 4 }),
+                    )
+                    .await;
             }
             30 if i == 30 => {
-                let _ = v.admin("POST", "/api/admin/ipo", json!({ "market": pre, "price": "35" })).await;
+                let _ = v
+                    .admin(
+                        "POST",
+                        "/api/admin/ipo",
+                        json!({ "market": pre, "price": "35" }),
+                    )
+                    .await;
             }
             _ => {}
         }
@@ -89,9 +140,16 @@ async fn determinism_a_bots_on_session_replayed_from_seq_1_reaches_the_live_stat
     let full = replay(&dir, &["--full", "--until", &seq.to_string()]);
     assert_eq!(full["seq"], seq);
     assert_eq!(full["replayed"], seq, "a full replay starts at seq 1");
-    assert_eq!(full["hash"], live.as_str(), "replay from seq 1 reaches the live state");
+    assert_eq!(
+        full["hash"],
+        live.as_str(),
+        "replay from seq 1 reaches the live state"
+    );
     let kinds = count(&dir, "SELECT COUNT(DISTINCT kind) FROM commands");
-    assert!(kinds >= 10, "the session should exercise many command kinds, got {kinds}");
+    assert!(
+        kinds >= 10,
+        "the session should exercise many command kinds, got {kinds}"
+    );
     server.child.kill().unwrap();
 }
 
@@ -103,10 +161,20 @@ async fn a_snapshot_plus_its_tail_reaches_the_same_hash_as_a_full_replay() {
     let v = Venue::new(&server.base);
     busy_session(&v, 1_300).await;
     let (seq, live) = hash(&v).await;
-    let snap: i64 = count(&dir, &format!("SELECT MAX(seq) FROM snapshots WHERE seq <= {seq}"));
-    assert!(snap > 0 && (snap as u64) < seq, "a snapshot between the start and seq {seq}: {snap}");
+    let snap: i64 = count(
+        &dir,
+        &format!("SELECT MAX(seq) FROM snapshots WHERE seq <= {seq}"),
+    );
+    assert!(
+        snap > 0 && (snap as u64) < seq,
+        "a snapshot between the start and seq {seq}: {snap}"
+    );
     let tail = replay(&dir, &["--until", &seq.to_string()]);
-    assert_eq!(tail["replayed"].as_u64().unwrap(), seq - snap as u64, "replayed only the tail after snapshot {snap}");
+    assert_eq!(
+        tail["replayed"].as_u64().unwrap(),
+        seq - snap as u64,
+        "replayed only the tail after snapshot {snap}"
+    );
     let full = replay(&dir, &["--full", "--until", &seq.to_string()]);
     assert_eq!(tail["hash"], full["hash"]);
     assert_eq!(full["hash"], live.as_str());
@@ -133,26 +201,55 @@ async fn kill_9_mid_trading_loses_nothing_acknowledged_and_restarts_at_the_journ
         orders.push(r["order"]["id"].as_u64().unwrap());
         let (status, r) = v.order(&taker, json!({ "market": "SOL-PERP", "side": if i % 2 == 0 { "buy" } else { "sell" }, "type": "market", "size": "1" })).await;
         if status == 200 {
-            fills.extend(r["fills"].as_array().unwrap().iter().map(|f| f["id"].as_u64().unwrap()));
+            fills.extend(
+                r["fills"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|f| f["id"].as_u64().unwrap()),
+            );
         }
     }
-    assert!(!fills.is_empty(), "the taker should have traded with the maker");
+    assert!(
+        !fills.is_empty(),
+        "the taker should have traded with the maker"
+    );
     server.child.kill().unwrap(); // SIGKILL, mid-trading: the bots were still submitting
     server.child.wait().unwrap();
 
     let server = spawn(dir.clone(), BUSY);
     let v = Venue::new(&server.base);
     let after = v.account(&resting).await; // the API keys survived
-    let have: Vec<u64> = after["orders"].as_array().unwrap().iter().map(|o| o["id"].as_u64().unwrap()).collect();
+    let have: Vec<u64> = after["orders"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|o| o["id"].as_u64().unwrap())
+        .collect();
     for id in &orders {
-        assert!(have.contains(id), "acknowledged order {id} is gone after the restart");
+        assert!(
+            have.contains(id),
+            "acknowledged order {id} is gone after the restart"
+        );
     }
-    let taker_fills: Vec<u64> = v.account(&taker).await["fills"].as_array().unwrap().iter().map(|f| f["id"].as_u64().unwrap()).collect();
+    let taker_fills: Vec<u64> = v.account(&taker).await["fills"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| f["id"].as_u64().unwrap())
+        .collect();
     for id in &fills {
-        assert!(taker_fills.contains(id), "acknowledged fill {id} is gone after the restart");
+        assert!(
+            taker_fills.contains(id),
+            "acknowledged fill {id} is gone after the restart"
+        );
     }
     let (seq, live) = hash(&v).await;
-    assert_eq!(replay(&dir, &["--full", "--until", &seq.to_string()])["hash"], live.as_str(), "the restarted state is the journal's");
+    assert_eq!(
+        replay(&dir, &["--full", "--until", &seq.to_string()])["hash"],
+        live.as_str(),
+        "the restarted state is the journal's"
+    );
     drop(server);
 }
 
@@ -164,14 +261,45 @@ async fn a_refused_command_writes_no_journal_row() {
     let v = Venue::new(&server.base);
     let u = v.user(&format!("rj{}", uid()), 1000).await;
     // The random walk keeps journaling ticks; nothing else should appear.
-    let others = || count(&dir, "SELECT COUNT(*) FROM commands WHERE kind NOT IN ('ticks', 'clock')");
+    let others = || {
+        count(
+            &dir,
+            "SELECT COUNT(*) FROM commands WHERE kind NOT IN ('ticks', 'clock')",
+        )
+    };
     let before = others();
-    fails(v.order(&u, json!({ "market": "BTC-PERP", "side": "buy", "price": "80000.5", "size": "0.01" })).await, "tick"); // off the tick
+    fails(
+        v.order(
+            &u,
+            json!({ "market": "BTC-PERP", "side": "buy", "price": "80000.5", "size": "0.01" }),
+        )
+        .await,
+        "tick",
+    ); // off the tick
     fails(v.order(&u, json!({ "market": "BTC-PERP", "side": "buy", "price": "80000", "size": "10", "leverage": 1 })).await, "insufficient");
-    fails(v.as_(&u, "POST", "/api/withdraw", json!({ "amount": "5000" })).await, "exceeds");
-    assert_eq!(v.admin("POST", "/api/test/tick", json!({ "market": "NOPE", "price": "1" })).await.0, 404);
+    fails(
+        v.as_(&u, "POST", "/api/withdraw", json!({ "amount": "5000" }))
+            .await,
+        "exceeds",
+    );
+    assert_eq!(
+        v.admin(
+            "POST",
+            "/api/test/tick",
+            json!({ "market": "NOPE", "price": "1" })
+        )
+        .await
+        .0,
+        404
+    );
     assert_eq!(others(), before, "refused commands were journaled");
-    let mine = count(&dir, &format!("SELECT COUNT(*) FROM commands WHERE kind = 'placeOrder' AND payload LIKE '%\"{}\"%'", u.id));
+    let mine = count(
+        &dir,
+        &format!(
+            "SELECT COUNT(*) FROM commands WHERE kind = 'placeOrder' AND payload LIKE '%\"{}\"%'",
+            u.id
+        ),
+    );
     assert_eq!(mine, 0);
     drop(server);
 }
@@ -191,9 +319,16 @@ async fn the_read_tables_match_the_in_memory_history_and_the_journals_effects() 
     // Within the in-memory caps the two histories agree exactly.
     let memory = ok(v.get("/api/feed").await);
     let stored = ok(v.get("/api/feed?limit=200").await);
-    let n = memory.as_array().unwrap().len().min(stored.as_array().unwrap().len());
+    let n = memory
+        .as_array()
+        .unwrap()
+        .len()
+        .min(stored.as_array().unwrap().len());
     assert!(n > 10, "risk events: {n}");
-    assert_eq!(memory.as_array().unwrap()[..n], stored.as_array().unwrap()[..n]);
+    assert_eq!(
+        memory.as_array().unwrap()[..n],
+        stored.as_array().unwrap()[..n]
+    );
     let markets = ok(v.get("/api/markets").await);
     let mut traded = 0;
     for m in markets.as_array().unwrap() {
@@ -211,9 +346,27 @@ async fn the_read_tables_match_the_in_memory_history_and_the_journals_effects() 
     // Every fill and risk event the journal produces is a row, and nothing else is.
     let (seq, _) = hash(&v).await;
     let r = replay(&dir, &["--full", "--until", &seq.to_string()]);
-    assert_eq!(r["fills"].as_i64().unwrap(), count(&dir, &format!("SELECT COUNT(*) FROM fills WHERE seq <= {seq}")));
-    assert_eq!(r["risk"].as_i64().unwrap(), count(&dir, &format!("SELECT COUNT(*) FROM risk_events WHERE seq <= {seq}")));
-    assert_eq!(count(&dir, "SELECT COUNT(*) FROM accounts"), ok(v.get("/api/leaderboard").await).as_array().unwrap().len() as i64);
+    assert_eq!(
+        r["fills"].as_i64().unwrap(),
+        count(
+            &dir,
+            &format!("SELECT COUNT(*) FROM fills WHERE seq <= {seq}")
+        )
+    );
+    assert_eq!(
+        r["risk"].as_i64().unwrap(),
+        count(
+            &dir,
+            &format!("SELECT COUNT(*) FROM risk_events WHERE seq <= {seq}")
+        )
+    );
+    assert_eq!(
+        count(&dir, "SELECT COUNT(*) FROM accounts"),
+        ok(v.get("/api/leaderboard").await)
+            .as_array()
+            .unwrap()
+            .len() as i64
+    );
     drop(server);
 }
 
@@ -226,12 +379,29 @@ async fn a_legacy_json_snapshot_alone_in_data_dir_comes_up_with_the_same_state()
     let s = uid();
     // A manual-oracle market: the offline random walk never moves it, so nothing changes after the reads below.
     let x = format!("L{s}");
-    ok(v.admin("POST", "/api/test/market", json!({ "id": x, "kind": "perp", "price": "2500", "szDecimals": 2 })).await);
+    ok(v.admin(
+        "POST",
+        "/api/test/market",
+        json!({ "id": x, "kind": "perp", "price": "2500", "szDecimals": 2 }),
+    )
+    .await);
     let maker = v.user(&format!("mk{s}"), 100_000).await;
     let user = v.user(&format!("us{s}"), 10_000).await;
-    ok(v.order(&maker, json!({ "market": x, "side": "sell", "price": "2500", "size": "10" })).await);
-    ok(v.order(&user, json!({ "market": x, "side": "buy", "price": "2500", "size": "1", "leverage": 2 })).await);
-    ok(v.order(&user, json!({ "market": x, "side": "buy", "price": "1000", "size": "1" })).await);
+    ok(v.order(
+        &maker,
+        json!({ "market": x, "side": "sell", "price": "2500", "size": "10" }),
+    )
+    .await);
+    ok(v.order(
+        &user,
+        json!({ "market": x, "side": "buy", "price": "2500", "size": "1", "leverage": 2 }),
+    )
+    .await);
+    ok(v.order(
+        &user,
+        json!({ "market": x, "side": "buy", "price": "1000", "size": "1" }),
+    )
+    .await);
     let account = v.account(&user).await;
     let book = v.market(&x).await["book"].clone();
     server.child.kill().unwrap();
@@ -240,17 +410,33 @@ async fn a_legacy_json_snapshot_alone_in_data_dir_comes_up_with_the_same_state()
 
     // The legacy format, alone in a new data dir.
     let b = temp_dir("legacy-b");
-    let out = bin().arg("export-json").arg(&b).env("DATA_DIR", &a).output().unwrap();
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let out = bin()
+        .arg("export-json")
+        .arg(&b)
+        .env("DATA_DIR", &a)
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     assert!(b.join("snapshot.json").exists() && !b.join("impulse.db").exists());
 
     let server = spawn(b.clone(), &[]);
     let v = Venue::new(&server.base);
     assert!(b.join("snapshot.json").exists(), "the JSON file is kept");
-    assert_eq!(replay(&b, &["--until", "0"])["hash"], hash_a, "snapshot 0 is the imported state, exactly");
+    assert_eq!(
+        replay(&b, &["--until", "0"])["hash"],
+        hash_a,
+        "snapshot 0 is the imported state, exactly"
+    );
     assert_eq!(v.account(&user).await, account);
     assert_eq!(v.market(&x).await["book"], book);
-    assert!(count(&b, "SELECT COUNT(*) FROM fills") >= 1, "the import's history went into the read tables");
+    assert!(
+        count(&b, "SELECT COUNT(*) FROM fills") >= 1,
+        "the import's history went into the read tables"
+    );
     drop(server);
 }
 
@@ -267,7 +453,10 @@ async fn throughput_with_bots_on_and_synchronous_full() {
     let burst = Instant::now();
     for i in 0..150 {
         let id = ok(v.order(&u, json!({ "market": "BTC-PERP", "side": "buy", "price": format!("{}", 30_000 + i), "size": "0.001" })).await)["order"]["id"].clone();
-        ok(v.as_(&u, "DELETE", &format!("/api/orders/{id}"), Value::Null).await);
+        ok(
+            v.as_(&u, "DELETE", &format!("/api/orders/{id}"), Value::Null)
+                .await,
+        );
     }
     let burst_s = burst.elapsed().as_secs_f64();
     let stats = ok(v.admin("GET", "/api/admin/stats", Value::Null).await);
@@ -284,6 +473,9 @@ async fn throughput_with_bots_on_and_synchronous_full() {
         1e6 / mean.max(1.0),
         300.0 / burst_s,
     );
-    assert!(stats["p99_us"].as_u64().unwrap() < 250_000, "p99 per command over 250 ms: {stats}");
+    assert!(
+        stats["p99_us"].as_u64().unwrap() < 250_000,
+        "p99 per command over 250 ms: {stats}"
+    );
     server.child.kill().unwrap();
 }

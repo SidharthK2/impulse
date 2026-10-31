@@ -66,16 +66,29 @@ pub(super) async fn serve_static(web_dir: Option<&std::path::Path>, path: &str) 
     if !file.is_file() {
         // A missing file (favicon.ico, an old asset) is a real 404 for crawlers and caches; any other path is an
         // app route, served by index.html (the SPA fallback). Market ids may contain dots, so only file types count.
-        if rel.extension().and_then(|e| e.to_str()).is_some_and(|e| content_type(std::path::Path::new(&format!("x.{e}"))) != "application/octet-stream") {
+        if rel.extension().and_then(|e| e.to_str()).is_some_and(|e| {
+            content_type(std::path::Path::new(&format!("x.{e}"))) != "application/octet-stream"
+        }) {
             return StatusCode::NOT_FOUND.into_response();
         }
         file = root.join("index.html");
     }
     // Vite fingerprints everything under assets/, so it can be cached for good; index.html and the rest revalidate,
     // so a deploy shows up on the next load.
-    let cache = if rel.starts_with("assets") { "public, max-age=31536000, immutable" } else { "no-cache" };
+    let cache = if rel.starts_with("assets") {
+        "public, max-age=31536000, immutable"
+    } else {
+        "no-cache"
+    };
     match tokio::fs::read(&file).await {
-        Ok(bytes) => ([(header::CONTENT_TYPE, content_type(&file)), (header::CACHE_CONTROL, cache)], bytes).into_response(),
+        Ok(bytes) => (
+            [
+                (header::CONTENT_TYPE, content_type(&file)),
+                (header::CACHE_CONTROL, cache),
+            ],
+            bytes,
+        )
+            .into_response(),
         Err(_) => StatusCode::NOT_FOUND.into_response(),
     }
 }
@@ -85,15 +98,27 @@ pub(super) async fn cors(req: Request, next: Next) -> Response {
     if req.method() == Method::OPTIONS {
         let mut res = StatusCode::NO_CONTENT.into_response();
         let h = res.headers_mut();
-        h.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, HeaderValue::from_static("*"));
-        h.insert(header::ACCESS_CONTROL_ALLOW_METHODS, HeaderValue::from_static("GET,POST,DELETE,OPTIONS"));
-        h.insert(header::ACCESS_CONTROL_ALLOW_HEADERS, HeaderValue::from_static("content-type,authorization,x-admin-token"));
+        h.insert(
+            header::ACCESS_CONTROL_ALLOW_ORIGIN,
+            HeaderValue::from_static("*"),
+        );
+        h.insert(
+            header::ACCESS_CONTROL_ALLOW_METHODS,
+            HeaderValue::from_static("GET,POST,DELETE,OPTIONS"),
+        );
+        h.insert(
+            header::ACCESS_CONTROL_ALLOW_HEADERS,
+            HeaderValue::from_static("content-type,authorization,x-admin-token"),
+        );
         return res;
     }
     let api = req.uri().path().starts_with("/api/");
     let mut res = next.run(req).await;
     if api {
-        res.headers_mut().insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, HeaderValue::from_static("*"));
+        res.headers_mut().insert(
+            header::ACCESS_CONTROL_ALLOW_ORIGIN,
+            HeaderValue::from_static("*"),
+        );
     }
     res
 }
@@ -105,9 +130,16 @@ mod tests {
     async fn get(root: &std::path::Path, path: &str) -> (StatusCode, String, String, String) {
         let res = serve_static(Some(root), path).await;
         let status = res.status();
-        let h = |k| res.headers().get(k).map(|v: &HeaderValue| v.to_str().unwrap().to_string()).unwrap_or_default();
+        let h = |k| {
+            res.headers()
+                .get(k)
+                .map(|v: &HeaderValue| v.to_str().unwrap().to_string())
+                .unwrap_or_default()
+        };
         let (ct, cc) = (h(header::CONTENT_TYPE), h(header::CACHE_CONTROL));
-        let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(res.into_body(), usize::MAX)
+            .await
+            .unwrap();
         (status, ct, cc, String::from_utf8_lossy(&body).into_owned())
     }
 
@@ -121,17 +153,41 @@ mod tests {
         std::fs::write(root.join("assets/index-abc.js"), "js").unwrap();
 
         let (s, ct, cc, body) = get(&root, "/robots.txt").await;
-        assert_eq!((s, ct.as_str(), cc.as_str(), body.as_str()), (StatusCode::OK, "text/plain; charset=utf-8", "no-cache", "User-agent: *"));
+        assert_eq!(
+            (s, ct.as_str(), cc.as_str(), body.as_str()),
+            (
+                StatusCode::OK,
+                "text/plain; charset=utf-8",
+                "no-cache",
+                "User-agent: *"
+            )
+        );
         assert_eq!(get(&root, "/sitemap.xml").await.1, "application/xml");
         let (s, _, cc, _) = get(&root, "/assets/index-abc.js").await;
-        assert_eq!((s, cc.as_str()), (StatusCode::OK, "public, max-age=31536000, immutable"));
+        assert_eq!(
+            (s, cc.as_str()),
+            (StatusCode::OK, "public, max-age=31536000, immutable")
+        );
         // App routes, including market ids with dots, fall back to index.html; missing files are 404s.
         for route in ["/", "/trade/BTC-PERP", "/trade/A.B"] {
             let (s, ct, cc, body) = get(&root, route).await;
-            assert_eq!((s, ct.as_str(), cc.as_str(), body.as_str()), (StatusCode::OK, "text/html; charset=utf-8", "no-cache", "<app>"), "{route}");
+            assert_eq!(
+                (s, ct.as_str(), cc.as_str(), body.as_str()),
+                (
+                    StatusCode::OK,
+                    "text/html; charset=utf-8",
+                    "no-cache",
+                    "<app>"
+                ),
+                "{route}"
+            );
         }
         for missing in ["/favicon.ico", "/og.png", "/assets/old-123.js", "/nope.txt"] {
-            assert_eq!(get(&root, missing).await.0, StatusCode::NOT_FOUND, "{missing}");
+            assert_eq!(
+                get(&root, missing).await.0,
+                StatusCode::NOT_FOUND,
+                "{missing}"
+            );
         }
     }
 }

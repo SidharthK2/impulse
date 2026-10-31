@@ -8,7 +8,11 @@ pub(super) struct AdvanceReq {
     ms: Option<f64>,
 }
 
-pub(super) async fn advance(State(app): State<App>, _: Admin, Body(b): Body<AdvanceReq>) -> ApiResult {
+pub(super) async fn advance(
+    State(app): State<App>,
+    _: Admin,
+    Body(b): Body<AdvanceReq>,
+) -> ApiResult {
     let mut node = app.lock();
     node.intake.clock.advance(b.ms.unwrap_or(0.0) as i64);
     let r = node.submit(Clock {})?;
@@ -35,7 +39,11 @@ pub(super) struct TestMarketReq {
     snipe_seconds: Option<f64>,
 }
 
-pub(super) async fn market(State(app): State<App>, _: Admin, Body(b): Body<TestMarketReq>) -> ApiResult {
+pub(super) async fn market(
+    State(app): State<App>,
+    _: Admin,
+    Body(b): Body<TestMarketReq>,
+) -> ApiResult {
     let spec = MarketSpec {
         price: b.price,
         sz_decimals: b.sz_decimals.map(|v| v as u32),
@@ -55,7 +63,12 @@ pub(super) struct TickReq {
 }
 
 pub(super) async fn tick(State(app): State<App>, _: Admin, Body(b): Body<TickReq>) -> ApiResult {
-    let effects = app.lock().submit(FeedTick { tick: Tick { market: b.market, price: b.price.nano() } })?;
+    let effects = app.lock().submit(FeedTick {
+        tick: Tick {
+            market: b.market,
+            price: b.price.nano(),
+        },
+    })?;
     ok(json!({ "effects": effects.map(|e| kinds(&e)) }))
 }
 
@@ -76,7 +89,11 @@ pub(super) struct ReloadReq {
     down_ms: Option<f64>,
 }
 
-pub(super) async fn reload(State(app): State<App>, _: Admin, Body(b): Body<ReloadReq>) -> ApiResult {
+pub(super) async fn reload(
+    State(app): State<App>,
+    _: Admin,
+    Body(b): Body<ReloadReq>,
+) -> ApiResult {
     let down = b.down_ms.unwrap_or(0.0) as i64;
     let mut node = app.lock();
     node.intake.clock.advance(down);

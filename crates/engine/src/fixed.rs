@@ -19,7 +19,11 @@ pub fn parse_fixed(s: &str) -> Result<i128, String> {
     if int.is_empty() || !int.bytes().all(|b| b.is_ascii_digit()) {
         return Err(err());
     }
-    let mut v: i128 = int.parse::<i128>().map_err(|_| err())?.checked_mul(ONE).ok_or_else(err)?;
+    let mut v: i128 = int
+        .parse::<i128>()
+        .map_err(|_| err())?
+        .checked_mul(ONE)
+        .ok_or_else(err)?;
     if let Some(f) = frac {
         if f.is_empty() || f.len() > DECIMALS || !f.bytes().all(|b| b.is_ascii_digit()) {
             return Err(err());
@@ -39,7 +43,16 @@ pub fn fmt(v: i128, min_decimals: usize) -> String {
     while frac.len() > min_decimals && frac.ends_with('0') {
         frac.pop();
     }
-    format!("{}{}{}", if neg { "-" } else { "" }, a / one, if frac.is_empty() { String::new() } else { format!(".{frac}") })
+    format!(
+        "{}{}{}",
+        if neg { "-" } else { "" },
+        a / one,
+        if frac.is_empty() {
+            String::new()
+        } else {
+            format!(".{frac}")
+        }
+    )
 }
 
 pub fn fmt_usd(v: i128) -> String {
@@ -80,7 +93,8 @@ pub fn parse_int(s: &str) -> Result<i128, String> {
     if t.is_empty() {
         return Ok(0);
     }
-    t.parse::<i128>().map_err(|_| format!("Cannot convert {t} to a BigInt"))
+    t.parse::<i128>()
+        .map_err(|_| format!("Cannot convert {t} to a BigInt"))
 }
 
 #[cfg(test)]
@@ -103,7 +117,19 @@ mod tests {
 
     #[test]
     fn isqrt_is_floor() {
-        for n in [0i128, 1, 2, 3, 4, 15, 16, 17, 1 << 100, (1 << 100) + 1, 2_025_000_000_000_000_000_000_000_000] {
+        for n in [
+            0i128,
+            1,
+            2,
+            3,
+            4,
+            15,
+            16,
+            17,
+            1 << 100,
+            (1 << 100) + 1,
+            2_025_000_000_000_000_000_000_000_000,
+        ] {
             let r = isqrt(n);
             assert!(r * r <= n && (r + 1) * (r + 1) > n, "{n}");
         }

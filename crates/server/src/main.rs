@@ -22,9 +22,9 @@ mod views;
 mod ws;
 
 use api::App;
-use logging::log;
 use command::{Clock, Command, Genesis, Resume};
 use intake::IntakeClock;
+use logging::log;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -34,7 +34,10 @@ fn env(name: &str) -> Option<String> {
 
 /// Run `f` against the node every `ms` (divided by TIMER_SPEEDUP, a test knob), starting after one period.
 fn every(app: &App, ms: u64, f: impl Fn(&mut api::Node) + Send + 'static) {
-    let speedup: u64 = env("TIMER_SPEEDUP").and_then(|s| s.parse().ok()).filter(|&n| n >= 1).unwrap_or(1);
+    let speedup: u64 = env("TIMER_SPEEDUP")
+        .and_then(|s| s.parse().ok())
+        .filter(|&n| n >= 1)
+        .unwrap_or(1);
     let ms = (ms / speedup).max(1);
     let app = app.clone();
     tokio::spawn(async move {
@@ -70,7 +73,10 @@ fn export_json(data_dir: &std::path::Path, args: &[String]) -> ! {
     };
     let result = store::Store::open_read_only(data_dir)
         .and_then(|s| sequencer::rebuild(&s, false, None))
-        .and_then(|(x, _, _)| persist::save(std::path::Path::new(out), &persist::serialize(&x)).map_err(|e| e.to_string()));
+        .and_then(|(x, _, _)| {
+            persist::save(std::path::Path::new(out), &persist::serialize(&x))
+                .map_err(|e| e.to_string())
+        });
     match result {
         Ok(()) => std::process::exit(0),
         Err(e) => {
@@ -84,7 +90,11 @@ fn export_json(data_dir: &std::path::Path, args: &[String]) -> ! {
 /// print {seq, hash, replayed, ms}. From the latest snapshot by default; `--full` replays the whole journal.
 fn replay(data_dir: &std::path::Path, args: &[String]) -> ! {
     let full = args.iter().any(|a| a == "--full");
-    let until = args.iter().position(|a| a == "--until").and_then(|i| args.get(i + 1)).and_then(|s| s.parse().ok());
+    let until = args
+        .iter()
+        .position(|a| a == "--until")
+        .and_then(|i| args.get(i + 1))
+        .and_then(|s| s.parse().ok());
     match sequencer::replay_report(data_dir, full, until) {
         Ok(report) => {
             println!("{report}");
@@ -103,14 +113,22 @@ async fn main() {
     let here = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let args: Vec<String> = std::env::args().skip(1).collect();
     let port: u16 = env("PORT").and_then(|p| p.parse().ok()).unwrap_or(8787);
-    let data_dir = env("DATA_DIR").map(PathBuf::from).unwrap_or_else(|| here.join("../../data"));
-    let web_dir = env("WEB_DIR").map(PathBuf::from).unwrap_or_else(|| here.join("../../web/dist"));
+    let data_dir = env("DATA_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| here.join("../../data"));
+    let web_dir = env("WEB_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| here.join("../../web/dist"));
     let admin_token = env("ADMIN_TOKEN").unwrap_or_else(|| "impulse-admin".into());
     let offline = env("OFFLINE").as_deref() == Some("1");
     let bots = env("BOTS").as_deref() != Some("0");
     let test_clock = env("TEST_CLOCK").as_deref() == Some("1");
     let clock = IntakeClock::new(test_clock);
-    let cli_data_dir = || env("DATA_DIR").map(PathBuf::from).unwrap_or_else(|| here.join("../../data"));
+    let cli_data_dir = || {
+        env("DATA_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| here.join("../../data"))
+    };
     match args.first().map(String::as_str) {
         Some("replay") => replay(&cli_data_dir(), &args[1..]),
         Some("export-json") => export_json(&cli_data_dir(), &args[1..]),
@@ -144,7 +162,9 @@ async fn main() {
             std::process::exit(1);
         }
     };
-    if let (IntakeClock::Manual(t), sequencer::Recovery::Restored { .. }) = (&mut node.intake.clock, &recovery) {
+    if let (IntakeClock::Manual(t), sequencer::Recovery::Restored { .. }) =
+        (&mut node.intake.clock, &recovery)
+    {
         *t = (*t).max(node.core.x.now); // the test clock never runs behind the journal
     }
     let last_ts = node.core.x.now;
@@ -152,9 +172,22 @@ async fn main() {
     match recovery {
         sequencer::Recovery::Fresh => {
             submit(&app, Genesis {});
-            log(&format!("fresh exchange; listing default markets{}…", if offline { " (offline)" } else { "" }));
+            log(&format!(
+                "fresh exchange; listing default markets{}…",
+                if offline { " (offline)" } else { "" }
+            ));
             feeds::list_defaults(&app, offline).await;
-            log(&format!("listed {}", app.lock().core.x.markets.keys().cloned().collect::<Vec<_>>().join(", ")));
+            log(&format!(
+                "listed {}",
+                app.lock()
+                    .core
+                    .x
+                    .markets
+                    .keys()
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
         }
         sequencer::Recovery::Restored { replayed, imported } => {
             let down = app.lock().intake.clock.now() - last_ts;
@@ -188,7 +221,9 @@ async fn main() {
             if !c.core.x.bots_enabled {
                 return;
             }
-            let Some(b) = c.intake.bots.as_mut() else { return };
+            let Some(b) = c.intake.bots.as_mut() else {
+                return;
+            };
             for cmd in b.next_quotes(&c.core.x, 3) {
                 log_err("bots", c.submit(cmd));
             }
@@ -197,7 +232,9 @@ async fn main() {
             if !c.core.x.bots_enabled {
                 return;
             }
-            let Some(b) = c.intake.bots.as_mut() else { return };
+            let Some(b) = c.intake.bots.as_mut() else {
+                return;
+            };
             let (cmds, note) = b.noise(&c.core.x);
             if let Some(note) = note {
                 log(&note);
@@ -226,7 +263,11 @@ async fn main() {
     let bound = listener.local_addr().map(|a| a.port()).unwrap_or(port);
     log(&format!(
         "Impulse listening on http://localhost:{bound}  (admin token: {})",
-        if admin_token == "impulse-admin" { "impulse-admin, the default" } else { "from ADMIN_TOKEN" }
+        if admin_token == "impulse-admin" {
+            "impulse-admin, the default"
+        } else {
+            "from ADMIN_TOKEN"
+        }
     ));
 
     let shutdown = {
@@ -235,7 +276,9 @@ async fn main() {
             let ctrl_c = tokio::signal::ctrl_c();
             #[cfg(unix)]
             let term = async {
-                if let Ok(mut s) = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+                if let Ok(mut s) =
+                    tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                {
                     s.recv().await;
                 }
             };

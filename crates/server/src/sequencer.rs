@@ -43,7 +43,15 @@ pub struct Intake {
 
 impl Node {
     pub fn new(core: Core, clock: IntakeClock, bots: bool) -> Node {
-        Node { core, intake: Intake { clock, bots: bots.then(Bots::new), sim: Rng::new(42) }, hub: Hub::default() }
+        Node {
+            core,
+            intake: Intake {
+                clock,
+                bots: bots.then(Bots::new),
+                sim: Rng::new(42),
+            },
+            hub: Hub::default(),
+        }
     }
 
     /// Submit a command at the intake clock's time; its own reply comes back.
@@ -77,12 +85,16 @@ pub enum Recovery {
 
 /// Stop the process: the alternative is serving state the journal doesn't have.
 fn fail_stop(why: &str) -> ! {
-    crate::logging::log(&format!("FATAL: {why}; stopping (restart recovers the last committed state)"));
+    crate::logging::log(&format!(
+        "FATAL: {why}; stopping (restart recovers the last committed state)"
+    ));
     std::process::exit(70);
 }
 
 fn decode(state: &[u8]) -> Result<Exchange, String> {
-    serde_json::from_slice::<Exchange>(state).map(Exchange::restored).map_err(|e| format!("bad snapshot: {e}"))
+    serde_json::from_slice::<Exchange>(state)
+        .map(Exchange::restored)
+        .map_err(|e| format!("bad snapshot: {e}"))
 }
 
 fn encode(x: &Exchange) -> Vec<u8> {
@@ -118,7 +130,11 @@ impl Core {
     }
 
     /// The sequencer: every state change enters here, with the time intake gave it. See the module comment.
-    pub fn submit<C: Apply + Clone + Into<Command>>(&mut self, cmd: C, ts: i64) -> XResult<C::Reply> {
+    pub fn submit<C: Apply + Clone + Into<Command>>(
+        &mut self,
+        cmd: C,
+        ts: i64,
+    ) -> XResult<C::Reply> {
         let journaled: Command = cmd.clone().into();
         let started = Instant::now();
         let prev = self.x.now;
@@ -162,7 +178,8 @@ impl Core {
             self.timings.push(started.elapsed());
         }
         self.since_snapshot += 1;
-        if self.since_snapshot >= SNAPSHOT_EVERY || self.snapshot_at.elapsed() >= SNAPSHOT_INTERVAL {
+        if self.since_snapshot >= SNAPSHOT_EVERY || self.snapshot_at.elapsed() >= SNAPSHOT_INTERVAL
+        {
             self.snapshot();
         }
         r
@@ -188,7 +205,9 @@ impl Core {
     /// DATA_DIR imports that as snapshot 0 (the JSON file is kept). After a recovery, a fresh snapshot, so the
     /// next recovery never replays old commands through newer code.
     pub fn recover(&mut self, data_dir: &Path) -> Result<Recovery, String> {
-        let Some(store) = &self.store else { return Ok(Recovery::Fresh) };
+        let Some(store) = &self.store else {
+            return Ok(Recovery::Fresh);
+        };
         let mut imported = false;
         if store.is_empty()? {
             match crate::persist::load(data_dir)? {
@@ -196,14 +215,22 @@ impl Core {
                 Some((mut x, saved_at)) => {
                     x.now = saved_at.unwrap_or(x.now);
                     // The read tables start with whatever history the snapshot carries.
-                    for c in x.candles.iter().flat_map(|(m, cs)| cs.iter().map(move |c| (m.clone(), c.t))).collect::<Vec<_>>() {
+                    for c in x
+                        .candles
+                        .iter()
+                        .flat_map(|(m, cs)| cs.iter().map(move |c| (m.clone(), c.t)))
+                        .collect::<Vec<_>>()
+                    {
                         x.dirty_candles.insert(c);
                     }
                     store.begin()?;
                     store.write_history(0, &mut x, HistoryMarks::default())?;
                     store.commit()?;
                     store.save_snapshot(0, x.now, &encode(&x))?;
-                    crate::logging::log(&format!("imported the legacy snapshot {} as snapshot 0 (the file is kept)", data_dir.join("snapshot.json").display()));
+                    crate::logging::log(&format!(
+                        "imported the legacy snapshot {} as snapshot 0 (the file is kept)",
+                        data_dir.join("snapshot.json").display()
+                    ));
                     imported = true;
                 }
             }
@@ -232,14 +259,27 @@ pub struct Replayed {
 /// Rebuild the exchange from a store: from the latest snapshot (or, with `full`, from the start of the journal:
 /// an empty exchange before its Genesis command, or a legacy import's snapshot 0), replaying every command after
 /// it, up to `until`. Returns the exchange, its sequence number, and how many commands were replayed.
-pub fn rebuild(store: &Store, full: bool, until: Option<u64>) -> Result<(Exchange, u64, u64), String> {
+pub fn rebuild(
+    store: &Store,
+    full: bool,
+    until: Option<u64>,
+) -> Result<(Exchange, u64, u64), String> {
     rebuild_counting(store, full, until, None).map(|(x, seq, r)| (x, seq, r.commands))
 }
 
 /// `legacy`: for a full replay of a database whose import snapshot 0 was pruned (before it was kept), the
 /// imported exchange from DATA_DIR/snapshot.json.
-pub fn rebuild_counting(store: &Store, full: bool, until: Option<u64>, legacy: Option<Exchange>) -> Result<(Exchange, u64, Replayed), String> {
-    let start = if full { store.first_snapshot()?.filter(|s| s.seq == 0) } else { store.latest_snapshot(until)? };
+pub fn rebuild_counting(
+    store: &Store,
+    full: bool,
+    until: Option<u64>,
+    legacy: Option<Exchange>,
+) -> Result<(Exchange, u64, Replayed), String> {
+    let start = if full {
+        store.first_snapshot()?.filter(|s| s.seq == 0)
+    } else {
+        store.latest_snapshot(until)?
+    };
     let (mut x, mut seq) = match (start, legacy) {
         (Some(s), _) => (decode(&s.state)?, s.seq),
         (None, Some(x)) if full => (x, 0),
@@ -247,19 +287,27 @@ pub fn rebuild_counting(store: &Store, full: bool, until: Option<u64>, legacy: O
     };
     let mut replayed = Replayed::default();
     for c in store.commands_after(seq, until)? {
-        let cmd: Command = serde_json::from_str(&c.payload).map_err(|e| format!("journal seq {}: {e}", c.seq))?;
+        let cmd: Command =
+            serde_json::from_str(&c.payload).map_err(|e| format!("journal seq {}: {e}", c.seq))?;
         if c.seq != seq + 1 {
             return Err(format!("journal gap: seq {} after {seq}", c.seq));
         }
         x.now = c.ts;
         let version = x.version;
-        let (fill, risk) = (x.fills.back().map_or(0, |f| f.id), x.risk.back().map_or(0, |r| r.id));
+        let (fill, risk) = (
+            x.fills.back().map_or(0, |f| f.id),
+            x.risk.back().map_or(0, |r| r.id),
+        );
         // A journaled command changed the exchange when it ran; its reply (success or refusal) doesn't matter here.
         let _ = cmd.apply(&mut x);
         replayed.fills += x.fills.iter().rev().take_while(|f| f.id > fill).count() as u64;
         replayed.risk += x.risk.iter().rev().take_while(|r| r.id > risk).count() as u64;
         if x.version == version {
-            return Err(format!("journal seq {} ({}) changed nothing on replay", c.seq, cmd.kind()));
+            return Err(format!(
+                "journal seq {} ({}) changed nothing on replay",
+                c.seq,
+                cmd.kind()
+            ));
         }
         seq = c.seq;
         replayed.commands += 1;
@@ -268,13 +316,23 @@ pub fn rebuild_counting(store: &Store, full: bool, until: Option<u64>, legacy: O
 }
 
 /// Offline replay for checks: rebuild from DATA_DIR's database (read-only) and report where it ends up.
-pub fn replay_report(data_dir: &Path, full: bool, until: Option<u64>) -> Result<serde_json::Value, String> {
+pub fn replay_report(
+    data_dir: &Path,
+    full: bool,
+    until: Option<u64>,
+) -> Result<serde_json::Value, String> {
     let store = Store::open_read_only(data_dir)?;
     let started = Instant::now();
     // A journal that doesn't begin with Genesis began with a legacy import; if its snapshot 0 is gone, start from
     // the JSON file the import kept.
-    let imported = store.commands_after(0, Some(1))?.first().is_some_and(|c| !c.payload.contains("\"kind\":\"genesis\""));
-    let legacy = match (full && imported && store.first_snapshot()?.is_none_or(|s| s.seq != 0), crate::persist::load(data_dir)?) {
+    let imported = store
+        .commands_after(0, Some(1))?
+        .first()
+        .is_some_and(|c| !c.payload.contains("\"kind\":\"genesis\""));
+    let legacy = match (
+        full && imported && store.first_snapshot()?.is_none_or(|s| s.seq != 0),
+        crate::persist::load(data_dir)?,
+    ) {
         (true, Some((mut x, saved_at))) => {
             x.now = saved_at.unwrap_or(x.now);
             Some(x)
@@ -282,6 +340,7 @@ pub fn replay_report(data_dir: &Path, full: bool, until: Option<u64>) -> Result<
         _ => None,
     };
     let (x, seq, r) = rebuild_counting(&store, full, until, legacy)?;
-    Ok(serde_json::json!({ "seq": seq, "hash": x.state_hash(), "replayed": r.commands, "fills": r.fills, "risk": r.risk, "ms": started.elapsed().as_millis() as u64 }))
+    Ok(
+        serde_json::json!({ "seq": seq, "hash": x.state_hash(), "replayed": r.commands, "fills": r.fills, "risk": r.risk, "ms": started.elapsed().as_millis() as u64 }),
+    )
 }
-

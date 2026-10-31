@@ -89,7 +89,13 @@ impl Book {
         let arr = self.side_mut(side);
         let i = arr
             .iter()
-            .position(|x| if side == Side::Buy { x.price < o.price } else { x.price > o.price })
+            .position(|x| {
+                if side == Side::Buy {
+                    x.price < o.price
+                } else {
+                    x.price > o.price
+                }
+            })
             .unwrap_or(arr.len());
         arr.insert(i, o);
     }
@@ -104,7 +110,10 @@ impl Book {
     }
 
     pub fn get_mut(&mut self, id: u64) -> Option<&mut Order> {
-        self.bids.iter_mut().chain(self.asks.iter_mut()).find(|o| o.id == id)
+        self.bids
+            .iter_mut()
+            .chain(self.asks.iter_mut())
+            .find(|o| o.id == id)
     }
 
     pub fn best(&self, s: Side) -> Option<&Order> {
@@ -138,7 +147,11 @@ impl Book {
             if out.len() == depth {
                 break;
             }
-            out.push(Level { price: o.price, size: o.size, orders: 1 });
+            out.push(Level {
+                price: o.price,
+                size: o.size,
+                orders: 1,
+            });
         }
         out
     }
@@ -153,18 +166,40 @@ mod tests {
     use super::*;
 
     fn o(id: u64, side: Side, price: i128) -> Order {
-        Order { id, account: "a".into(), market: "X".into(), side, price, size: 1, filled: 0, leverage: 1, reduce_only: false, tif: Tif::Gtc, time: 0 }
+        Order {
+            id,
+            account: "a".into(),
+            market: "X".into(),
+            side,
+            price,
+            size: 1,
+            filled: 0,
+            leverage: 1,
+            reduce_only: false,
+            tif: Tif::Gtc,
+            time: 0,
+        }
     }
 
     #[test]
     fn keeps_price_time_priority_and_aggregates_levels() {
         let mut b = Book::default();
-        for (id, side, price) in [(1, Side::Buy, 10), (2, Side::Buy, 12), (3, Side::Buy, 10), (4, Side::Sell, 15), (5, Side::Sell, 14)] {
+        for (id, side, price) in [
+            (1, Side::Buy, 10),
+            (2, Side::Buy, 12),
+            (3, Side::Buy, 10),
+            (4, Side::Sell, 15),
+            (5, Side::Sell, 14),
+        ] {
             b.add(o(id, side, price));
         }
         assert_eq!(b.bids.iter().map(|x| x.id).collect::<Vec<_>>(), [2, 1, 3]);
         assert_eq!(b.asks.iter().map(|x| x.id).collect::<Vec<_>>(), [5, 4]);
-        let levels: Vec<_> = b.levels(Side::Buy, 5).into_iter().map(|l| (l.price, l.size, l.orders)).collect();
+        let levels: Vec<_> = b
+            .levels(Side::Buy, 5)
+            .into_iter()
+            .map(|l| (l.price, l.size, l.orders))
+            .collect();
         assert_eq!(levels, [(12, 1, 1), (10, 2, 2)]);
         assert!(b.crosses(Side::Buy, 14));
         assert!(!b.crosses(Side::Buy, 13));

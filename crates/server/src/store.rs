@@ -54,7 +54,10 @@ impl Store {
         std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
         let path = dir.join("impulse.db");
         let conn = Connection::open(&path).map_err(err)?;
-        conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL; PRAGMA foreign_keys = ON;").map_err(err)?;
+        conn.execute_batch(
+            "PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL; PRAGMA foreign_keys = ON;",
+        )
+        .map_err(err)?;
         let store = Store { conn, path };
         store.migrate()?;
         Ok(store)
@@ -63,22 +66,42 @@ impl Store {
     /// Open an existing database without changing it (for offline replay).
     pub fn open_read_only(dir: &Path) -> Result<Store, String> {
         let path = dir.join("impulse.db");
-        let conn = Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).map_err(|e| format!("{}: {e}", path.display()))?;
+        let conn = Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map_err(|e| format!("{}: {e}", path.display()))?;
         Ok(Store { conn, path })
     }
 
     fn migrate(&self) -> Result<(), String> {
-        self.conn.execute_batch("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);").map_err(err)?;
-        let done: usize = self.meta("schema_version")?.map_or(0, |v| v.parse().unwrap_or(0));
+        self.conn
+            .execute_batch(
+                "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
+            )
+            .map_err(err)?;
+        let done: usize = self
+            .meta("schema_version")?
+            .map_or(0, |v| v.parse().unwrap_or(0));
         if done > MIGRATIONS.len() {
-            return Err(format!("{} has schema version {done}, newer than this build's {}", self.path.display(), MIGRATIONS.len()));
+            return Err(format!(
+                "{} has schema version {done}, newer than this build's {}",
+                self.path.display(),
+                MIGRATIONS.len()
+            ));
         }
         for (i, sql) in MIGRATIONS.iter().enumerate().skip(done) {
             let tx = self.conn.unchecked_transaction().map_err(err)?;
-            tx.execute_batch(sql).map_err(|e| format!("migration {}: {e}", i + 1))?;
-            tx.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ?1)", [(i + 1).to_string()]).map_err(err)?;
+            tx.execute_batch(sql)
+                .map_err(|e| format!("migration {}: {e}", i + 1))?;
+            tx.execute(
+                "INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ?1)",
+                [(i + 1).to_string()],
+            )
+            .map_err(err)?;
             if i == 0 {
-                tx.execute("INSERT OR IGNORE INTO meta (key, value) VALUES ('created_at', ?1)", [crate::intake::wall_ms().to_string()]).map_err(err)?;
+                tx.execute(
+                    "INSERT OR IGNORE INTO meta (key, value) VALUES ('created_at', ?1)",
+                    [crate::intake::wall_ms().to_string()],
+                )
+                .map_err(err)?;
             }
             tx.commit().map_err(err)?;
         }
@@ -86,12 +109,22 @@ impl Store {
     }
 
     pub fn meta(&self, key: &str) -> Result<Option<String>, String> {
-        self.conn.query_row("SELECT value FROM meta WHERE key = ?1", [key], |r| r.get(0)).optional().map_err(err)
+        self.conn
+            .query_row("SELECT value FROM meta WHERE key = ?1", [key], |r| r.get(0))
+            .optional()
+            .map_err(err)
     }
 
     /// No journal and no snapshot: a fresh exchange.
     pub fn is_empty(&self) -> Result<bool, String> {
-        let n: i64 = self.conn.query_row("SELECT (SELECT COUNT(*) FROM commands) + (SELECT COUNT(*) FROM snapshots)", [], |r| r.get(0)).map_err(err)?;
+        let n: i64 = self
+            .conn
+            .query_row(
+                "SELECT (SELECT COUNT(*) FROM commands) + (SELECT COUNT(*) FROM snapshots)",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(err)?;
         Ok(n == 0)
     }
 
@@ -107,15 +140,41 @@ impl Store {
         let _ = self.conn.execute_batch("ROLLBACK");
     }
 
-    pub fn insert_command(&self, seq: u64, ts: i64, kind: &str, payload: &str) -> Result<(), String> {
-        self.conn.execute("INSERT INTO commands (seq, ts, kind, payload) VALUES (?1, ?2, ?3, ?4)", params![seq as i64, ts, kind, payload]).map_err(err).map(|_| ())
+    pub fn insert_command(
+        &self,
+        seq: u64,
+        ts: i64,
+        kind: &str,
+        payload: &str,
+    ) -> Result<(), String> {
+        self.conn
+            .execute(
+                "INSERT INTO commands (seq, ts, kind, payload) VALUES (?1, ?2, ?3, ?4)",
+                params![seq as i64, ts, kind, payload],
+            )
+            .map_err(err)
+            .map(|_| ())
     }
 
     /// Journaled commands after `seq`, in order.
     pub fn commands_after(&self, seq: u64, until: Option<u64>) -> Result<Vec<Journaled>, String> {
-        let mut st = self.conn.prepare("SELECT seq, ts, payload FROM commands WHERE seq > ?1 AND seq <= ?2 ORDER BY seq").map_err(err)?;
+        let mut st = self
+            .conn
+            .prepare(
+                "SELECT seq, ts, payload FROM commands WHERE seq > ?1 AND seq <= ?2 ORDER BY seq",
+            )
+            .map_err(err)?;
         let rows = st
-            .query_map(params![seq as i64, until.map_or(i64::MAX, |u| u as i64)], |r| Ok(Journaled { seq: r.get::<_, i64>(0)? as u64, ts: r.get(1)?, payload: r.get(2)? }))
+            .query_map(
+                params![seq as i64, until.map_or(i64::MAX, |u| u as i64)],
+                |r| {
+                    Ok(Journaled {
+                        seq: r.get::<_, i64>(0)? as u64,
+                        ts: r.get(1)?,
+                        payload: r.get(2)?,
+                    })
+                },
+            )
             .map_err(err)?;
         rows.collect::<Result<Vec<_>, _>>().map_err(err)
     }
@@ -126,7 +185,12 @@ impl Store {
             .query_row(
                 "SELECT seq, state FROM snapshots WHERE seq <= ?1 ORDER BY seq DESC LIMIT 1",
                 [until.map_or(i64::MAX, |u| u as i64)],
-                |r| Ok(Snapshot { seq: r.get::<_, i64>(0)? as u64, state: r.get(1)? }),
+                |r| {
+                    Ok(Snapshot {
+                        seq: r.get::<_, i64>(0)? as u64,
+                        state: r.get(1)?,
+                    })
+                },
             )
             .optional()
             .map_err(err)
@@ -135,7 +199,16 @@ impl Store {
     /// The oldest snapshot (a legacy import is seq 0): where a full replay starts if there's no Genesis command.
     pub fn first_snapshot(&self) -> Result<Option<Snapshot>, String> {
         self.conn
-            .query_row("SELECT seq, state FROM snapshots ORDER BY seq LIMIT 1", [], |r| Ok(Snapshot { seq: r.get::<_, i64>(0)? as u64, state: r.get(1)? }))
+            .query_row(
+                "SELECT seq, state FROM snapshots ORDER BY seq LIMIT 1",
+                [],
+                |r| {
+                    Ok(Snapshot {
+                        seq: r.get::<_, i64>(0)? as u64,
+                        state: r.get(1)?,
+                    })
+                },
+            )
             .optional()
             .map_err(err)
     }
@@ -143,7 +216,11 @@ impl Store {
     /// Store a snapshot and keep only the last 5 (plus a legacy import's snapshot 0).
     pub fn save_snapshot(&self, seq: u64, ts: i64, state: &[u8]) -> Result<(), String> {
         let tx = self.conn.unchecked_transaction().map_err(err)?;
-        tx.execute("INSERT OR REPLACE INTO snapshots (seq, ts, version, state) VALUES (?1, ?2, ?3, ?4)", params![seq as i64, ts, BUILD, state]).map_err(err)?;
+        tx.execute(
+            "INSERT OR REPLACE INTO snapshots (seq, ts, version, state) VALUES (?1, ?2, ?3, ?4)",
+            params![seq as i64, ts, BUILD, state],
+        )
+        .map_err(err)?;
         // Snapshot 0 (a legacy import) is the base the journal starts from: never pruned.
         tx.execute("DELETE FROM snapshots WHERE seq <> 0 AND seq NOT IN (SELECT seq FROM snapshots ORDER BY seq DESC LIMIT 5)", []).map_err(err)?;
         tx.commit().map_err(err)
@@ -158,7 +235,8 @@ use serde_json::{json, Value};
 
 impl Store {
     fn insert_fill(&self, seq: u64, x: &Exchange, f: &Fill) -> Result<(), String> {
-        let v = serde_json::to_value(crate::views::fill_view(x, f, None)).expect("fill view serializes");
+        let v = serde_json::to_value(crate::views::fill_view(x, f, None))
+            .expect("fill view serializes");
         self.conn
             .execute(
                 "INSERT OR REPLACE INTO fills (id, seq, ts, market, kind, price, size, notional, side, taker, maker, taker_order, maker_order)
@@ -195,8 +273,12 @@ impl Store {
     }
 
     fn upsert_candle(&self, x: &Exchange, market: &str, t: i64) -> Result<(), String> {
-        let (Some(meta), Some(cs)) = (x.markets.get(market), x.candles.get(market)) else { return Ok(()) };
-        let Ok(i) = cs.binary_search_by_key(&t, |c| c.t) else { return Ok(()) }; // already rolled out of memory
+        let (Some(meta), Some(cs)) = (x.markets.get(market), x.candles.get(market)) else {
+            return Ok(());
+        };
+        let Ok(i) = cs.binary_search_by_key(&t, |c| c.t) else {
+            return Ok(());
+        }; // already rolled out of memory
         let c = &cs[i];
         let p = |lot: i128| fmt(coin_price(meta.sz_decimals, lot), 0);
         self.conn
@@ -210,7 +292,12 @@ impl Store {
 
     /// Write what step `seq` added to the exchange's history: fills and risk events with ids past the given ones,
     /// accounts past the given count, and the candles it touched. Returns the new high-water marks.
-    pub fn write_history(&self, seq: u64, x: &mut Exchange, marks: HistoryMarks) -> Result<HistoryMarks, String> {
+    pub fn write_history(
+        &self,
+        seq: u64,
+        x: &mut Exchange,
+        marks: HistoryMarks,
+    ) -> Result<HistoryMarks, String> {
         let mut next = marks;
         for f in x.fills.iter().rev().take_while(|f| f.id > marks.fill) {
             self.insert_fill(seq, x, f)?;
@@ -222,7 +309,10 @@ impl Store {
         }
         for a in x.accounts.values().skip(marks.accounts) {
             self.conn
-                .execute("INSERT OR REPLACE INTO accounts (id, created_at, bot) VALUES (?1, ?2, ?3)", params![a.id, a.created_at, a.bot as i64])
+                .execute(
+                    "INSERT OR REPLACE INTO accounts (id, created_at, bot) VALUES (?1, ?2, ?3)",
+                    params![a.id, a.created_at, a.bot as i64],
+                )
                 .map_err(err)?;
         }
         next.accounts = x.accounts.len();
@@ -233,7 +323,12 @@ impl Store {
     }
 
     /// Risk events newest first, from the full history: ids below `before`, optionally one market.
-    pub fn risk_page(&self, market: Option<&str>, before: Option<u64>, limit: usize) -> Result<Vec<Value>, String> {
+    pub fn risk_page(
+        &self,
+        market: Option<&str>,
+        before: Option<u64>,
+        limit: usize,
+    ) -> Result<Vec<Value>, String> {
         let mut st = self
             .conn
             .prepare("SELECT id, ts, market, kind, accounts, text, amount, price FROM risk_events WHERE (?1 IS NULL OR market = ?1) AND id < ?2 ORDER BY id DESC LIMIT ?3")
@@ -252,7 +347,12 @@ impl Store {
     }
 
     /// A market's fills newest first, from the full history: ids below `before`.
-    pub fn fills_page(&self, market: &str, before: Option<u64>, limit: usize) -> Result<Vec<Value>, String> {
+    pub fn fills_page(
+        &self,
+        market: &str,
+        before: Option<u64>,
+        limit: usize,
+    ) -> Result<Vec<Value>, String> {
         let mut st = self
             .conn
             .prepare("SELECT id, ts, market, kind, price, size, notional, side, taker, maker FROM fills WHERE market = ?1 AND id < ?2 ORDER BY id DESC LIMIT ?3")
@@ -281,7 +381,11 @@ pub struct HistoryMarks {
 impl HistoryMarks {
     /// Everything the exchange holds now counts as written.
     pub fn of(x: &Exchange) -> Self {
-        HistoryMarks { fill: x.fills.back().map_or(0, |f| f.id), risk: x.risk.back().map_or(0, |r| r.id), accounts: x.accounts.len() }
+        HistoryMarks {
+            fill: x.fills.back().map_or(0, |f| f.id),
+            risk: x.risk.back().map_or(0, |r| r.id),
+            accounts: x.accounts.len(),
+        }
     }
 }
 
@@ -291,13 +395,24 @@ mod tests {
 
     #[test]
     fn pruning_keeps_the_last_five_snapshots_and_a_legacy_import() {
-        let dir = std::env::temp_dir().join(format!("impulse-store-{}-{}", std::process::id(), crate::intake::wall_ms()));
+        let dir = std::env::temp_dir().join(format!(
+            "impulse-store-{}-{}",
+            std::process::id(),
+            crate::intake::wall_ms()
+        ));
         let store = Store::open(&dir).unwrap();
         for seq in [0, 10, 20, 30, 40, 50, 60, 70] {
             store.save_snapshot(seq, 0, b"{}").unwrap();
         }
-        let mut st = store.conn.prepare("SELECT seq FROM snapshots ORDER BY seq").unwrap();
-        let kept: Vec<i64> = st.query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect();
+        let mut st = store
+            .conn
+            .prepare("SELECT seq FROM snapshots ORDER BY seq")
+            .unwrap();
+        let kept: Vec<i64> = st
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
         assert_eq!(kept, [0, 30, 40, 50, 60, 70]);
     }
 }

@@ -101,7 +101,10 @@ impl Tokens {
     pub fn parse(s: &str) -> Result<Tokens, String> {
         match s {
             "all" => Ok(Tokens::All),
-            _ if !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit()) => s.parse().map(Tokens::Exact).map_err(|_| "tokens out of range".into()),
+            _ if !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit()) => s
+                .parse()
+                .map(Tokens::Exact)
+                .map_err(|_| "tokens out of range".into()),
             _ => Err("tokens must be a whole number or \"all\"".into()),
         }
     }
@@ -138,9 +141,18 @@ mod tests {
             let d: Dec = serde_json::from_value(serde_json::json!(s)).unwrap();
             assert_eq!(serde_json::to_value(d).unwrap(), serde_json::json!(s));
         }
-        assert_eq!(serde_json::from_value::<Dec>(serde_json::json!(2.5)).unwrap(), Dec::parse("2.5").unwrap());
-        assert_eq!(serde_json::from_value::<Amount>(serde_json::json!("all")).unwrap(), Amount::All);
-        assert_eq!(serde_json::to_value(Tokens::Exact(42)).unwrap(), serde_json::json!("42"));
+        assert_eq!(
+            serde_json::from_value::<Dec>(serde_json::json!(2.5)).unwrap(),
+            Dec::parse("2.5").unwrap()
+        );
+        assert_eq!(
+            serde_json::from_value::<Amount>(serde_json::json!("all")).unwrap(),
+            Amount::All
+        );
+        assert_eq!(
+            serde_json::to_value(Tokens::Exact(42)).unwrap(),
+            serde_json::json!("42")
+        );
         assert!(serde_json::from_value::<Tokens>(serde_json::json!("1.5")).is_err());
         assert!(Dec::parse("1.0000000001").is_err());
     }

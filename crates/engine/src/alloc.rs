@@ -53,7 +53,11 @@ fn mul_div_rem(a: i128, b: i128, c: i128) -> (i128, i128) {
     // shift-subtract long division of (hi, lo) by c
     let (mut q, mut r) = (0u128, 0u128);
     for i in (0..256).rev() {
-        let bit = if i >= 128 { (hi >> (i - 128)) & 1 } else { (lo >> i) & 1 };
+        let bit = if i >= 128 {
+            (hi >> (i - 128)) & 1
+        } else {
+            (lo >> i) & 1
+        };
         let carry = r >> 127;
         r = (r << 1) | bit;
         q <<= 1;
@@ -76,7 +80,13 @@ mod tests {
         assert!(allocate(1, &[0]).is_err());
         assert_eq!(allocate(7, &[2, 5]).unwrap(), vec![2, 5]);
         let big = 60_000_000_000_000_000_000_000i128; // 6e22
-        assert_eq!(allocate(big, &[big, big, big]).unwrap(), vec![big / 3, big / 3, big / 3]);
-        assert_eq!(allocate(big + 1, &[big, 2 * big]).unwrap(), vec![big / 3, 2 * big / 3 + 1]);
+        assert_eq!(
+            allocate(big, &[big, big, big]).unwrap(),
+            vec![big / 3, big / 3, big / 3]
+        );
+        assert_eq!(
+            allocate(big + 1, &[big, 2 * big]).unwrap(),
+            vec![big / 3, 2 * big / 3 + 1]
+        );
     }
 }

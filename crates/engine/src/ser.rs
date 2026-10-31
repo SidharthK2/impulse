@@ -15,7 +15,9 @@ impl<'de> Visitor<'de> for I128Visitor {
         f.write_str("an integer or a decimal-integer string")
     }
     fn visit_str<E: de::Error>(self, v: &str) -> Result<i128, E> {
-        v.trim().parse::<i128>().map_err(|_| E::custom(format!("bad integer \"{v}\"")))
+        v.trim()
+            .parse::<i128>()
+            .map_err(|_| E::custom(format!("bad integer \"{v}\"")))
     }
     fn visit_i64<E: de::Error>(self, v: i64) -> Result<i128, E> {
         Ok(v as i128)
@@ -62,10 +64,15 @@ pub mod big_map {
         let m: BTreeMap<&String, String> = v.iter().map(|(k, v)| (k, v.to_string())).collect();
         m.serialize(s)
     }
-    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<BTreeMap<String, i128>, D::Error> {
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        d: D,
+    ) -> Result<BTreeMap<String, i128>, D::Error> {
         #[derive(Deserialize)]
         struct W(#[serde(with = "big")] i128);
-        Ok(BTreeMap::<String, W>::deserialize(d)?.into_iter().map(|(k, w)| (k, w.0)).collect())
+        Ok(BTreeMap::<String, W>::deserialize(d)?
+            .into_iter()
+            .map(|(k, w)| (k, w.0))
+            .collect())
     }
 }
 
@@ -102,7 +109,9 @@ impl<'de> Deserialize<'de> for Num {
         match serde_json::Value::deserialize(d)? {
             serde_json::Value::String(s) => Ok(Num(s)),
             serde_json::Value::Number(n) => Ok(Num(n.to_string())),
-            other => Err(de::Error::custom(format!("expected a number or string, got {other}"))),
+            other => Err(de::Error::custom(format!(
+                "expected a number or string, got {other}"
+            ))),
         }
     }
 }

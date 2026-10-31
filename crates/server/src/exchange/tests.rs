@@ -9,7 +9,11 @@ fn d(s: &str) -> Dec {
 /// A small session: a market, two accounts, a resting order and a fill.
 fn session(key: &str) -> Exchange {
     let mut x = Exchange::new(1_000_000);
-    let spec = MarketSpec { price: Some(d("100")), sz_decimals: Some(2), ..MarketSpec::new("X", Kind::Perp, Source::Manual) };
+    let spec = MarketSpec {
+        price: Some(d("100")),
+        sz_decimals: Some(2),
+        ..MarketSpec::new("X", Kind::Perp, Source::Manual)
+    };
     x.create_market(spec).unwrap();
     for (i, id) in ["alice", "bob"].into_iter().enumerate() {
         x.now += 1000;
@@ -17,8 +21,10 @@ fn session(key: &str) -> Exchange {
         x.deposit(id, d("1000")).unwrap();
     }
     x.now += 1000;
-    x.place_order("bob", OrderInput::limit("X", Side::Sell, d("100"), d("5"))).unwrap();
-    x.place_order("alice", OrderInput::market("X", Side::Buy, d("2"))).unwrap();
+    x.place_order("bob", OrderInput::limit("X", Side::Sell, d("100"), d("5")))
+        .unwrap();
+    x.place_order("alice", OrderInput::market("X", Side::Buy, d("2")))
+        .unwrap();
     x
 }
 

@@ -20,17 +20,23 @@ fn run(events: &[Value]) -> Run {
     let mut state = initial_state();
     let mut steps = vec![];
     for (i, raw) in events.iter().enumerate() {
-        let event: Event = serde_json::from_value(raw.clone()).unwrap_or_else(|e| panic!("step {i}: bad event {raw}: {e}"));
+        let event: Event = serde_json::from_value(raw.clone())
+            .unwrap_or_else(|e| panic!("step {i}: bad event {raw}: {e}"));
         match apply(&state, &event) {
             Ok((next, effects)) => {
                 steps.push(json!({ "ok": true, "effects": effects }));
                 state = next;
             }
-            Err(ApplyError::Rejected(reason)) => steps.push(json!({ "ok": false, "reason": reason })),
+            Err(ApplyError::Rejected(reason)) => {
+                steps.push(json!({ "ok": false, "reason": reason }))
+            }
             Err(ApplyError::Fatal(msg)) => panic!("step {i} {raw}: engine failed: {msg}"),
         }
     }
-    Run { steps, final_state: state }
+    Run {
+        steps,
+        final_state: state,
+    }
 }
 
 /// Outcomes and final state equal the golden ones; the first differing step is reported.
@@ -41,13 +47,23 @@ fn compare(name: &str, events: &[Value], golden: &Value) -> Run {
     for (i, (got, want)) in r.steps.iter().zip(want).enumerate() {
         assert_eq!(got, want, "{name} step {i}: {}", events[i]);
     }
-    assert_eq!(serde_json::to_value(&r.final_state).unwrap(), golden["final"], "{name}: final state");
+    assert_eq!(
+        serde_json::to_value(&r.final_state).unwrap(),
+        golden["final"],
+        "{name}: final state"
+    );
     r
 }
 
 fn scenario(name: &str) {
-    let events: Value = serde_json::from_str(&std::fs::read_to_string(format!("{}/tests/scenarios/{name}.json", root())).unwrap()).unwrap();
-    let golden: Value = serde_json::from_str(&std::fs::read_to_string(format!("{}/tests/golden/scenarios/{name}.json", root())).unwrap()).unwrap();
+    let events: Value = serde_json::from_str(
+        &std::fs::read_to_string(format!("{}/tests/scenarios/{name}.json", root())).unwrap(),
+    )
+    .unwrap();
+    let golden: Value = serde_json::from_str(
+        &std::fs::read_to_string(format!("{}/tests/golden/scenarios/{name}.json", root())).unwrap(),
+    )
+    .unwrap();
     compare(name, events["events"].as_array().unwrap(), &golden);
 }
 
@@ -101,7 +117,14 @@ fn histories(file: &str, mut each: impl FnMut(&[Value], &Run)) -> usize {
 }
 
 fn count(steps: &[Value], kind: &str) -> usize {
-    steps.iter().filter(|s| s["effects"].as_array().is_some_and(|fx| fx.iter().any(|e| e["kind"] == kind))).count()
+    steps
+        .iter()
+        .filter(|s| {
+            s["effects"]
+                .as_array()
+                .is_some_and(|fx| fx.iter().any(|e| e["kind"] == kind))
+        })
+        .count()
 }
 
 #[test]
@@ -111,7 +134,13 @@ fn replays_300_random_histories_identically() {
         rejected += r.steps.iter().filter(|s| s["ok"] == false).count();
         haircuts += count(&r.steps, "haircut");
         opens += count(&r.steps, "open");
-        let accepted = |kind: &str, extra: &dyn Fn(&Value) -> bool| events.iter().zip(&r.steps).filter(|(e, s)| e["type"] == kind && s["ok"] == true && extra(e)).count();
+        let accepted = |kind: &str, extra: &dyn Fn(&Value) -> bool| {
+            events
+                .iter()
+                .zip(&r.steps)
+                .filter(|(e, s)| e["type"] == kind && s["ok"] == true && extra(e))
+                .count()
+        };
         snipes += accepted("snipe", &|_| true);
         books += accepted("book", &|e| !e["mid"].is_null());
     });

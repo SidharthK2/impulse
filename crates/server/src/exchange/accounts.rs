@@ -15,7 +15,13 @@ impl Exchange {
         if self.accounts.keys().any(|a| a.eq_ignore_ascii_case(id)) {
             return Err(ExError::status(409, format!("name \"{id}\" is taken")));
         }
-        let meta = AccountMeta { id: id.into(), api_key: api_key.into(), bot, created_at: self.now(), last_faucet: 0 };
+        let meta = AccountMeta {
+            id: id.into(),
+            api_key: api_key.into(),
+            bot,
+            created_at: self.now(),
+            last_faucet: 0,
+        };
         self.accounts.insert(id.into(), meta.clone());
         self.keys.insert(meta.api_key.clone(), id.into());
         self.version += 1;
@@ -33,11 +39,18 @@ impl Exchange {
         let last = self.account(account)?.last_faucet;
         let wallet = self.wallet(account);
         if wallet >= FAUCET_CAP {
-            return Err(ExError::bad(format!("wallet already holds ${}; the faucet stops at ${}", usd(wallet), usd(FAUCET_CAP))));
+            return Err(ExError::bad(format!(
+                "wallet already holds ${}; the faucet stops at ${}",
+                usd(wallet),
+                usd(FAUCET_CAP)
+            )));
         }
         let wait = last + FAUCET_COOLDOWN_MS - self.now();
         if wait > 0 {
-            return Err(ExError::status(429, format!("faucet cooling down: try again in {}s", (wait + 999) / 1000)));
+            return Err(ExError::status(
+                429,
+                format!("faucet cooling down: try again in {}s", (wait + 999) / 1000),
+            ));
         }
         self.commit(&[ev_deposit(account, dec(FAUCET_AMOUNT))])?;
         let now = self.now();
@@ -47,7 +60,10 @@ impl Exchange {
 
     pub fn withdraw(&mut self, account: &str, amount: Amount) -> XResult<()> {
         self.account(account)?;
-        self.commit(&[Event::Withdraw { account: account.into(), amount: engine_amount(amount) }])?;
+        self.commit(&[Event::Withdraw {
+            account: account.into(),
+            amount: engine_amount(amount),
+        }])?;
         Ok(())
     }
 
@@ -62,7 +78,11 @@ impl Exchange {
         if v == 0 {
             return Err(ExError::bad("amount must be non-zero"));
         }
-        let e = if v > 0 { ev_allocate(account, market, dec(v)) } else { ev_release(account, market, dec(-v)) };
+        let e = if v > 0 {
+            ev_allocate(account, market, dec(v))
+        } else {
+            ev_release(account, market, dec(-v))
+        };
         self.commit(&[e])?;
         Ok(())
     }
@@ -70,12 +90,25 @@ impl Exchange {
     pub fn spot_buy(&mut self, account: &str, market: &str, usdc: Amount) -> XResult<Vec<Effect>> {
         self.account(account)?;
         self.market(market)?;
-        self.commit(&[Event::SpotBuy { account: account.into(), market: market.into(), amount: engine_amount(usdc) }])
+        self.commit(&[Event::SpotBuy {
+            account: account.into(),
+            market: market.into(),
+            amount: engine_amount(usdc),
+        }])
     }
 
-    pub fn spot_sell(&mut self, account: &str, market: &str, tokens: Tokens) -> XResult<Vec<Effect>> {
+    pub fn spot_sell(
+        &mut self,
+        account: &str,
+        market: &str,
+        tokens: Tokens,
+    ) -> XResult<Vec<Effect>> {
         self.account(account)?;
         self.market(market)?;
-        self.commit(&[Event::SpotSell { account: account.into(), market: market.into(), tokens: tokens.to_string().into() }])
+        self.commit(&[Event::SpotSell {
+            account: account.into(),
+            market: market.into(),
+            tokens: tokens.to_string().into(),
+        }])
     }
 }

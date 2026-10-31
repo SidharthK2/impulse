@@ -22,7 +22,12 @@ struct In {
 }
 
 pub fn serialize(x: &Exchange) -> String {
-    serde_json::to_string(&Out { v: 1, saved_at: x.now(), exchange: x }).expect("snapshot serializes")
+    serde_json::to_string(&Out {
+        v: 1,
+        saved_at: x.now(),
+        exchange: x,
+    })
+    .expect("snapshot serializes")
 }
 
 /// The exchange and when it was saved (wall ms).

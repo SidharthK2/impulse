@@ -17,7 +17,10 @@ fn allocate_gives_each_part_floor_or_ceil_of_its_exact_share() {
         assert_eq!(m.iter().sum::<i128>(), total);
         for (part, w) in m.iter().zip(weights) {
             let floor = total * w / 22;
-            assert!((0..=1).contains(&(part - floor)), "total {total}, weight {w}");
+            assert!(
+                (0..=1).contains(&(part - floor)),
+                "total {total}, weight {w}"
+            );
         }
     }
 }

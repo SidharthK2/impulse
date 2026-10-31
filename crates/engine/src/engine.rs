@@ -25,11 +25,31 @@ const USD: i128 = 1_000_000_000;
 /// Leverage graduation tiers (OUR criteria; see impulse-research: reference/engine/engine.ts): a tier unlocks once cumulative traded notional
 /// AND depth (open-interest notional at mark, plus real USDC in the spot curve) both reach its thresholds.
 pub const GRADUATION: [Tier; 5] = [
-    Tier { leverage: 5, volume: 100_000 * USD, depth: 10_000 * USD },
-    Tier { leverage: 10, volume: 1_000_000 * USD, depth: 50_000 * USD },
-    Tier { leverage: 20, volume: 10_000_000 * USD, depth: 250_000 * USD },
-    Tier { leverage: 50, volume: 100_000_000 * USD, depth: 1_000_000 * USD },
-    Tier { leverage: 100, volume: 1_000_000_000 * USD, depth: 5_000_000 * USD },
+    Tier {
+        leverage: 5,
+        volume: 100_000 * USD,
+        depth: 10_000 * USD,
+    },
+    Tier {
+        leverage: 10,
+        volume: 1_000_000 * USD,
+        depth: 50_000 * USD,
+    },
+    Tier {
+        leverage: 20,
+        volume: 10_000_000 * USD,
+        depth: 250_000 * USD,
+    },
+    Tier {
+        leverage: 50,
+        volume: 100_000_000 * USD,
+        depth: 1_000_000 * USD,
+    },
+    Tier {
+        leverage: 100,
+        volume: 1_000_000_000 * USD,
+        depth: 5_000_000 * USD,
+    },
 ];
 
 /// Funding base rate per tier, ppb per hour (OUR parameters).
@@ -244,22 +264,67 @@ pub struct MarketEvent {
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum Event {
     Market(MarketEvent),
-    Deposit { account: String, amount: Num },
-    Withdraw { account: String, amount: Num },
-    Allocate { account: String, market: String, amount: Num },
-    Release { account: String, market: String, amount: Num },
-    Trade { market: String, buyer: String, seller: String, size: Num, price: Num },
-    Tick { market: String, price: Num },
-    SpotBuy { account: String, market: String, amount: Num },
-    SpotSell { account: String, market: String, tokens: Num },
-    Advance { seconds: Num },
-    Resolve { market: String, price: Num },
+    Deposit {
+        account: String,
+        amount: Num,
+    },
+    Withdraw {
+        account: String,
+        amount: Num,
+    },
+    Allocate {
+        account: String,
+        market: String,
+        amount: Num,
+    },
+    Release {
+        account: String,
+        market: String,
+        amount: Num,
+    },
+    Trade {
+        market: String,
+        buyer: String,
+        seller: String,
+        size: Num,
+        price: Num,
+    },
+    Tick {
+        market: String,
+        price: Num,
+    },
+    SpotBuy {
+        account: String,
+        market: String,
+        amount: Num,
+    },
+    SpotSell {
+        account: String,
+        market: String,
+        tokens: Num,
+    },
+    Advance {
+        seconds: Num,
+    },
+    Resolve {
+        market: String,
+        price: Num,
+    },
     /// bid USDC into a launch; "all" allowed
-    Snipe { account: String, market: String, amount: Num },
+    Snipe {
+        account: String,
+        market: String,
+        amount: Num,
+    },
     /// end a launch's snipe window: fill every bid at one price
-    Open { market: String },
+    Open {
+        market: String,
+    },
     /// the exchange's order-book mid (None: a side is empty)
-    Book { market: String, mid: Option<Num> },
+    Book {
+        market: String,
+        mid: Option<Num>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -302,7 +367,10 @@ pub enum Effect {
         #[serde(with = "big")]
         shortfall: i128,
     },
-    ForcedClose { market: String, closes: Vec<ForcedClose> },
+    ForcedClose {
+        market: String,
+        closes: Vec<ForcedClose>,
+    },
     Haircut {
         market: String,
         account: String,
@@ -432,7 +500,8 @@ pub fn equity(p: &Position, mark: Option<i128>) -> i128 {
     if p.size == 0 {
         return p.collateral - p.basis;
     }
-    let mark = mark.unwrap_or_else(|| panic!("position {} has size but market has no mark", p.account));
+    let mark =
+        mark.unwrap_or_else(|| panic!("position {} has size but market has no mark", p.account));
     p.collateral + p.size * mark - p.basis
 }
 
@@ -459,7 +528,10 @@ pub fn leverage_now(m: &Market) -> (i128, i128) {
         return (m.config.initial_leverage, m.config.maintenance_leverage);
     }
     let initial = GRADUATION[m.tier - 1].leverage;
-    (initial, (initial * m.config.maintenance_leverage) / m.config.initial_leverage)
+    (
+        initial,
+        (initial * m.config.maintenance_leverage) / m.config.initial_leverage,
+    )
 }
 
 /// Pre-resolution taper progress in ppb: 0 outside the taper window, rising linearly to 1e9 at resolvesAt.
@@ -550,7 +622,10 @@ fn refresh_oracle(now: i128, m: &mut Market) -> Vec<Effect> {
     match h.last_mut() {
         Some(last) if last.t == now => last.price = spot,
         Some(last) if last.price == spot => {}
-        _ => h.push(OraclePoint { t: now, price: spot }),
+        _ => h.push(OraclePoint {
+            t: now,
+            price: spot,
+        }),
     }
     // Drop change points that ended before the window began (keep the one straddling its start).
     while h.len() > 1 && h[1].t <= now - oracle.window {
@@ -562,7 +637,12 @@ fn refresh_oracle(now: i128, m: &mut Market) -> Vec<Effect> {
     if next == before {
         vec![]
     } else {
-        vec![Effect::Mark { market: m.id.clone(), from: before, to: next, spot }]
+        vec![Effect::Mark {
+            market: m.id.clone(),
+            from: before,
+            to: next,
+            spot,
+        }]
     }
 }
 
@@ -615,7 +695,11 @@ fn parse_price(m: &Market, p: &str) -> R<i128> {
     let v = fixed(p)?;
     if v < m.config.lower || m.config.upper.is_some_and(|u| v > u) {
         let hi = m.config.upper.map_or("∞".to_string(), fmt_price);
-        return rej(format!("price {p} outside [{}, {hi}] for {}", fmt_price(m.config.lower), m.id));
+        return rej(format!(
+            "price {p} outside [{}, {hi}] for {}",
+            fmt_price(m.config.lower),
+            m.id
+        ));
     }
     if v <= 0 && m.config.upper.is_none() {
         return rej("unbounded markets need a positive price");
@@ -627,10 +711,18 @@ fn parse_amount(amount: &Num, available: i128, what: &str) -> R<i128> {
     let all = amount.is("all");
     let v = if all { available } else { fixed(&amount.0)? };
     if v <= 0 {
-        return rej(if all { format!("nothing to {what}") } else { format!("{what} must be positive") });
+        return rej(if all {
+            format!("nothing to {what}")
+        } else {
+            format!("{what} must be positive")
+        });
     }
     if v > available {
-        return rej(format!("{what} ${} exceeds available ${}", fmt_usd(v), fmt_usd(available)));
+        return rej(format!(
+            "{what} ${} exceeds available ${}",
+            fmt_usd(v),
+            fmt_usd(available)
+        ));
     }
     Ok(v)
 }
@@ -707,7 +799,10 @@ fn on_market(s: &mut State, e: &MarketEvent) -> R<()> {
     }
     if attention || e.curve.is_some() {
         let spec = e.curve.as_ref();
-        let x0 = fixed(spec.and_then(|c| c.usdc.as_ref()).map_or("5000", |n| n.0.as_str()))?;
+        let x0 = fixed(
+            spec.and_then(|c| c.usdc.as_ref())
+                .map_or("5000", |n| n.0.as_str()),
+        )?;
         let y0 = match spec.and_then(|c| c.tokens.as_ref()) {
             Some(n) => int(&n.0)?,
             None => 1_000_000_000,
@@ -722,12 +817,24 @@ fn on_market(s: &mut State, e: &MarketEvent) -> R<()> {
         if !(0..10_000).contains(&fee_bps) {
             return rej("feeBps must be in [0, 10000)");
         }
-        let c = Curve { x0, y0, x: x0, y: y0, fee_bps };
+        let c = Curve {
+            x0,
+            y0,
+            x: x0,
+            y: y0,
+            fee_bps,
+        };
         let window = match &e.oracle_window {
             Some(n) => int(&n.0)?,
             None => 0,
         };
-        oracle = Some(CurveOracle { window, history: vec![OraclePoint { t: s.time, price: spot_price(&c) }] });
+        oracle = Some(CurveOracle {
+            window,
+            history: vec![OraclePoint {
+                t: s.time,
+                price: spot_price(&c),
+            }],
+        });
         curve = Some(c);
     }
     let mark = curve.as_ref().map(spot_price);
@@ -736,7 +843,11 @@ fn on_market(s: &mut State, e: &MarketEvent) -> R<()> {
         config,
         curve,
         oracle,
-        launch: (e.launch == Some(true)).then(|| Launch { open: false, bids: BTreeMap::new(), reserve: 0 }),
+        launch: (e.launch == Some(true)).then(|| Launch {
+            open: false,
+            bids: BTreeMap::new(),
+            reserve: 0,
+        }),
         mark,
         time: s.time,
         tier: 0,
@@ -758,13 +869,16 @@ fn on_deposit(s: &mut State, account: &str, amount: &Num) -> R<()> {
     if amt <= 0 {
         return rej("deposit must be positive");
     }
-    let a = s.accounts.entry(account.to_string()).or_insert_with(|| Account {
-        id: account.to_string(),
-        wallet: 0,
-        spot: BTreeMap::new(),
-        deposited: 0,
-        withdrawn: 0,
-    });
+    let a = s
+        .accounts
+        .entry(account.to_string())
+        .or_insert_with(|| Account {
+            id: account.to_string(),
+            wallet: 0,
+            spot: BTreeMap::new(),
+            deposited: 0,
+            withdrawn: 0,
+        });
     a.wallet += amt;
     a.deposited += amt;
     s.total_deposits += amt;
@@ -784,10 +898,10 @@ fn on_allocate(s: &mut State, account: &str, market: &str, amount: &Num) -> R<()
     let a = get_account(&mut s.accounts, account)?;
     let m = get_market(&mut s.markets, market)?;
     let amt = parse_amount(amount, a.wallet, "allocate")?;
-    let p = m
-        .positions
-        .entry(a.id.clone())
-        .or_insert_with(|| Position { account: a.id.clone(), ..Default::default() });
+    let p = m.positions.entry(a.id.clone()).or_insert_with(|| Position {
+        account: a.id.clone(),
+        ..Default::default()
+    });
     a.wallet -= amt;
     p.collateral += amt;
     p.allocated += amt;
@@ -808,7 +922,14 @@ fn on_release(s: &mut State, account: &str, market: &str, amount: &Num) -> R<()>
     Ok(())
 }
 
-fn on_trade(s: &mut State, market: &str, buyer: &str, seller: &str, size: &Num, price: &Num) -> R<Vec<Effect>> {
+fn on_trade(
+    s: &mut State,
+    market: &str,
+    buyer: &str,
+    seller: &str,
+    size: &Num,
+    price: &Num,
+) -> R<Vec<Effect>> {
     let m = get_market(&mut s.markets, market)?;
     if m.status != Status::Open {
         return rej(format!("{} is resolved", m.id));
@@ -825,19 +946,30 @@ fn on_trade(s: &mut State, market: &str, buyer: &str, seller: &str, size: &Num, 
         return rej("size must be positive");
     }
     let price = parse_price(m, &price.0)?;
-    let mut parties = [(get_position(m, buyer)?, size), (get_position(m, seller)?, -size)];
+    let mut parties = [
+        (get_position(m, buyer)?, size),
+        (get_position(m, seller)?, -size),
+    ];
     for (p, d) in parties.iter_mut() {
         let before = p.size;
         fill(p, *d, price);
         let reduce_only = p.size.abs() < before.abs() && sign(p.size) != -sign(before);
         let eq = equity(p, m.mark);
-        let need = if reduce_only { maintenance_margin(m, p) } else { initial_margin(m, p) };
+        let need = if reduce_only {
+            maintenance_margin(m, p)
+        } else {
+            initial_margin(m, p)
+        };
         if eq < need {
             return rej(format!(
                 "{}: equity ${} below {} margin ${}",
                 p.account,
                 fmt_usd(eq),
-                if reduce_only { "maintenance" } else { "initial" },
+                if reduce_only {
+                    "maintenance"
+                } else {
+                    "initial"
+                },
                 fmt_usd(need)
             ));
         }
@@ -856,12 +988,21 @@ fn on_trade(s: &mut State, market: &str, buyer: &str, seller: &str, size: &Num, 
 
 /// Depth proxy: open-interest notional at mark, plus real USDC in the spot curve.
 pub fn depth(m: &Market) -> i128 {
-    let oi: i128 = m.positions.values().filter(|p| p.size > 0).map(|p| p.size).sum();
+    let oi: i128 = m
+        .positions
+        .values()
+        .filter(|p| p.size > 0)
+        .map(|p| p.size)
+        .sum();
     oi * m.mark.unwrap_or(0) + m.curve.as_ref().map_or(0, |c| c.x - c.x0)
 }
 
 pub fn open_interest(m: &Market) -> i128 {
-    m.positions.values().filter(|p| p.size > 0).map(|p| p.size).sum()
+    m.positions
+        .values()
+        .filter(|p| p.size > 0)
+        .map(|p| p.size)
+        .sum()
 }
 
 fn graduate(m: &mut Market) -> Vec<Effect> {
@@ -875,7 +1016,11 @@ fn graduate(m: &mut Market) -> Vec<Effect> {
             break;
         }
         m.tier += 1;
-        effects.push(Effect::Graduation { market: m.id.clone(), tier: m.tier, leverage: next.leverage });
+        effects.push(Effect::Graduation {
+            market: m.id.clone(),
+            tier: m.tier,
+            leverage: next.leverage,
+        });
     }
     effects
 }
@@ -900,12 +1045,24 @@ fn update_funding_rate(m: &mut Market) {
 
 /// Accrue `dt` seconds of funding at the current rate: exact transfer, payers and receivers each pro-rata by size.
 fn accrue_funding(m: &mut Market, dt: i128) -> R<Vec<Effect>> {
-    let Some(mark) = m.mark else { return Ok(vec![]) };
+    let Some(mark) = m.mark else {
+        return Ok(vec![]);
+    };
     if !m.config.funding || m.funding_rate == 0 {
         return Ok(vec![]);
     }
-    let longs: Vec<String> = m.positions.values().filter(|p| p.size > 0).map(|p| p.account.clone()).collect();
-    let shorts: Vec<String> = m.positions.values().filter(|p| p.size < 0).map(|p| p.account.clone()).collect();
+    let longs: Vec<String> = m
+        .positions
+        .values()
+        .filter(|p| p.size > 0)
+        .map(|p| p.account.clone())
+        .collect();
+    let shorts: Vec<String> = m
+        .positions
+        .values()
+        .filter(|p| p.size < 0)
+        .map(|p| p.account.clone())
+        .collect();
     let oi: i128 = longs.iter().map(|id| m.positions[id].size).sum();
     if oi == 0 {
         return Ok(vec![]);
@@ -915,8 +1072,16 @@ fn accrue_funding(m: &mut Market, dt: i128) -> R<Vec<Effect>> {
     if total == 0 {
         return Ok(vec![]);
     }
-    let (payers, receivers) = if rate > 0 { (longs, shorts) } else { (shorts, longs) };
-    let w = |ids: &[String]| ids.iter().map(|id| m.positions[id].size.abs()).collect::<Vec<_>>();
+    let (payers, receivers) = if rate > 0 {
+        (longs, shorts)
+    } else {
+        (shorts, longs)
+    };
+    let w = |ids: &[String]| {
+        ids.iter()
+            .map(|id| m.positions[id].size.abs())
+            .collect::<Vec<_>>()
+    };
     let paid = allocate(total, &w(&payers)).map_err(fatal)?;
     let got = allocate(total, &w(&receivers)).map_err(fatal)?;
     for (id, v) in payers.iter().zip(paid) {
@@ -956,16 +1121,26 @@ fn pnl_haircuts(opposing: &[&Position], mark: i128, d_total: i128) -> R<(Vec<i12
     let total_profit: i128 = profit.iter().sum();
     let from_profit = allocate(d_total.min(total_profit), &profit).map_err(fatal)?;
     let rest = d_total - d_total.min(total_profit);
-    let remaining: Vec<i128> = opposing.iter().zip(&from_profit).map(|(p, f)| equity(p, Some(mark)) - f).collect();
+    let remaining: Vec<i128> = opposing
+        .iter()
+        .zip(&from_profit)
+        .map(|(p, f)| equity(p, Some(mark)) - f)
+        .collect();
     let from_principal = allocate(rest, &remaining).map_err(fatal)?;
-    let haircuts = from_profit.iter().zip(&from_principal).map(|(a, b)| a + b).collect();
+    let haircuts = from_profit
+        .iter()
+        .zip(&from_principal)
+        .map(|(a, b)| a + b)
+        .collect();
     Ok((haircuts, from_principal))
 }
 
 /// Liquidation + ADL loop for one market. Reads and writes nothing outside `m`.
 fn resolve_distress(m: &mut Market) -> R<Vec<Effect>> {
     let mut effects = vec![];
-    let Some(mark) = m.mark else { return Ok(effects) };
+    let Some(mark) = m.mark else {
+        return Ok(effects);
+    };
     loop {
         let all_distressed: Vec<String> = m
             .positions
@@ -979,10 +1154,20 @@ fn resolve_distress(m: &mut Market) -> R<Vec<Effect>> {
 
         // A price move only distresses one side, but a taper can distress both. Handle one side per round: the
         // side with a bankrupt position first, otherwise the first distressed side.
-        let bankrupt = all_distressed.iter().find(|id| equity(&m.positions[*id], Some(mark)) < 0);
+        let bankrupt = all_distressed
+            .iter()
+            .find(|id| equity(&m.positions[*id], Some(mark)) < 0);
         let side = sign(m.positions[bankrupt.unwrap_or(&all_distressed[0])].size);
-        let distressed: Vec<String> = all_distressed.into_iter().filter(|id| sign(m.positions[id].size) == side).collect();
-        let opposing: Vec<String> = m.positions.values().filter(|p| sign(p.size) == -side).map(|p| p.account.clone()).collect();
+        let distressed: Vec<String> = all_distressed
+            .into_iter()
+            .filter(|id| sign(m.positions[id].size) == side)
+            .collect();
+        let opposing: Vec<String> = m
+            .positions
+            .values()
+            .filter(|p| sign(p.size) == -side)
+            .map(|p| p.account.clone())
+            .collect();
 
         let mut q_total = 0;
         let mut d_total = 0;
@@ -992,7 +1177,12 @@ fn resolve_distress(m: &mut Market) -> R<Vec<Effect>> {
             q_total += p.size.abs();
             if eq < 0 {
                 d_total += -eq;
-                effects.push(Effect::Bankrupt { market: m.id.clone(), account: id.clone(), size: p.size, shortfall: -eq });
+                effects.push(Effect::Bankrupt {
+                    market: m.id.clone(),
+                    account: id.clone(),
+                    size: p.size,
+                    shortfall: -eq,
+                });
             } else {
                 effects.push(Effect::Liquidation {
                     market: m.id.clone(),
@@ -1004,7 +1194,10 @@ fn resolve_distress(m: &mut Market) -> R<Vec<Effect>> {
             }
         }
 
-        let weights: Vec<i128> = opposing.iter().map(|id| m.positions[id].size.abs()).collect();
+        let weights: Vec<i128> = opposing
+            .iter()
+            .map(|id| m.positions[id].size.abs())
+            .collect();
         let closes = allocate(q_total, &weights).map_err(fatal)?;
         let (haircuts, from_principal) = match m.config.adl {
             AdlPolicy::Pnl => {
@@ -1019,22 +1212,36 @@ fn resolve_distress(m: &mut Market) -> R<Vec<Effect>> {
         let mut forced = vec![];
         for id in &distressed {
             let p = m.positions.get_mut(id).unwrap();
-            forced.push(ForcedClose { account: id.clone(), closed: -p.size, price: mark });
+            forced.push(ForcedClose {
+                account: id.clone(),
+                closed: -p.size,
+                price: mark,
+            });
             let s = p.size;
             fill(p, -s, mark);
         }
         for (id, &r) in opposing.iter().zip(&closes) {
             let p = m.positions.get_mut(id).unwrap();
             if r > p.size.abs() {
-                return Err(fatal(format!("invariant: ADL closes {r} > position {} for {id}", p.size)));
+                return Err(fatal(format!(
+                    "invariant: ADL closes {r} > position {} for {id}",
+                    p.size
+                )));
             }
             if r == 0 {
                 continue;
             }
-            forced.push(ForcedClose { account: id.clone(), closed: side * r, price: mark });
+            forced.push(ForcedClose {
+                account: id.clone(),
+                closed: side * r,
+                price: mark,
+            });
             fill(p, side * r, mark);
         }
-        effects.push(Effect::ForcedClose { market: m.id.clone(), closes: forced });
+        effects.push(Effect::ForcedClose {
+            market: m.id.clone(),
+            closes: forced,
+        });
 
         // Move the shortfall from absorbers to bankrupt positions.
         for (i, id) in opposing.iter().enumerate() {
@@ -1044,7 +1251,9 @@ fn resolve_distress(m: &mut Market) -> R<Vec<Effect>> {
             }
             let p = m.positions.get_mut(id).unwrap();
             if h > equity(p, Some(mark)) {
-                return Err(fatal(format!("invariant: haircut {h} exceeds equity of {id}")));
+                return Err(fatal(format!(
+                    "invariant: haircut {h} exceeds equity of {id}"
+                )));
             }
             let principal = match &from_principal {
                 Some(f) => f[i],
@@ -1052,7 +1261,12 @@ fn resolve_distress(m: &mut Market) -> R<Vec<Effect>> {
             };
             p.collateral -= h;
             p.adl_transfer -= h;
-            effects.push(Effect::Haircut { market: m.id.clone(), account: id.clone(), amount: h, from_principal: principal });
+            effects.push(Effect::Haircut {
+                market: m.id.clone(),
+                account: id.clone(),
+                amount: h,
+                from_principal: principal,
+            });
         }
         for id in &distressed {
             let p = m.positions.get_mut(id).unwrap();
@@ -1084,7 +1298,10 @@ fn on_tick(s: &mut State, market: &str, price: &str) -> R<Vec<Effect>> {
         return rej(format!("{} is resolved", m.id));
     }
     if m.curve.is_some() {
-        return rej(format!("{} is priced by its own curve, not an external tick", m.id));
+        return rej(format!(
+            "{} is priced by its own curve, not an external tick",
+            m.id
+        ));
     }
     m.mark = Some(parse_price(m, price)?);
     let effects = resolve_distress(m)?;
@@ -1109,7 +1326,10 @@ fn check_curve(m: &Market) -> R<()> {
 /// Spot and perp trading wait for a launch's open.
 fn assert_launched(m: &Market) -> R<()> {
     match &m.launch {
-        Some(l) if !l.open => rej(format!("{} is in its snipe window: trading starts at the open", m.id)),
+        Some(l) if !l.open => rej(format!(
+            "{} is in its snipe window: trading starts at the open",
+            m.id
+        )),
         _ => Ok(()),
     }
 }
@@ -1134,7 +1354,12 @@ fn on_snipe(s: &mut State, account: &str, market: &str, amount: &Num) -> R<()> {
     }
     a.wallet -= usdc;
     s.fees += f;
-    *m.launch.as_mut().unwrap().bids.entry(a.id.clone()).or_insert(0) += usdc - f;
+    *m.launch
+        .as_mut()
+        .unwrap()
+        .bids
+        .entry(a.id.clone())
+        .or_insert(0) += usdc - f;
     Ok(())
 }
 
@@ -1153,35 +1378,69 @@ fn on_open(s: &mut State, market: &str) -> R<Vec<Effect>> {
     let m = get_market(&mut s.markets, market)?;
     check_curve(m)?;
     pending_launch(m)?;
-    let bids: Vec<(String, i128)> = m.launch.as_ref().unwrap().bids.iter().map(|(k, v)| (k.clone(), *v)).collect();
+    let bids: Vec<(String, i128)> = m
+        .launch
+        .as_ref()
+        .unwrap()
+        .bids
+        .iter()
+        .map(|(k, v)| (k.clone(), *v))
+        .collect();
     let b: i128 = bids.iter().map(|(_, v)| v).sum();
     let c = m.curve.as_mut().unwrap();
     let x0 = c.x;
     let (x1, y1) = open_curve(x0, c.y, b);
     let tokens = c.y - y1;
-    let split = allocate(tokens, &bids.iter().map(|(_, v)| *v).collect::<Vec<_>>()).map_err(fatal)?;
+    let split =
+        allocate(tokens, &bids.iter().map(|(_, v)| *v).collect::<Vec<_>>()).map_err(fatal)?;
     let mut fills = vec![];
     for ((account, usdc), t) in bids.into_iter().zip(split) {
         if t > 0 {
-            let a = s.accounts.get_mut(&account).ok_or_else(|| fatal(format!("bid from unknown account {account}")))?;
+            let a = s
+                .accounts
+                .get_mut(&account)
+                .ok_or_else(|| fatal(format!("bid from unknown account {account}")))?;
             *a.spot.entry(m.id.clone()).or_insert(0) += t;
         }
-        fills.push(LaunchFill { account, usdc, tokens: t });
+        fills.push(LaunchFill {
+            account,
+            usdc,
+            tokens: t,
+        });
     }
     c.x = x1;
     c.y = y1;
     let reserve = b - (x1 - x0);
-    m.launch = Some(Launch { open: true, bids: BTreeMap::new(), reserve });
+    m.launch = Some(Launch {
+        open: true,
+        bids: BTreeMap::new(),
+        reserve,
+    });
     // The oracle restarts at the open price as if it had held for a whole window: nobody could trade the curve
     // before the open, and a pump right after it must take a full window to move a TWAP mark.
     let before = m.mark.expect("curve market has a mark");
     let price = spot_price(c);
     let oracle = m.oracle.as_mut().unwrap();
-    oracle.history = vec![OraclePoint { t: now - oracle.window, price }];
+    oracle.history = vec![OraclePoint {
+        t: now - oracle.window,
+        price,
+    }];
     m.mark = Some(price);
-    let mut effects = vec![Effect::Open { market: m.id.clone(), price, sniped: b, tokens, reserve, fills }];
+    let mut effects = vec![Effect::Open {
+        market: m.id.clone(),
+        price,
+        sniped: b,
+        tokens,
+        reserve,
+        fills,
+    }];
     if price != before {
-        effects.push(Effect::Mark { market: m.id.clone(), from: before, to: price, spot: price });
+        effects.push(Effect::Mark {
+            market: m.id.clone(),
+            from: before,
+            to: price,
+            spot: price,
+        });
     }
     effects.extend(graduate(m));
     update_funding_rate(m);
@@ -1233,7 +1492,11 @@ fn on_spot_sell(s: &mut State, account: &str, market: &str, tokens: &Num) -> R<V
     assert_launched(m)?;
     let c = m.curve.as_mut().unwrap();
     let held = a.spot.get(&m.id).copied().unwrap_or(0);
-    let tokens = if tokens.is("all") { held } else { int(&tokens.0)? };
+    let tokens = if tokens.is("all") {
+        held
+    } else {
+        int(&tokens.0)?
+    };
     if tokens <= 0 {
         return rej("nothing to sell");
     }
@@ -1313,11 +1576,19 @@ fn on_resolve(s: &mut State, market: &str, price: &str) -> R<Vec<Effect>> {
         if p.size == 0 {
             continue;
         }
-        closes.push(ForcedClose { account: p.account.clone(), closed: -p.size, price });
+        closes.push(ForcedClose {
+            account: p.account.clone(),
+            closed: -p.size,
+            price,
+        });
         let sz = p.size;
         fill(p, -sz, price);
     }
-    effects.push(Effect::Settlement { market: m.id.clone(), price, closes });
+    effects.push(Effect::Settlement {
+        market: m.id.clone(),
+        price,
+        closes,
+    });
     m.status = Status::Resolved;
     Ok(effects)
 }
@@ -1326,7 +1597,13 @@ fn on_resolve(s: &mut State, market: &str, price: &str) -> R<Vec<Effect>> {
 
 pub fn check_market(m: &Market) -> Vec<String> {
     let mut errs = vec![];
-    let (mut net_size, mut allocated, mut collateral_minus_basis, mut sum_equity, mut sum_releasable) = (0, 0, 0, 0, 0);
+    let (
+        mut net_size,
+        mut allocated,
+        mut collateral_minus_basis,
+        mut sum_equity,
+        mut sum_releasable,
+    ) = (0, 0, 0, 0, 0);
     for p in m.positions.values() {
         let id = format!("{}/{}", m.id, p.account);
         net_size += p.size;
@@ -1360,13 +1637,22 @@ pub fn check_market(m: &Market) -> Vec<String> {
         errs.push(format!("{}: unbalanced exposure Σsize = {net_size}", m.id));
     }
     if allocated != m.vault {
-        errs.push(format!("{}: vault {} != Σallocated {allocated}", m.id, m.vault));
+        errs.push(format!(
+            "{}: vault {} != Σallocated {allocated}",
+            m.id, m.vault
+        ));
     }
     if collateral_minus_basis != m.vault {
-        errs.push(format!("{}: Σ(collateral − basis) {collateral_minus_basis} != vault {}", m.id, m.vault));
+        errs.push(format!(
+            "{}: Σ(collateral − basis) {collateral_minus_basis} != vault {}",
+            m.id, m.vault
+        ));
     }
     if sum_equity != m.vault {
-        errs.push(format!("{}: Σequity {sum_equity} != vault {}", m.id, m.vault));
+        errs.push(format!(
+            "{}: Σequity {sum_equity} != vault {}",
+            m.id, m.vault
+        ));
     }
     if sum_releasable > m.vault {
         errs.push(format!("{}: Σreleasable > vault", m.id));
@@ -1411,9 +1697,17 @@ pub fn check_invariants(s: &State) -> Vec<String> {
         }
         let Some(c) = &m.curve else { continue };
         held += c.x - c.x0; // real USDC sitting in the curve
-        let tokens: i128 = s.accounts.values().map(|a| a.spot.get(&m.id).copied().unwrap_or(0)).sum();
+        let tokens: i128 = s
+            .accounts
+            .values()
+            .map(|a| a.spot.get(&m.id).copied().unwrap_or(0))
+            .sum();
         if tokens != c.y0 - c.y {
-            errs.push(format!("{}: Σ holdings {tokens} != tokens sold {}", m.id, c.y0 - c.y));
+            errs.push(format!(
+                "{}: Σ holdings {tokens} != tokens sold {}",
+                m.id,
+                c.y0 - c.y
+            ));
         }
     }
     if wallets + held + s.fees != s.total_deposits - s.total_withdrawals {
@@ -1435,22 +1729,51 @@ pub fn apply(state: &State, event: &Event) -> Result<(State, Vec<Effect>), Apply
         Event::Market(e) => on_market(&mut s, e).map(|_| vec![]),
         Event::Deposit { account, amount } => on_deposit(&mut s, account, amount).map(|_| vec![]),
         Event::Withdraw { account, amount } => on_withdraw(&mut s, account, amount).map(|_| vec![]),
-        Event::Allocate { account, market, amount } => on_allocate(&mut s, account, market, amount).map(|_| vec![]),
-        Event::Release { account, market, amount } => on_release(&mut s, account, market, amount).map(|_| vec![]),
-        Event::Trade { market, buyer, seller, size, price } => on_trade(&mut s, market, buyer, seller, size, price),
+        Event::Allocate {
+            account,
+            market,
+            amount,
+        } => on_allocate(&mut s, account, market, amount).map(|_| vec![]),
+        Event::Release {
+            account,
+            market,
+            amount,
+        } => on_release(&mut s, account, market, amount).map(|_| vec![]),
+        Event::Trade {
+            market,
+            buyer,
+            seller,
+            size,
+            price,
+        } => on_trade(&mut s, market, buyer, seller, size, price),
         Event::Tick { market, price } => on_tick(&mut s, market, &price.0),
         Event::Resolve { market, price } => on_resolve(&mut s, market, &price.0),
-        Event::SpotBuy { account, market, amount } => on_spot_buy(&mut s, account, market, amount),
-        Event::SpotSell { account, market, tokens } => on_spot_sell(&mut s, account, market, tokens),
+        Event::SpotBuy {
+            account,
+            market,
+            amount,
+        } => on_spot_buy(&mut s, account, market, amount),
+        Event::SpotSell {
+            account,
+            market,
+            tokens,
+        } => on_spot_sell(&mut s, account, market, tokens),
         Event::Advance { seconds } => on_advance(&mut s, seconds),
-        Event::Snipe { account, market, amount } => on_snipe(&mut s, account, market, amount).map(|_| vec![]),
+        Event::Snipe {
+            account,
+            market,
+            amount,
+        } => on_snipe(&mut s, account, market, amount).map(|_| vec![]),
         Event::Open { market } => on_open(&mut s, market),
         Event::Book { market, mid } => on_book(&mut s, market, mid).map(|_| vec![]),
     }?;
     let errs = check_invariants(&s);
     if !errs.is_empty() {
         let ev = serde_json::to_string(event).unwrap_or_default();
-        return Err(fatal(format!("invariant violation after {ev}:\n  {}", errs.join("\n  "))));
+        return Err(fatal(format!(
+            "invariant violation after {ev}:\n  {}",
+            errs.join("\n  ")
+        )));
     }
     s.seq += 1;
     Ok((s, effects))
@@ -1477,16 +1800,43 @@ mod tests {
 
     #[test]
     fn launch_opens_at_the_documented_price() {
-        let market = Event::Market(MarketEvent { id: "C".into(), preset: Some("attention".into()), fee_bps: Some("0".into()), launch: Some(true), ..Default::default() });
+        let market = Event::Market(MarketEvent {
+            id: "C".into(),
+            preset: Some("attention".into()),
+            fee_bps: Some("0".into()),
+            launch: Some(true),
+            ..Default::default()
+        });
         let (s, results) = run(&[
             market,
-            Event::Deposit { account: "a".into(), amount: "100000".into() },
-            Event::Snipe { account: "a".into(), market: "C".into(), amount: "100000".into() },
+            Event::Deposit {
+                account: "a".into(),
+                amount: "100000".into(),
+            },
+            Event::Snipe {
+                account: "a".into(),
+                market: "C".into(),
+                amount: "100000".into(),
+            },
             Event::Open { market: "C".into() },
         ]);
-        let Ok(effects) = &results[3] else { panic!("open failed: {:?}", results[3]) };
-        let Effect::Open { price, tokens, reserve, sniped, .. } = &effects[0] else { panic!("no open effect") };
-        assert_eq!((*price, *tokens, *sniped, *reserve), (125_000, 800_000_000, 100_000 * PPB, 80_000 * PPB)); // $0.000125
+        let Ok(effects) = &results[3] else {
+            panic!("open failed: {:?}", results[3])
+        };
+        let Effect::Open {
+            price,
+            tokens,
+            reserve,
+            sniped,
+            ..
+        } = &effects[0]
+        else {
+            panic!("no open effect")
+        };
+        assert_eq!(
+            (*price, *tokens, *sniped, *reserve),
+            (125_000, 800_000_000, 100_000 * PPB, 80_000 * PPB)
+        ); // $0.000125
         assert_eq!(s.accounts["a"].spot["C"], 800_000_000);
         assert_eq!(s.markets["C"].mark, Some(125_000));
         assert!(check_invariants(&s).is_empty());

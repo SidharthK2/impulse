@@ -25,10 +25,16 @@ pub use types::*;
 
 use crate::book::{Book, Order, Side, Tif};
 use crate::money::{Amount, Dec, Tokens};
-use crate::units::{auto_tick, cents, coin_price, coins_from_lots, dec, fmt, group, lot_price, lots_from_coins, pow10, usd};
+use crate::units::{
+    auto_tick, cents, coin_price, coins_from_lots, dec, fmt, group, lot_price, lots_from_coins,
+    pow10, usd,
+};
 use impulse_engine::fixed::ceil_div;
 use impulse_engine::ser::{big, Num};
-use impulse_engine::{apply, equity, initial_margin, initial_state, leverage_now, ApplyError, Effect, Event, Market, MarketEvent, Position, State, Status};
+use impulse_engine::{
+    apply, equity, initial_margin, initial_state, leverage_now, ApplyError, Effect, Event, Market,
+    MarketEvent, Position, State, Status,
+};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
@@ -49,12 +55,16 @@ fn valid_name(id: &str) -> bool {
 }
 
 fn valid_market_id(id: &str) -> bool {
-    (1..=32).contains(&id.len()) && id.bytes().all(|b| b.is_ascii_alphanumeric() || b"@_.-".contains(&b))
+    (1..=32).contains(&id.len())
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"@_.-".contains(&b))
 }
 
 /// Did the engine reject a trade because of this account (its margin, or no collateral bucket at all)?
 fn blames(reason: &str, account: &str) -> bool {
-    reason.starts_with(&format!("{account}:")) || reason.starts_with(&format!("{account} has no collateral"))
+    reason.starts_with(&format!("{account}:"))
+        || reason.starts_with(&format!("{account} has no collateral"))
 }
 
 /// String(n) for a JS number, as the TS server hands numeric config to the engine.
@@ -72,15 +82,26 @@ fn engine_amount(a: Amount) -> Num {
 }
 
 fn ev_deposit(account: &str, amount: String) -> Event {
-    Event::Deposit { account: account.into(), amount: amount.into() }
+    Event::Deposit {
+        account: account.into(),
+        amount: amount.into(),
+    }
 }
 
 fn ev_allocate(account: &str, market: &str, amount: String) -> Event {
-    Event::Allocate { account: account.into(), market: market.into(), amount: amount.into() }
+    Event::Allocate {
+        account: account.into(),
+        market: market.into(),
+        amount: amount.into(),
+    }
 }
 
 fn ev_release(account: &str, market: &str, amount: String) -> Event {
-    Event::Release { account: account.into(), market: market.into(), amount: amount.into() }
+    Event::Release {
+        account: account.into(),
+        market: market.into(),
+        amount: amount.into(),
+    }
 }
 
 // ---------- exchange ----------
@@ -141,8 +162,26 @@ impl Exchange {
 
     /// Rebuild the indexes a snapshot doesn't carry.
     pub fn restored(mut self) -> Self {
-        self.keys = self.accounts.values().map(|a| (a.api_key.clone(), a.id.clone())).collect();
-        self.orders = self.books.iter().flat_map(|(id, b)| b.orders().map(move |o| (o.id, Resting { market: id.clone(), account: o.account.clone() }))).collect();
+        self.keys = self
+            .accounts
+            .values()
+            .map(|a| (a.api_key.clone(), a.id.clone()))
+            .collect();
+        self.orders = self
+            .books
+            .iter()
+            .flat_map(|(id, b)| {
+                b.orders().map(move |o| {
+                    (
+                        o.id,
+                        Resting {
+                            market: id.clone(),
+                            account: o.account.clone(),
+                        },
+                    )
+                })
+            })
+            .collect();
         for id in self.markets.keys() {
             self.books.entry(id.clone()).or_default();
         }
@@ -155,7 +194,10 @@ impl Exchange {
 
     /// Stable hash of the whole exchange: engine state, books and orders, accounts and keys, history, clock.
     pub fn state_hash(&self) -> String {
-        format!("{:016x}", crate::intake::fnv64(&serde_json::to_vec(self).expect("exchange serializes")))
+        format!(
+            "{:016x}",
+            crate::intake::fnv64(&serde_json::to_vec(self).expect("exchange serializes"))
+        )
     }
 
     /// Treat downtime as a pause: shift the clock origin so engine time resumes where it stopped. Otherwise a restart
@@ -180,12 +222,16 @@ impl Exchange {
     }
 
     pub fn market(&self, id: &str) -> XResult<&MarketMeta> {
-        self.markets.get(id).ok_or_else(|| ExError::status(404, format!("unknown market \"{id}\"")))
+        self.markets
+            .get(id)
+            .ok_or_else(|| ExError::status(404, format!("unknown market \"{id}\"")))
     }
 
     fn market_mut(&mut self, id: &str) -> XResult<&mut MarketMeta> {
         self.version += 1;
-        self.markets.get_mut(id).ok_or_else(|| ExError::status(404, format!("unknown market \"{id}\"")))
+        self.markets
+            .get_mut(id)
+            .ok_or_else(|| ExError::status(404, format!("unknown market \"{id}\"")))
     }
 
     pub fn engine_market(&self, id: &str) -> XResult<&Market> {
@@ -194,7 +240,9 @@ impl Exchange {
     }
 
     pub fn account(&self, id: &str) -> XResult<&AccountMeta> {
-        self.accounts.get(id).ok_or_else(|| ExError::status(404, format!("unknown account \"{id}\"")))
+        self.accounts
+            .get(id)
+            .ok_or_else(|| ExError::status(404, format!("unknown account \"{id}\"")))
     }
 
     pub fn account_by_key(&self, key: &str) -> Option<&AccountMeta> {
@@ -206,7 +254,10 @@ impl Exchange {
     }
 
     pub fn position(&self, market: &str, account: &str) -> Option<&Position> {
-        self.state.markets.get(market).and_then(|m| m.positions.get(account))
+        self.state
+            .markets
+            .get(market)
+            .and_then(|m| m.positions.get(account))
     }
 
     pub fn size_of(&self, market: &str, account: &str) -> i128 {
@@ -254,13 +305,21 @@ impl Exchange {
             .state
             .markets
             .values()
-            .flat_map(|m| m.positions.values().filter(|p| p.size == 0 && p.collateral > 0).map(|p| ev_release(&p.account, &m.id, "all".into())))
+            .flat_map(|m| {
+                m.positions
+                    .values()
+                    .filter(|p| p.size == 0 && p.collateral > 0)
+                    .map(|p| ev_release(&p.account, &m.id, "all".into()))
+            })
             .collect();
         if events.is_empty() {
             return;
         }
         if let Err(e) = self.exec(&events) {
-            eprintln!("sweep failed (collateral stays in the market): {}", e.message());
+            eprintln!(
+                "sweep failed (collateral stays in the market): {}",
+                e.message()
+            );
         }
     }
 

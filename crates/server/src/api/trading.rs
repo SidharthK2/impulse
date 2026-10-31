@@ -16,8 +16,15 @@ pub(super) struct AmountReq {
     amount: Amount,
 }
 
-pub(super) async fn withdraw(State(app): State<App>, User(id): User, Body(b): Body<AmountReq>) -> ApiResult {
-    app.lock().submit(Withdraw { account: id, amount: b.amount })?;
+pub(super) async fn withdraw(
+    State(app): State<App>,
+    User(id): User,
+    Body(b): Body<AmountReq>,
+) -> ApiResult {
+    app.lock().submit(Withdraw {
+        account: id,
+        amount: b.amount,
+    })?;
     ok(json!({ "ok": true }))
 }
 
@@ -40,7 +47,11 @@ pub(super) struct OrderReq {
     slippage: Option<f64>,
 }
 
-pub(super) async fn place_order(State(app): State<App>, User(id): User, Body(b): Body<OrderReq>) -> ApiResult {
+pub(super) async fn place_order(
+    State(app): State<App>,
+    User(id): User,
+    Body(b): Body<OrderReq>,
+) -> ApiResult {
     let order = OrderInput {
         market: b.market,
         side: b.side,
@@ -53,11 +64,18 @@ pub(super) async fn place_order(State(app): State<App>, User(id): User, Body(b):
         slippage: b.slippage,
     };
     let mut node = app.lock();
-    let r = node.submit(PlaceOrder { account: id.clone(), order })?;
+    let r = node.submit(PlaceOrder {
+        account: id.clone(),
+        order,
+    })?;
     order_reply(&node.core.x, &id, r, true)
 }
 
-pub(super) async fn cancel(State(app): State<App>, User(id): User, Path(order): Path<String>) -> ApiResult {
+pub(super) async fn cancel(
+    State(app): State<App>,
+    User(id): User,
+    Path(order): Path<String>,
+) -> ApiResult {
     app.lock().submit(Cancel { account: id, order })?;
     ok(json!({ "ok": true }))
 }
@@ -68,8 +86,15 @@ pub(super) struct CancelAllReq {
     market: Option<String>,
 }
 
-pub(super) async fn cancel_all(State(app): State<App>, User(id): User, Body(b): Body<CancelAllReq>) -> ApiResult {
-    let n = app.lock().submit(CancelAll { account: id, market: b.market })?;
+pub(super) async fn cancel_all(
+    State(app): State<App>,
+    User(id): User,
+    Body(b): Body<CancelAllReq>,
+) -> ApiResult {
+    let n = app.lock().submit(CancelAll {
+        account: id,
+        market: b.market,
+    })?;
     ok(json!({ "cancelled": n }))
 }
 
@@ -80,8 +105,16 @@ pub(super) struct CloseReq {
     slippage: Option<f64>,
 }
 
-pub(super) async fn close_position(State(app): State<App>, User(id): User, Body(b): Body<CloseReq>) -> ApiResult {
-    let cmd = ClosePosition { account: id.clone(), market: b.market, slippage: b.slippage.unwrap_or(0.1) };
+pub(super) async fn close_position(
+    State(app): State<App>,
+    User(id): User,
+    Body(b): Body<CloseReq>,
+) -> ApiResult {
+    let cmd = ClosePosition {
+        account: id.clone(),
+        market: b.market,
+        slippage: b.slippage.unwrap_or(0.1),
+    };
     let mut node = app.lock();
     let r = node.submit(cmd)?;
     order_reply(&node.core.x, &id, r, false)
@@ -93,8 +126,16 @@ pub(super) struct MarginReq {
     amount: Dec,
 }
 
-pub(super) async fn margin(State(app): State<App>, User(id): User, Body(b): Body<MarginReq>) -> ApiResult {
-    app.lock().submit(Margin { account: id, market: b.market, amount: b.amount })?;
+pub(super) async fn margin(
+    State(app): State<App>,
+    User(id): User,
+    Body(b): Body<MarginReq>,
+) -> ApiResult {
+    app.lock().submit(Margin {
+        account: id,
+        market: b.market,
+        amount: b.amount,
+    })?;
     ok(json!({ "ok": true }))
 }
 
@@ -104,8 +145,16 @@ pub(super) struct UsdcReq {
     usdc: Amount,
 }
 
-pub(super) async fn spot_buy(State(app): State<App>, User(id): User, Body(b): Body<UsdcReq>) -> ApiResult {
-    app.lock().submit(SpotBuy { account: id, market: b.market, usdc: b.usdc })?;
+pub(super) async fn spot_buy(
+    State(app): State<App>,
+    User(id): User,
+    Body(b): Body<UsdcReq>,
+) -> ApiResult {
+    app.lock().submit(SpotBuy {
+        account: id,
+        market: b.market,
+        usdc: b.usdc,
+    })?;
     ok(json!({ "ok": true }))
 }
 
@@ -115,8 +164,16 @@ pub(super) struct SellReq {
     tokens: Tokens,
 }
 
-pub(super) async fn spot_sell(State(app): State<App>, User(id): User, Body(b): Body<SellReq>) -> ApiResult {
-    app.lock().submit(SpotSell { account: id, market: b.market, tokens: b.tokens })?;
+pub(super) async fn spot_sell(
+    State(app): State<App>,
+    User(id): User,
+    Body(b): Body<SellReq>,
+) -> ApiResult {
+    app.lock().submit(SpotSell {
+        account: id,
+        market: b.market,
+        tokens: b.tokens,
+    })?;
     ok(json!({ "ok": true }))
 }
 
@@ -124,15 +181,30 @@ pub(super) async fn spot_sell(State(app): State<App>, User(id): User, Body(b): B
 const SNIPE_SECONDS: i64 = 60;
 
 /// A creator coin for a handle: an attention market that opens after a snipe window.
-pub(super) fn coin_spec(raw: &str, window: f64, adl: &str, creator: &str) -> Result<MarketSpec, ExError> {
+pub(super) fn coin_spec(
+    raw: &str,
+    window: f64,
+    adl: &str,
+    creator: &str,
+) -> Result<MarketSpec, ExError> {
     let handle = format!("@{}", raw.strip_prefix('@').unwrap_or(raw));
-    if !(3..=21).contains(&handle.len()) || !handle[1..].bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_') {
+    if !(3..=21).contains(&handle.len())
+        || !handle[1..]
+            .bytes()
+            .all(|c| c.is_ascii_alphanumeric() || c == b'_')
+    {
         return Err(ExError::bad("handle must be 2–20 letters, digits or _"));
     }
     if ![0.0, 60.0, 600.0, 3600.0].contains(&window) {
-        return Err(ExError::bad("oracleWindow must be 0, 60, 600 or 3600 seconds"));
+        return Err(ExError::bad(
+            "oracleWindow must be 0, 60, 600 or 3600 seconds",
+        ));
     }
-    let oracle = if window == 0.0 { "the instant spot price".into() } else { format!("a {}-minute TWAP of the spot price", window / 60.0) };
+    let oracle = if window == 0.0 {
+        "the instant spot price".into()
+    } else {
+        format!("a {}-minute TWAP of the spot price", window / 60.0)
+    };
     Ok(MarketSpec {
         name: Some(format!("{handle} attention token")),
         base: Some(handle.clone()),
@@ -158,13 +230,29 @@ pub(super) struct CoinReq {
 }
 
 /// Permissionless listing, Mirror's pitch: anyone can launch an attention market for a handle.
-pub(super) async fn attention(State(app): State<App>, User(id): User, Body(b): Body<CoinReq>) -> ApiResult {
-    let adl = if b.adl.as_deref() == Some("size") { "size" } else { "pnl" };
+pub(super) async fn attention(
+    State(app): State<App>,
+    User(id): User,
+    Body(b): Body<CoinReq>,
+) -> ApiResult {
+    let adl = if b.adl.as_deref() == Some("size") {
+        "size"
+    } else {
+        "pnl"
+    };
     let spec = coin_spec(&b.handle, b.oracle_window.unwrap_or(600.0), adl, &id)?;
     list(&app, spec)
 }
 
-pub(super) async fn snipe(State(app): State<App>, User(id): User, Body(b): Body<UsdcReq>) -> ApiResult {
-    app.lock().submit(Snipe { account: id, market: b.market, usdc: b.usdc })?;
+pub(super) async fn snipe(
+    State(app): State<App>,
+    User(id): User,
+    Body(b): Body<UsdcReq>,
+) -> ApiResult {
+    app.lock().submit(Snipe {
+        account: id,
+        market: b.market,
+        usdc: b.usdc,
+    })?;
     ok(json!({ "ok": true }))
 }

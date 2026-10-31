@@ -15,12 +15,15 @@ use extract::*;
 use crate::book::{Side, Tif};
 use crate::bots::Bots;
 use crate::command::*;
-pub use crate::sequencer::Node;
-use crate::exchange::{ExError, Exchange, Kind, MarketSpec, OrderInput, OrderResult, OrderType, Source};
+use crate::exchange::{
+    ExError, Exchange, Kind, MarketSpec, OrderInput, OrderResult, OrderType, Source,
+};
+use crate::feeds;
 use crate::intake::api_key;
 use crate::logging::log;
-use crate::feeds;
+use crate::money::{Amount, Dec, Tokens};
 use crate::rng::Rng;
+pub use crate::sequencer::Node;
 use crate::units::usd;
 use crate::views;
 use axum::extract::{FromRequest, FromRequestParts, Path, Query, Request, State};
@@ -30,7 +33,6 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use impulse_engine::{check_invariants, Effect};
-use crate::money::{Amount, Dec, Tokens};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
@@ -56,8 +58,19 @@ impl std::ops::Deref for App {
 }
 
 impl App {
-    pub fn new(node: Node, admin_token: String, web_dir: Option<PathBuf>, test_hooks: bool) -> Self {
-        App(Arc::new(Inner { node: Mutex::new(node), admin_token, web_dir, http: feeds::client(), test_hooks }))
+    pub fn new(
+        node: Node,
+        admin_token: String,
+        web_dir: Option<PathBuf>,
+        test_hooks: bool,
+    ) -> Self {
+        App(Arc::new(Inner {
+            node: Mutex::new(node),
+            admin_token,
+            web_dir,
+            http: feeds::client(),
+            test_hooks,
+        }))
     }
 
     pub fn lock(&self) -> MutexGuard<'_, Node> {
@@ -77,9 +90,15 @@ fn kinds(effects: &[Effect]) -> Vec<&'static str> {
 }
 
 fn order_reply(x: &Exchange, id: &str, r: OrderResult, with_order: bool) -> ApiResult {
-    let fills: Vec<_> = r.fills.iter().map(|f| views::fill_view(x, f, Some(id))).collect();
+    let fills: Vec<_> = r
+        .fills
+        .iter()
+        .map(|f| views::fill_view(x, f, Some(id)))
+        .collect();
     if with_order {
-        ok(json!({ "status": r.status, "reason": r.reason, "order": views::order_view(x, &r.order), "fills": fills }))
+        ok(
+            json!({ "status": r.status, "reason": r.reason, "order": views::order_view(x, &r.order), "fills": fills }),
+        )
     } else {
         ok(json!({ "status": r.status, "reason": r.reason, "fills": fills }))
     }
@@ -88,7 +107,9 @@ fn order_reply(x: &Exchange, id: &str, r: OrderResult, with_order: bool) -> ApiR
 /// List a market and reply with its view.
 fn list(app: &App, spec: MarketSpec) -> ApiResult {
     let mut node = app.lock();
-    let id = node.submit(ListMarket { spec: Box::new(spec) })?;
+    let id = node.submit(ListMarket {
+        spec: Box::new(spec),
+    })?;
     ok(views::market_view(&node.core.x, &id))
 }
 
@@ -140,5 +161,8 @@ pub fn router(app: App) -> Router {
             .route("/api/test/hash", get(test_hooks::hash))
             .route("/api/test/reload", post(test_hooks::reload));
     }
-    r.method_not_allowed_fallback(web::not_found).fallback(web::fallback).layer(axum::middleware::from_fn(web::cors)).with_state(app)
+    r.method_not_allowed_fallback(web::not_found)
+        .fallback(web::fallback)
+        .layer(axum::middleware::from_fn(web::cors))
+        .with_state(app)
 }

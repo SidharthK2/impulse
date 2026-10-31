@@ -25,14 +25,24 @@ impl Exchange {
     pub(super) fn reprice(&mut self, market: &str) -> XResult<Vec<Effect>> {
         let mut effects = vec![];
         for _ in 0..4 {
-            if self.markets.get(market).is_none_or(|m| m.source != Source::Book) || self.state.markets[market].status != Status::Open {
+            if self
+                .markets
+                .get(market)
+                .is_none_or(|m| m.source != Source::Book)
+                || self.state.markets[market].status != Status::Open
+            {
                 break;
             }
-            let Some(lot) = self.book_mark(market) else { break };
+            let Some(lot) = self.book_mark(market) else {
+                break;
+            };
             if Some(lot.max(1)) == self.state.markets[market].mark {
                 break;
             }
-            effects.extend(self.commit(&[Event::Tick { market: market.into(), price: dec(lot.max(1)).into() }])?);
+            effects.extend(self.commit(&[Event::Tick {
+                market: market.into(),
+                price: dec(lot.max(1)).into(),
+            }])?);
             self.candle(market, lot.max(1), 0, None);
         }
         Ok(effects)
@@ -58,7 +68,10 @@ impl Exchange {
         let effects = if Some(lot) == self.state.markets[market].mark {
             vec![]
         } else {
-            self.commit(&[Event::Tick { market: market.into(), price: dec(lot).into() }])?
+            self.commit(&[Event::Tick {
+                market: market.into(),
+                price: dec(lot).into(),
+            }])?
         };
         self.candle(market, lot, 0, None);
         let now = self.now();
@@ -76,7 +89,11 @@ impl Exchange {
                     busts += 1;
                     hit.push(account.clone());
                 }
-                Effect::Bankrupt { account, shortfall: s, .. } => {
+                Effect::Bankrupt {
+                    account,
+                    shortfall: s,
+                    ..
+                } => {
                     busts += 1;
                     shortfall += s;
                     hit.push(account.clone());
@@ -86,14 +103,27 @@ impl Exchange {
             }
         }
         hit.dedup();
-        let paid = if shortfall > 0 { format!("; ${} shortfall charged to the other side", cents(shortfall)) } else { String::new() };
+        let paid = if shortfall > 0 {
+            format!(
+                "; ${} shortfall charged to the other side",
+                cents(shortfall)
+            )
+        } else {
+            String::new()
+        };
         let text = format!(
             "{market} IPO at {}: mark gapped {before} → {}, {busts} position{} liquidated or bankrupt{paid}",
             fmt(coin, 0),
             self.mark_str(market),
             if busts == 1 { "" } else { "s" }
         );
-        self.record(market, RiskKind::Ipo, hit, text, (shortfall > 0).then_some(shortfall));
+        self.record(
+            market,
+            RiskKind::Ipo,
+            hit,
+            text,
+            (shortfall > 0).then_some(shortfall),
+        );
         Ok(effects)
     }
 }

@@ -18,7 +18,16 @@ pub fn fmt_scaled(v: i128, decimals: u32) -> String {
     let d = pow10(decimals);
     let frac = format!("{:0w$}", a % d, w = decimals as usize);
     let frac = frac.trim_end_matches('0');
-    format!("{}{}{}", if neg { "-" } else { "" }, a / d, if frac.is_empty() { String::new() } else { format!(".{frac}") })
+    format!(
+        "{}{}{}",
+        if neg { "-" } else { "" },
+        a / d,
+        if frac.is_empty() {
+            String::new()
+        } else {
+            format!(".{frac}")
+        }
+    )
 }
 
 /// Engine decimal string for a nano value (what parse_fixed reads back).
@@ -61,7 +70,11 @@ pub fn coin_price(sz: u32, lot_nano: i128) -> i128 {
 /// Default tick: five significant figures of the starting price (Hyperliquid's rule), never finer than one nano
 /// per lot so every tick converts to an exact lot price.
 pub fn auto_tick(coin_nano: i128, sz: u32) -> i128 {
-    let digits = if coin_nano > 0 { coin_nano.to_string().len() as u32 } else { 1 };
+    let digits = if coin_nano > 0 {
+        coin_nano.to_string().len() as u32
+    } else {
+        1
+    };
     let tick = pow10(digits.saturating_sub(5));
     tick.max(pow10(sz))
 }
@@ -81,7 +94,10 @@ pub fn tick_decimals(tick: i128) -> u32 {
 pub fn nano_from_feed(s: &str) -> Result<i128, String> {
     let s = s.trim();
     let (int, frac) = s.split_once('.').unwrap_or((s, ""));
-    if int.is_empty() || !int.bytes().all(|b| b.is_ascii_digit()) || !frac.bytes().all(|b| b.is_ascii_digit()) {
+    if int.is_empty()
+        || !int.bytes().all(|b| b.is_ascii_digit())
+        || !frac.bytes().all(|b| b.is_ascii_digit())
+    {
         return Err(format!("bad feed price \"{s}\""));
     }
     let f: String = frac.chars().take(9).collect();
@@ -101,7 +117,12 @@ pub fn nano_from_f64(v: f64) -> Result<i128, String> {
 pub fn cents(v: i128) -> String {
     let neg = v < 0;
     let c = (v.abs() + 5_000_000) / 10_000_000;
-    format!("{}{}.{:02}", if neg && c != 0 { "-" } else { "" }, group(&(c / 100).to_string()), c % 100)
+    format!(
+        "{}{}.{:02}",
+        if neg && c != 0 { "-" } else { "" },
+        group(&(c / 100).to_string()),
+        c % 100
+    )
 }
 
 /// "1234567" → "1,234,567"
@@ -148,7 +169,10 @@ mod tests {
     fn round_trips_scaled_decimals() {
         assert_eq!(lots_from_coins(2, d("1.25")).unwrap(), 125);
         assert_eq!(lots_from_coins(0, d("3")).unwrap(), 3);
-        assert_eq!(lots_from_coins(2, d("1.234")).unwrap_err(), "\"1.234\" has more than 2 decimals");
+        assert_eq!(
+            lots_from_coins(2, d("1.234")).unwrap_err(),
+            "\"1.234\" has more than 2 decimals"
+        );
         assert_eq!(fmt_scaled(125, 2), "1.25");
         assert_eq!(fmt_scaled(-5, 3), "-0.005");
     }
@@ -157,12 +181,18 @@ mod tests {
     fn converts_coins_to_lots_and_prices_per_coin_to_per_lot() {
         assert_eq!(lots_from_coins(5, d("0.01")).unwrap(), 1000);
         assert_eq!(coins_from_lots(5, 1000), "0.01");
-        assert_eq!(lot_price(5, parse_fixed("80000").unwrap()), parse_fixed("0.8").unwrap());
+        assert_eq!(
+            lot_price(5, parse_fixed("80000").unwrap()),
+            parse_fixed("0.8").unwrap()
+        );
     }
 
     #[test]
     fn picks_a_five_significant_figure_tick() {
-        assert_eq!(auto_tick(parse_fixed("80711.5").unwrap(), 5), parse_fixed("1").unwrap());
+        assert_eq!(
+            auto_tick(parse_fixed("80711.5").unwrap(), 5),
+            parse_fixed("1").unwrap()
+        );
         assert_eq!(auto_tick(parse_fixed("0.004397").unwrap(), 0), 100);
         assert_eq!(auto_tick(parse_fixed("0.000005").unwrap(), 0), 1);
     }

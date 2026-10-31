@@ -36,14 +36,22 @@ pub type XResult<T> = Result<T, ExError>;
 // ---------- types ----------
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "lowercase", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "kind",
+    rename_all = "lowercase",
+    rename_all_fields = "camelCase"
+)]
 pub enum Source {
     Hyperliquid {
         coin: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         dex: Option<String>,
     },
-    Polymarket { market_id: String, token_id: String, outcome: String },
+    Polymarket {
+        market_id: String,
+        token_id: String,
+        outcome: String,
+    },
     /// attention market: the perp's oracle is its own spot curve
     Curve,
     /// offline random walk, volatility per step in bps
@@ -294,10 +302,24 @@ pub struct OrderInput {
 
 impl OrderInput {
     pub fn market(market: &str, side: Side, size: Dec) -> Self {
-        OrderInput { market: market.into(), side, kind: OrderType::Market, size, price: None, leverage: None, reduce_only: false, tif: None, slippage: None }
+        OrderInput {
+            market: market.into(),
+            side,
+            kind: OrderType::Market,
+            size,
+            price: None,
+            leverage: None,
+            reduce_only: false,
+            tif: None,
+            slippage: None,
+        }
     }
     pub fn limit(market: &str, side: Side, price: Dec, size: Dec) -> Self {
-        OrderInput { kind: OrderType::Limit, price: Some(price), ..OrderInput::market(market, side, size) }
+        OrderInput {
+            kind: OrderType::Limit,
+            price: Some(price),
+            ..OrderInput::market(market, side, size)
+        }
     }
 }
 

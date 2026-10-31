@@ -3,11 +3,11 @@
 // every price change runs liquidation and ADL atomically, and an admin hold makes the feed stand aside.
 
 use crate::api::{App, Node};
-use crate::logging::log;
-use crate::command::{Bar, History, ListMarket, Resolve, Ticks, Tick};
-use crate::money::Dec;
-use crate::exchange::{Exchange, ExError, Kind, MarketSpec, Source};
+use crate::command::{Bar, History, ListMarket, Resolve, Tick, Ticks};
+use crate::exchange::{ExError, Exchange, Kind, MarketSpec, Source};
 use crate::intake::wall_ms;
+use crate::logging::log;
+use crate::money::Dec;
 use crate::units::{nano_from_f64, nano_from_feed};
 use impulse_engine::Status;
 use serde_json::{json, Value};
@@ -20,7 +20,10 @@ const PM_CLOB: &str = "https://clob.polymarket.com";
 const PM_GAMMA: &str = "https://gamma-api.polymarket.com";
 
 pub fn client() -> reqwest::Client {
-    reqwest::Client::builder().timeout(Duration::from_secs(8)).build().expect("http client")
+    reqwest::Client::builder()
+        .timeout(Duration::from_secs(8))
+        .build()
+        .expect("http client")
 }
 
 async fn send(req: reqwest::RequestBuilder, url: &str) -> Result<Value, String> {
@@ -50,22 +53,46 @@ pub struct HlInfo {
     sz_decimals: u32,
 }
 
-pub async fn hl_meta(http: &reqwest::Client, dex: Option<&str>) -> Result<HashMap<String, HlInfo>, String> {
+pub async fn hl_meta(
+    http: &reqwest::Client,
+    dex: Option<&str>,
+) -> Result<HashMap<String, HlInfo>, String> {
     let meta = hl(http, json!({ "type": "meta" }), dex).await?;
-    let universe = meta["universe"].as_array().ok_or("hyperliquid meta: no universe")?;
+    let universe = meta["universe"]
+        .as_array()
+        .ok_or("hyperliquid meta: no universe")?;
     Ok(universe
         .iter()
         .filter(|u| u["isDelisted"] != json!(true))
-        .filter_map(|u| Some((u["name"].as_str()?.to_string(), HlInfo { sz_decimals: u["szDecimals"].as_u64()? as u32 })))
+        .filter_map(|u| {
+            Some((
+                u["name"].as_str()?.to_string(),
+                HlInfo {
+                    sz_decimals: u["szDecimals"].as_u64()? as u32,
+                },
+            ))
+        })
         .collect())
 }
 
-pub async fn hl_mids(http: &reqwest::Client, dex: Option<&str>) -> Result<HashMap<String, Value>, String> {
+pub async fn hl_mids(
+    http: &reqwest::Client,
+    dex: Option<&str>,
+) -> Result<HashMap<String, Value>, String> {
     let mids = hl(http, json!({ "type": "allMids" }), dex).await?;
-    Ok(mids.as_object().ok_or("hyperliquid allMids: not an object")?.clone().into_iter().collect())
+    Ok(mids
+        .as_object()
+        .ok_or("hyperliquid allMids: not an object")?
+        .clone()
+        .into_iter()
+        .collect())
 }
 
-async fn hl_candles(http: &reqwest::Client, coin: &str, minutes: i64) -> Result<Vec<Value>, String> {
+async fn hl_candles(
+    http: &reqwest::Client,
+    coin: &str,
+    minutes: i64,
+) -> Result<Vec<Value>, String> {
     let end = wall_ms();
     let r = hl(http, json!({ "type": "candleSnapshot", "req": { "coin": coin, "interval": "1m", "startTime": end - minutes * 60_000, "endTime": end } }), None).await?;
     Ok(r.as_array().cloned().unwrap_or_default())
@@ -105,7 +132,10 @@ fn parse_pm(raw: &Value) -> PmMarket {
         slug: text(&raw["slug"]),
         end_date: text(&raw["endDate"]),
         outcomes: arr(&raw["outcomes"]).iter().map(text).collect(),
-        prices: arr(&raw["outcomePrices"]).iter().map(|p| text(p).trim().parse().unwrap_or(f64::NAN)).collect(),
+        prices: arr(&raw["outcomePrices"])
+            .iter()
+            .map(|p| text(p).trim().parse().unwrap_or(f64::NAN))
+            .collect(),
         tokens: arr(&raw["clobTokenIds"]).iter().map(text).collect(),
         closed: raw["closed"] == json!(true),
     }
@@ -121,24 +151,43 @@ async fn pick_polymarkets(http: &reqwest::Client, n: usize) -> Result<Vec<PmMark
         .map(|a| a.iter().map(parse_pm).collect::<Vec<_>>())
         .unwrap_or_default()
         .into_iter()
-        .filter(|m| m.tokens.len() == 2 && m.prices.first().is_some_and(|p| (0.08..=0.92).contains(p)))
+        .filter(|m| {
+            m.tokens.len() == 2 && m.prices.first().is_some_and(|p| (0.08..=0.92).contains(p))
+        })
         .take(n)
         .collect())
 }
 
 async fn pm_market(http: &reqwest::Client, id: &str) -> Result<PmMarket, String> {
-    Ok(parse_pm(&get_json(http, &format!("{PM_GAMMA}/markets/{id}")).await?))
+    Ok(parse_pm(
+        &get_json(http, &format!("{PM_GAMMA}/markets/{id}")).await?,
+    ))
 }
 
-async fn pm_midpoints(http: &reqwest::Client, tokens: &[String]) -> Result<HashMap<String, Value>, String> {
+async fn pm_midpoints(
+    http: &reqwest::Client,
+    tokens: &[String],
+) -> Result<HashMap<String, Value>, String> {
     let body = Value::Array(tokens.iter().map(|t| json!({ "token_id": t })).collect());
     let r = post_json(http, &format!("{PM_CLOB}/midpoints"), body).await?;
-    Ok(r.as_object().cloned().unwrap_or_default().into_iter().collect())
+    Ok(r.as_object()
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .collect())
 }
 
 async fn pm_history(http: &reqwest::Client, token: &str) -> Result<Vec<(i64, f64)>, String> {
-    let r = get_json(http, &format!("{PM_CLOB}/prices-history?market={token}&interval=1d&fidelity=1")).await?;
-    Ok(r["history"].as_array().map_or(vec![], |h| h.iter().filter_map(|p| Some((p["t"].as_i64()?, p["p"].as_f64()?))).collect()))
+    let r = get_json(
+        http,
+        &format!("{PM_CLOB}/prices-history?market={token}&interval=1d&fidelity=1"),
+    )
+    .await?;
+    Ok(r["history"].as_array().map_or(vec![], |h| {
+        h.iter()
+            .filter_map(|p| Some((p["t"].as_i64()?, p["p"].as_f64()?)))
+            .collect()
+    }))
 }
 
 /// A feed price, string or JSON number, as nano-USD.
@@ -166,13 +215,62 @@ struct HlListing {
 }
 
 const HL_LISTINGS: [HlListing; 7] = [
-    HlListing { coin: "BTC", dex: None, id: "BTC-PERP", name: "Bitcoin", base: "BTC", fallback: "80000" },
-    HlListing { coin: "ETH", dex: None, id: "ETH-PERP", name: "Ether", base: "ETH", fallback: "2400" },
-    HlListing { coin: "SOL", dex: None, id: "SOL-PERP", name: "Solana", base: "SOL", fallback: "100" },
-    HlListing { coin: "HYPE", dex: None, id: "HYPE-PERP", name: "Hyperliquid", base: "HYPE", fallback: "75" },
-    HlListing { coin: "kPEPE", dex: None, id: "kPEPE-PERP", name: "1000 PEPE (memecoin)", base: "kPEPE", fallback: "0.0044" },
-    HlListing { coin: "FARTCOIN", dex: None, id: "FARTCOIN-PERP", name: "Fartcoin (memecoin)", base: "FARTCOIN", fallback: "0.13" },
-    HlListing { coin: "xyz:AAPL", dex: Some("xyz"), id: "AAPL-PERP", name: "Apple (HIP-3 equity perp)", base: "AAPL", fallback: "345" },
+    HlListing {
+        coin: "BTC",
+        dex: None,
+        id: "BTC-PERP",
+        name: "Bitcoin",
+        base: "BTC",
+        fallback: "80000",
+    },
+    HlListing {
+        coin: "ETH",
+        dex: None,
+        id: "ETH-PERP",
+        name: "Ether",
+        base: "ETH",
+        fallback: "2400",
+    },
+    HlListing {
+        coin: "SOL",
+        dex: None,
+        id: "SOL-PERP",
+        name: "Solana",
+        base: "SOL",
+        fallback: "100",
+    },
+    HlListing {
+        coin: "HYPE",
+        dex: None,
+        id: "HYPE-PERP",
+        name: "Hyperliquid",
+        base: "HYPE",
+        fallback: "75",
+    },
+    HlListing {
+        coin: "kPEPE",
+        dex: None,
+        id: "kPEPE-PERP",
+        name: "1000 PEPE (memecoin)",
+        base: "kPEPE",
+        fallback: "0.0044",
+    },
+    HlListing {
+        coin: "FARTCOIN",
+        dex: None,
+        id: "FARTCOIN-PERP",
+        name: "Fartcoin (memecoin)",
+        base: "FARTCOIN",
+        fallback: "0.13",
+    },
+    HlListing {
+        coin: "xyz:AAPL",
+        dex: Some("xyz"),
+        id: "AAPL-PERP",
+        name: "Apple (HIP-3 equity perp)",
+        base: "AAPL",
+        fallback: "345",
+    },
 ];
 
 const ATTENTION: [(&str, &str); 2] = [
@@ -206,13 +304,22 @@ pub async fn list_defaults(app: &App, offline: bool) {
     let mut mids: HashMap<&str, HashMap<String, Value>> = HashMap::new();
     if !offline {
         for dex in [None, Some("xyz")] {
-            let got = async { Ok::<_, String>((hl_meta(&app.http, dex).await?, hl_mids(&app.http, dex).await?)) }.await;
+            let got = async {
+                Ok::<_, String>((
+                    hl_meta(&app.http, dex).await?,
+                    hl_mids(&app.http, dex).await?,
+                ))
+            }
+            .await;
             match got {
                 Ok((meta, mid)) => {
                     metas.insert(dex.unwrap_or(""), meta);
                     mids.insert(dex.unwrap_or(""), mid);
                 }
-                Err(e) => log(&format!("hyperliquid{} unreachable, using simulated prices: {e}", dex.map(|d| format!(" ({d})")).unwrap_or_default())),
+                Err(e) => log(&format!(
+                    "hyperliquid{} unreachable, using simulated prices: {e}",
+                    dex.map(|d| format!(" ({d})")).unwrap_or_default()
+                )),
             }
         }
     }
@@ -255,7 +362,9 @@ pub async fn list_defaults(app: &App, offline: bool) {
     if !offline {
         match pick_polymarkets(&app.http, 4).await {
             Ok(p) => pms = p,
-            Err(e) => log(&format!("polymarket unreachable, using a simulated binary: {e}")),
+            Err(e) => log(&format!(
+                "polymarket unreachable, using a simulated binary: {e}"
+            )),
         }
     }
     for pm in &pms {
@@ -294,7 +403,9 @@ pub async fn list_defaults(app: &App, offline: bool) {
         let mut node = app.lock();
         for spec in specs {
             let id = spec.id.clone();
-            if let Err(e) = node.submit(ListMarket { spec: Box::new(spec) }) {
+            if let Err(e) = node.submit(ListMarket {
+                spec: Box::new(spec),
+            }) {
                 log(&format!("could not list {id}: {}", e.message()));
             }
         }
@@ -316,7 +427,10 @@ pub async fn list_polymarket(app: &App, reference: &str) -> Result<String, ExErr
         if let Some(rest) = slug.strip_prefix(prefix) {
             // strip the host and the /event/ or /market/ segment
             if let Some((_, path)) = rest.split_once('/') {
-                if let Some(p) = path.strip_prefix("event/").or_else(|| path.strip_prefix("market/")) {
+                if let Some(p) = path
+                    .strip_prefix("event/")
+                    .or_else(|| path.strip_prefix("market/"))
+                {
                     slug = p;
                 }
             }
@@ -326,22 +440,43 @@ pub async fn list_polymarket(app: &App, reference: &str) -> Result<String, ExErr
     let pm = if !slug.is_empty() && slug.bytes().all(|b| b.is_ascii_digit()) {
         pm_market(&app.http, &slug).await.map_err(to_ex)?
     } else {
-        let found = get_json(&app.http, &format!("{PM_GAMMA}/markets?slug={}", encode_uri_component(&slug))).await.map_err(to_ex)?;
+        let found = get_json(
+            &app.http,
+            &format!("{PM_GAMMA}/markets?slug={}", encode_uri_component(&slug)),
+        )
+        .await
+        .map_err(to_ex)?;
         match found.as_array().and_then(|a| a.first()) {
             Some(raw) => parse_pm(raw),
             None => return Err(ExError::bad(format!("no Polymarket market with slug \"{slug}\" (event pages hold several markets: use a market's own URL or id)"))),
         }
     };
     if pm.closed {
-        return Err(ExError::bad(format!("Polymarket market {} is already closed", pm.id)));
+        return Err(ExError::bad(format!(
+            "Polymarket market {} is already closed",
+            pm.id
+        )));
     }
     if pm.tokens.len() != 2 {
-        return Err(ExError::bad(format!("Polymarket market {} isn't a two-outcome market", pm.id)));
+        return Err(ExError::bad(format!(
+            "Polymarket market {} isn't a two-outcome market",
+            pm.id
+        )));
     }
-    let mids = pm_midpoints(&app.http, &pm.tokens[..1]).await.map_err(to_ex)?;
-    let mid = mids.get(&pm.tokens[0]).map(|v| text(v).parse::<f64>().unwrap_or(f64::NAN)).unwrap_or_else(|| pm.prices.first().copied().unwrap_or(f64::NAN));
-    let spec = MarketSpec { creator: Some("admin".into()), ..pm_spec(&pm, mid) };
-    let id = app.lock().submit(ListMarket { spec: Box::new(spec) })?;
+    let mids = pm_midpoints(&app.http, &pm.tokens[..1])
+        .await
+        .map_err(to_ex)?;
+    let mid = mids
+        .get(&pm.tokens[0])
+        .map(|v| text(v).parse::<f64>().unwrap_or(f64::NAN))
+        .unwrap_or_else(|| pm.prices.first().copied().unwrap_or(f64::NAN));
+    let spec = MarketSpec {
+        creator: Some("admin".into()),
+        ..pm_spec(&pm, mid)
+    };
+    let id = app.lock().submit(ListMarket {
+        spec: Box::new(spec),
+    })?;
     tokio::spawn(backfill(app.clone(), Some(vec![id.clone()])));
     Ok(id)
 }
@@ -349,9 +484,15 @@ pub async fn list_polymarket(app: &App, reference: &str) -> Result<String, ExErr
 /// Mirror one Hyperliquid perp (e.g. "DOGE", or "xyz:TSLA" for a HIP-3 market).
 pub async fn list_hyperliquid(app: &App, coin: &str) -> Result<String, ExError> {
     let dex = coin.split_once(':').map(|(d, _)| d.to_string());
-    let (meta, mids) = tokio::try_join!(hl_meta(&app.http, dex.as_deref()), hl_mids(&app.http, dex.as_deref())).map_err(to_ex)?;
+    let (meta, mids) = tokio::try_join!(
+        hl_meta(&app.http, dex.as_deref()),
+        hl_mids(&app.http, dex.as_deref())
+    )
+    .map_err(to_ex)?;
     let (Some(info), Some(mid)) = (meta.get(coin), mids.get(coin)) else {
-        return Err(ExError::bad(format!("Hyperliquid has no live perp \"{coin}\"")));
+        return Err(ExError::bad(format!(
+            "Hyperliquid has no live perp \"{coin}\""
+        )));
     };
     let base = coin.rsplit_once(':').map_or(coin, |(_, b)| b).to_string();
     let spec = MarketSpec {
@@ -364,7 +505,9 @@ pub async fn list_hyperliquid(app: &App, coin: &str) -> Result<String, ExError> 
         creator: Some("admin".into()),
         ..MarketSpec::new(format!("{base}-PERP"), Kind::Perp, Source::Hyperliquid { coin: coin.into(), dex })
     };
-    let id = app.lock().submit(ListMarket { spec: Box::new(spec) })?;
+    let id = app.lock().submit(ListMarket {
+        spec: Box::new(spec),
+    })?;
     tokio::spawn(backfill(app.clone(), Some(vec![id.clone()])));
     Ok(id)
 }
@@ -373,22 +516,51 @@ pub async fn list_hyperliquid(app: &App, coin: &str) -> Result<String, ExError> 
 async fn backfill(app: App, only: Option<Vec<String>>) {
     let targets: Vec<(String, Source)> = {
         let node = app.lock();
-        node.core.x.markets.values().filter(|m| only.as_ref().is_none_or(|o| o.contains(&m.id))).map(|m| (m.id.clone(), m.source.clone())).collect()
+        node.core
+            .x
+            .markets
+            .values()
+            .filter(|m| only.as_ref().is_none_or(|o| o.contains(&m.id)))
+            .map(|m| (m.id.clone(), m.source.clone()))
+            .collect()
     };
     for (id, source) in targets {
         let bars: Result<Vec<Bar>, String> = match &source {
             Source::Hyperliquid { coin, .. } => hl_candles(&app.http, coin, 360).await.map(|cs| {
                 let price = |v: &Value| feed_nano(v).ok();
-                cs.iter().filter_map(|c| Some(Bar { t: c["t"].as_i64()?, o: price(&c["o"])?, h: price(&c["h"])?, l: price(&c["l"])?, c: price(&c["c"])? })).collect()
+                cs.iter()
+                    .filter_map(|c| {
+                        Some(Bar {
+                            t: c["t"].as_i64()?,
+                            o: price(&c["o"])?,
+                            h: price(&c["h"])?,
+                            l: price(&c["l"])?,
+                            c: price(&c["c"])?,
+                        })
+                    })
+                    .collect()
             }),
-            Source::Polymarket { token_id, .. } => pm_history(&app.http, token_id)
-                .await
-                .map(|h| h.iter().filter_map(|&(t, p)| nano_from_f64(p).ok().map(|n| Bar { t: t * 1000, o: n, h: n, l: n, c: n })).collect()),
+            Source::Polymarket { token_id, .. } => pm_history(&app.http, token_id).await.map(|h| {
+                h.iter()
+                    .filter_map(|&(t, p)| {
+                        nano_from_f64(p).ok().map(|n| Bar {
+                            t: t * 1000,
+                            o: n,
+                            h: n,
+                            l: n,
+                            c: n,
+                        })
+                    })
+                    .collect()
+            }),
             _ => continue,
         };
         match bars {
             Ok(bars) => {
-                if let Err(e) = app.lock().submit(History { market: id.clone(), bars }) {
+                if let Err(e) = app.lock().submit(History {
+                    market: id.clone(),
+                    bars,
+                }) {
                     log(&format!("history for {id}: {}", e.message()));
                 }
             }
@@ -406,7 +578,10 @@ pub struct Warn(Arc<Mutex<HashMap<String, Instant>>>);
 impl Warn {
     pub fn warn(&self, source: &str, msg: &str) {
         let mut last = self.0.lock().unwrap_or_else(|e| e.into_inner());
-        if last.get(source).is_some_and(|t| t.elapsed() < Duration::from_secs(60)) {
+        if last
+            .get(source)
+            .is_some_and(|t| t.elapsed() < Duration::from_secs(60))
+        {
             return;
         }
         last.insert(source.into(), Instant::now());
@@ -415,7 +590,11 @@ impl Warn {
 }
 
 fn open_markets(x: &Exchange, pred: impl Fn(&Source) -> bool) -> Vec<(String, Source)> {
-    x.markets.values().filter(|m| pred(&m.source) && x.state.markets[&m.id].status == Status::Open).map(|m| (m.id.clone(), m.source.clone())).collect()
+    x.markets
+        .values()
+        .filter(|m| pred(&m.source) && x.state.markets[&m.id].status == Status::Open)
+        .map(|m| (m.id.clone(), m.source.clone()))
+        .collect()
 }
 
 /// Submit a feed poll's prices as one Ticks command; warn about any the feed sent badly or the exchange refused.
@@ -441,14 +620,27 @@ fn submit_ticks(node: &mut Node, warn: &Warn, prices: Vec<(String, &Value)>) {
 }
 
 async fn poll_hyperliquid(app: &App, warn: &Warn) -> Result<(), String> {
-    let markets = open_markets(&app.lock().core.x, |s| matches!(s, Source::Hyperliquid { .. }));
-    let dexes: BTreeSet<Option<String>> = markets.iter().map(|(_, s)| if let Source::Hyperliquid { dex, .. } = s { dex.clone() } else { None }).collect();
+    let markets = open_markets(&app.lock().core.x, |s| {
+        matches!(s, Source::Hyperliquid { .. })
+    });
+    let dexes: BTreeSet<Option<String>> = markets
+        .iter()
+        .map(|(_, s)| {
+            if let Source::Hyperliquid { dex, .. } = s {
+                dex.clone()
+            } else {
+                None
+            }
+        })
+        .collect();
     for dex in dexes {
         let mids = hl_mids(&app.http, dex.as_deref()).await?;
         let prices = markets
             .iter()
             .filter_map(|(id, source)| match source {
-                Source::Hyperliquid { coin, dex: d } if *d == dex => mids.get(coin).map(|mid| (id.clone(), mid)),
+                Source::Hyperliquid { coin, dex: d } if *d == dex => {
+                    mids.get(coin).map(|mid| (id.clone(), mid))
+                }
                 _ => None,
             })
             .collect();
@@ -458,29 +650,55 @@ async fn poll_hyperliquid(app: &App, warn: &Warn) -> Result<(), String> {
 }
 
 async fn poll_polymarket(app: &App, warn: &Warn) -> Result<(), String> {
-    let markets = open_markets(&app.lock().core.x, |s| matches!(s, Source::Polymarket { .. }));
+    let markets = open_markets(&app.lock().core.x, |s| {
+        matches!(s, Source::Polymarket { .. })
+    });
     if markets.is_empty() {
         return Ok(());
     }
-    let tokens: Vec<String> = markets.iter().map(|(_, s)| if let Source::Polymarket { token_id, .. } = s { token_id.clone() } else { String::new() }).collect();
+    let tokens: Vec<String> = markets
+        .iter()
+        .map(|(_, s)| {
+            if let Source::Polymarket { token_id, .. } = s {
+                token_id.clone()
+            } else {
+                String::new()
+            }
+        })
+        .collect();
     let mids = pm_midpoints(&app.http, &tokens).await?;
-    let prices = markets.iter().zip(&tokens).filter_map(|((id, _), token)| mids.get(token).map(|mid| (id.clone(), mid))).collect();
+    let prices = markets
+        .iter()
+        .zip(&tokens)
+        .filter_map(|((id, _), token)| mids.get(token).map(|mid| (id.clone(), mid)))
+        .collect();
     submit_ticks(&mut app.lock(), warn, prices);
     Ok(())
 }
 
 /// Settle a mirrored binary when Polymarket resolves it (outcome price exactly 0, 0.5 or 1).
 async fn check_resolutions(app: &App) -> Result<(), String> {
-    let markets = open_markets(&app.lock().core.x, |s| matches!(s, Source::Polymarket { .. }));
+    let markets = open_markets(&app.lock().core.x, |s| {
+        matches!(s, Source::Polymarket { .. })
+    });
     for (id, source) in markets {
-        let Source::Polymarket { market_id, .. } = source else { continue };
+        let Source::Polymarket { market_id, .. } = source else {
+            continue;
+        };
         let pm = pm_market(&app.http, &market_id).await?;
-        let Some(&p) = pm.prices.first() else { continue };
+        let Some(&p) = pm.prices.first() else {
+            continue;
+        };
         if !pm.closed || ![0.0, 0.5, 1.0].contains(&p) {
             continue;
         }
         let price = Dec::parse(&p.to_string())?;
-        app.lock().submit(Resolve { market: id.clone(), price }).map_err(|e| e.message().to_string())?;
+        app.lock()
+            .submit(Resolve {
+                market: id.clone(),
+                price,
+            })
+            .map_err(|e| e.message().to_string())?;
         log(&format!("{id} resolved at {p} (Polymarket closed)"));
     }
     Ok(())
@@ -501,13 +719,16 @@ pub fn step_sim(node: &mut Node, warn: &Warn, offline: bool) {
         let vol_bps = match source {
             Source::Sim { vol_bps } => vol_bps,
             Source::Polymarket { .. } => 40.0, // what a fresh offline exchange gives its simulated binary
-            _ => 15.0,                          // and its simulated perps
+            _ => 15.0,                         // and its simulated perps
         };
         let meta = &x.markets[&id];
-        let Some(mark) = x.state.markets[&id].mark else { continue };
+        let Some(mark) = x.state.markets[&id].mark else {
+            continue;
+        };
         let cur = mark as f64 * 10f64.powi(meta.sz_decimals as i32) / 1e9; // coin price
         let u = rng.next();
-        let z = (-2.0 * (if u == 0.0 { 1e-9 } else { u }).ln()).sqrt() * (2.0 * std::f64::consts::PI * rng.next()).cos();
+        let z = (-2.0 * (if u == 0.0 { 1e-9 } else { u }).ln()).sqrt()
+            * (2.0 * std::f64::consts::PI * rng.next()).cos();
         let step = (vol_bps / 10_000.0) * z;
         let next = if meta.kind == Kind::Binary {
             let p = cur.clamp(0.01, 0.99);
@@ -518,7 +739,11 @@ pub fn step_sim(node: &mut Node, warn: &Warn, offline: bool) {
         };
         prices.push((id, json!(format!("{next:.9}"))));
     }
-    submit_ticks(node, warn, prices.iter().map(|(id, p)| (id.clone(), p)).collect());
+    submit_ticks(
+        node,
+        warn,
+        prices.iter().map(|(id, p)| (id.clone(), p)).collect(),
+    );
 }
 
 /// Network feeds; the random walk runs separately (it also runs offline).
@@ -539,9 +764,27 @@ pub fn start(app: &App, warn: &Warn) {
             }
         });
     }
-    every(3000, app.clone(), warn.clone(), "pollHyperliquid", |a, w| async move { poll_hyperliquid(&a, &w).await });
-    every(5000, app.clone(), warn.clone(), "pollPolymarket", |a, w| async move { poll_polymarket(&a, &w).await });
-    every(60_000, app.clone(), warn.clone(), "checkResolutions", |a, _| async move { check_resolutions(&a).await });
+    every(
+        3000,
+        app.clone(),
+        warn.clone(),
+        "pollHyperliquid",
+        |a, w| async move { poll_hyperliquid(&a, &w).await },
+    );
+    every(
+        5000,
+        app.clone(),
+        warn.clone(),
+        "pollPolymarket",
+        |a, w| async move { poll_polymarket(&a, &w).await },
+    );
+    every(
+        60_000,
+        app.clone(),
+        warn.clone(),
+        "checkResolutions",
+        |a, _| async move { check_resolutions(&a).await },
+    );
 }
 
 // ---------- small formatting helpers ----------
@@ -560,7 +803,12 @@ pub fn iso_utc(ms: i64) -> String {
     let d = doy - (153 * mp + 2) / 5 + 1;
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = yoe + era * 400 + i64::from(m <= 2);
-    format!("{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}", sod / 3600, sod % 3600 / 60, sod % 60)
+    format!(
+        "{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}",
+        sod / 3600,
+        sod % 3600 / 60,
+        sod % 60
+    )
 }
 
 fn encode_uri_component(s: &str) -> String {

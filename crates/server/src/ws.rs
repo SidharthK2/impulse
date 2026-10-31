@@ -70,8 +70,14 @@ fn push(x: &Exchange, c: &mut Client, ch: &str, cache: &mut HashMap<String, Opti
     if c.tx.capacity() == 0 {
         return;
     }
-    let key = if ch == "account" { format!("account:{}", c.account.as_deref().unwrap_or("null")) } else { ch.to_string() };
-    let msg = cache.entry(key).or_insert_with(|| payload(x, ch, c.account.as_deref()));
+    let key = if ch == "account" {
+        format!("account:{}", c.account.as_deref().unwrap_or("null"))
+    } else {
+        ch.to_string()
+    };
+    let msg = cache
+        .entry(key)
+        .or_insert_with(|| payload(x, ch, c.account.as_deref()));
     let Some(msg) = msg else { return };
     if c.sent.get(ch) == Some(msg) {
         return;
@@ -99,10 +105,14 @@ impl Hub {
     }
 
     fn on_message(node: &mut Node, id: u64, raw: &str) {
-        let Ok(msg) = serde_json::from_str::<Value>(raw) else { return };
+        let Ok(msg) = serde_json::from_str::<Value>(raw) else {
+            return;
+        };
         let Node { core, hub, .. } = node;
         let x = &core.x;
-        let Some(c) = hub.clients.get_mut(&id) else { return };
+        let Some(c) = hub.clients.get_mut(&id) else {
+            return;
+        };
         let ch = msg["ch"].as_str();
         match (msg["op"].as_str(), ch) {
             (Some("sub"), Some(ch)) => {
@@ -116,9 +126,15 @@ impl Hub {
                 c.sent.remove(ch);
             }
             (Some("auth"), _) => {
-                c.account = msg["key"].as_str().filter(|k| !k.is_empty()).and_then(|k| x.account_by_key(k)).map(|a| a.id.clone());
+                c.account = msg["key"]
+                    .as_str()
+                    .filter(|k| !k.is_empty())
+                    .and_then(|k| x.account_by_key(k))
+                    .map(|a| a.id.clone());
                 c.sent.remove("account");
-                let _ = c.tx.try_send(json!({ "ch": "auth", "data": { "account": c.account } }).to_string());
+                let _ = c.tx.try_send(
+                    json!({ "ch": "auth", "data": { "account": c.account } }).to_string(),
+                );
                 if c.subs.iter().any(|s| s == "account") {
                     push(x, c, "account", &mut HashMap::new());
                 }
@@ -139,7 +155,15 @@ async fn serve(socket: WebSocket, app: App) {
         let mut node = app.lock();
         let hub = &mut node.hub;
         hub.next += 1;
-        hub.clients.insert(hub.next, Client { subs: vec![], account: None, sent: HashMap::new(), tx });
+        hub.clients.insert(
+            hub.next,
+            Client {
+                subs: vec![],
+                account: None,
+                sent: HashMap::new(),
+                tx,
+            },
+        );
         hub.next
     };
     let writer = tokio::spawn(async move {

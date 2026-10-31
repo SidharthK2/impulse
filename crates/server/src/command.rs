@@ -9,7 +9,9 @@
 // what its command returns. The journal stores the `Command` enum: `{"kind": "...", ...fields}`.
 
 use crate::book::Side;
-use crate::exchange::{AccountMeta, ExError, Exchange, MarketSpec, OrderInput, OrderResult, XResult};
+use crate::exchange::{
+    AccountMeta, ExError, Exchange, MarketSpec, OrderInput, OrderResult, XResult,
+};
 use crate::money::{Amount, Dec, Tokens};
 use crate::units::coins_dec;
 use impulse_engine::ser::big;
@@ -252,7 +254,11 @@ impl Apply for ClosePosition {
             return Err(ExError::bad(format!("no open position in {}", self.market)));
         }
         let side = if size > 0 { Side::Sell } else { Side::Buy };
-        let order = OrderInput { reduce_only: true, slippage: Some(self.slippage), ..OrderInput::market(&self.market, side, coins_dec(sz, size.abs())) };
+        let order = OrderInput {
+            reduce_only: true,
+            slippage: Some(self.slippage),
+            ..OrderInput::market(&self.market, side, coins_dec(sz, size.abs()))
+        };
         x.place_order(&self.account, order)
     }
 }
@@ -469,7 +475,15 @@ impl Apply for Ticks {
     /// The refused ticks and why, for the feed's warnings.
     type Reply = Vec<(String, ExError)>;
     fn apply(&self, x: &mut Exchange) -> XResult<Vec<(String, ExError)>> {
-        Ok(self.ticks.iter().filter_map(|t| x.tick(&t.market, t.price, false).err().map(|e| (t.market.clone(), e))).collect())
+        Ok(self
+            .ticks
+            .iter()
+            .filter_map(|t| {
+                x.tick(&t.market, t.price, false)
+                    .err()
+                    .map(|e| (t.market.clone(), e))
+            })
+            .collect())
     }
 }
 
@@ -483,7 +497,11 @@ pub struct History {
 impl Apply for History {
     type Reply = ();
     fn apply(&self, x: &mut Exchange) -> XResult<()> {
-        let mut points: Vec<_> = self.bars.iter().map(|b| (b.t, b.o, b.h, b.l, b.c)).collect();
+        let mut points: Vec<_> = self
+            .bars
+            .iter()
+            .map(|b| (b.t, b.o, b.h, b.l, b.c))
+            .collect();
         x.candles_from_history(&self.market, &mut points);
         Ok(())
     }
