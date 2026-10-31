@@ -740,6 +740,9 @@
   background: #f6f2ff;
   border-color: #cbbcff;
 }
+.uwu-mascot.sulking {
+  cursor: not-allowed;
+}
 .uwu-mascot:focus-visible {
   outline: 2px dashed var(--uwu-pink);
   outline-offset: 2px;

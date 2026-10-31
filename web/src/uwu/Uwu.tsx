@@ -86,6 +86,8 @@ const BORED_AFTER = 45_000;
 const ASLEEP_AFTER = 120_000;
 /** Poke her this many times this fast and she snaps. */
 const SPAM = { count: 5, within: 4_000 };
+/** After a poke, further clicks are ignored for a moment so her reaction plays out: longer when she's annoyed. */
+const COOLDOWN = { poke: 400, woken: 1_000, greet: 1_000, sulk: 2_000 };
 
 /** What blips when pressed (not Anya: she has her own sounds). */
 const BLIPS =
@@ -146,7 +148,10 @@ export function ChartMascot() {
   const lastLine = useRef(-1);
   /** Counts clicks, so a clip that finishes loading late only extends its own click's bubble. */
   const clicks = useRef(0);
-  const greetedAt = useRef(0);
+  /** Clicks before this time are ignored (and don't count as pokes). */
+  const busyUntil = useRef(0);
+  /** She's sulking after "stop poking": the cursor says so. */
+  const [sulking, setSulking] = useState(false);
 
   const goTo = useCallback((p: Phase) => {
     phaseRef.current = p;
@@ -183,7 +188,7 @@ export function ChartMascot() {
       whenUnlocked(() => {
         if (greeted) return;
         greeted = true;
-        greetedAt.current = Date.now();
+        busyUntil.current = Date.now() + COOLDOWN.greet;
         preload(ANYA.map((a) => a.src));
         void play(HELLO, "greet");
         wake();
@@ -238,19 +243,24 @@ export function ChartMascot() {
 
   const click = async () => {
     unlock();
-    // The tap that let audio start is answered by her greeting.
-    if (Date.now() - greetedAt.current < 1000) return;
+    // Still reacting to the last poke (or greeting: the tap that let audio start is answered by her konnichiwa).
     const now = Date.now();
+    if (now < busyUntil.current) return;
+    busyUntil.current = now + COOLDOWN.poke;
     pokes.current = [...pokes.current.filter((t) => now - t < SPAM.within), now];
     const from = phaseRef.current;
     wake();
     if (pokes.current.length >= SPAM.count) {
       pokes.current = [];
+      busyUntil.current = now + COOLDOWN.sulk;
+      setSulking(true);
+      setTimeout(() => setSulking(false), COOLDOWN.sulk);
       say("baka!! stop poking Anya! (╬ Ò﹏Ó)", { pose: "shock", ms: 3000 });
       void play("voice/lose-3.mp3", "warn");
       return;
     }
     if (from === "asleep") {
+      busyUntil.current = now + COOLDOWN.woken;
       say(pick(WOKEN), { pose: "shock", ms: 3000 });
       void cue("warn");
       return;
@@ -295,7 +305,7 @@ export function ChartMascot() {
       )}
       <button
         type="button"
-        className={`uwu-mascot pose-${pose}`}
+        className={`uwu-mascot pose-${pose}${sulking ? " sulking" : ""}`}
         aria-label={phase === "asleep" ? "Wake Anya up" : "Poke Anya"}
         onClick={() => void click()}
       >
