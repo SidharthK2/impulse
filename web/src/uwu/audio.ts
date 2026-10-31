@@ -14,7 +14,7 @@ const COUNT: Record<Cue, number> = { greet: 2, win: 5, lose: 3, warn: 3, info: 2
 const clipFor = (kind: Cue) => `voice/${kind}-${1 + Math.floor(Math.random() * COUNT[kind])}.mp3`;
 
 /** Music sits well under the voice, and lower still while she talks. */
-const MUSIC_LEVEL = 0.35;
+const MUSIC_LEVEL = 0.23;
 const DUCK = 0.35;
 /** Long clips are cut here, with a short fade. */
 const MAX_CLIP_S = 3.2;
@@ -304,7 +304,7 @@ function musicBox(on: boolean) {
     if (next < c.currentTime - 0.5) next = c.currentTime + 0.05;
     while (next < c.currentTime + 0.3) {
       const chord = CHORDS[Math.floor(i / 8) % 4]!;
-      tine(hz(chord[[0, 1, 2, 3, 2, 1, 2, 3][i % 8]!]! + 12), next, 1.1, 0.05);
+      tine(hz(chord[[0, 1, 2, 3, 2, 1, 2, 3][i % 8]!]! + 12), next, 1.1, 0.033);
       next += step;
       i++;
     }
