@@ -6,10 +6,21 @@
     "suspicious": "error"
   },
   "rules": {
+    // React 17+ compiles JSX without React in scope.
     "react/react-in-jsx-scope": "off",
     "react/rules-of-hooks": "error",
     "react/exhaustive-deps": "error",
-    "react/button-has-type": "error"
+    "react/button-has-type": "error",
+    // The app's custom widgets use ARIA roles on purpose: role="dialog" modals (a native <dialog> renders and
+    // behaves differently), role="img" on chart SVGs, role="listbox"/"option" in the search palette, and
+    // role="status" for toasts. The native tags this rule suggests are the wrong elements for these.
+    "jsx-a11y/prefer-tag-over-role": "off",
+    // The elements eslint-plugin-jsx-a11y's recommended config skips (inputs are labelled by <label>, which
+    // this rule can't see), plus table cells, which aren't controls.
+    "jsx-a11y/control-has-associated-label": [
+      "error",
+      { "ignoreElements": ["audio", "canvas", "embed", "input", "textarea", "tr", "video", "td"] }
+    ]
   },
   "env": {
     "builtin": true,

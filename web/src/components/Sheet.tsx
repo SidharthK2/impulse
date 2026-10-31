@@ -23,7 +23,11 @@ export function Sheet({
     };
   }, [onClose]);
   return (
-    <div className="sheet-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div
+      className="sheet-backdrop"
+      role="presentation"
+      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    >
       <div className="sheet" role="dialog" aria-modal="true" aria-label={title}>
         <div className="sheet-head">
           <span className="sheet-grip" aria-hidden="true" />

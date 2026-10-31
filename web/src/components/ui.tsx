@@ -40,7 +40,11 @@ export function Modal({ onClose, children }: { onClose: () => void; children: Re
     return () => window.removeEventListener("keydown", on);
   }, [onClose]);
   return (
-    <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div
+      className="overlay"
+      role="presentation"
+      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    >
       <div className="modal" role="dialog" aria-modal="true">
         {children}
       </div>

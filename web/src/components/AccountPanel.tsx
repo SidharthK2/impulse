@@ -251,7 +251,9 @@ function Positions({
             Total PnL
           </th>
           <th className="right">Lev.</th>
-          <th />
+          <th>
+            <span className="sr-only">Actions</span>
+          </th>
         </tr>
       </thead>
       <tbody>
@@ -480,7 +482,9 @@ function Orders({
           <th className="right">Size</th>
           <th className="right">Filled</th>
           <th className="right">Lev.</th>
-          <th />
+          <th>
+            <span className="sr-only">Actions</span>
+          </th>
         </tr>
       </thead>
       <tbody>

@@ -79,6 +79,7 @@ function Palette({ onClose }: { onClose: () => void }) {
   return (
     <div
       className="overlay palette-overlay"
+      role="presentation"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
       <div className="palette" role="dialog" aria-modal="true" aria-label="Search markets">

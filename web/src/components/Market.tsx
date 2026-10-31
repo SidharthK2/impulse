@@ -61,8 +61,10 @@ export function MarketPicker({
           <div style={{ padding: 10, display: "flex", gap: 8 }}>
             <input
               className="input"
+              // oxlint-disable-next-line jsx-a11y/no-autofocus -- the menu was just opened to type in it
               autoFocus
               placeholder="Search markets"
+              aria-label="Search markets"
               value={q}
               onChange={(e) => setQ(e.target.value)}
             />

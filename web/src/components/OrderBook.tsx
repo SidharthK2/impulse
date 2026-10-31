@@ -34,7 +34,15 @@ function Side({
         <div
           key={l.price}
           className="r"
+          role="button"
+          tabIndex={0}
           onClick={() => onPick(l.price)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onPick(l.price);
+            }
+          }}
           title={`${l.orders} order${l.orders === 1 ? "" : "s"} — click to use this price`}
         >
           <span className={kind === "asks" ? "down" : "up"}>

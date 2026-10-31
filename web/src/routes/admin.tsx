@@ -562,24 +562,25 @@ function CreateMarket() {
         >
           {(f) => (
             <div className="field">
-              <label>Id</label>
-              <Input field={f} placeholder="ELECTION-24" />
+              <label htmlFor={`create-${f.name}`}>Id</label>
+              <Input field={f} id={`create-${f.name}`} placeholder="ELECTION-24" />
             </div>
           )}
         </form.Field>
         <form.Field name="name">
           {(f) => (
             <div className="field">
-              <label>Name</label>
-              <Input field={f} placeholder="Will X happen?" />
+              <label htmlFor={`create-${f.name}`}>Name</label>
+              <Input field={f} id={`create-${f.name}`} placeholder="Will X happen?" />
             </div>
           )}
         </form.Field>
         <form.Field name="kind">
           {(f) => (
             <div className="field">
-              <label>Kind</label>
+              <label htmlFor={`create-${f.name}`}>Kind</label>
               <select
+                id={`create-${f.name}`}
                 className="input"
                 value={f.state.value}
                 onChange={(e) => f.handleChange(e.target.value as "binary" | "perp")}
@@ -605,8 +606,8 @@ function CreateMarket() {
         >
           {(f) => (
             <div className="field">
-              <label>Start price</label>
-              <Input field={f} className="mono" inputMode="decimal" />
+              <label htmlFor={`create-${f.name}`}>Start price</label>
+              <Input field={f} id={`create-${f.name}`} className="mono" inputMode="decimal" />
             </div>
           )}
         </form.Field>
@@ -618,8 +619,9 @@ function CreateMarket() {
             >
               {(f) => (
                 <div className="field">
-                  <label>Resolves in (min)</label>
+                  <label htmlFor={`create-${f.name}`}>Resolves in (min)</label>
                   <Input
+                    id={`create-${f.name}`}
                     field={f}
                     className="mono"
                     placeholder="blank = whenever"
@@ -644,8 +646,14 @@ function CreateMarket() {
             >
               {(f) => (
                 <div className="field">
-                  <label>Taper (min)</label>
-                  <Input field={f} className="mono" placeholder="0 = none" inputMode="decimal" />
+                  <label htmlFor={`create-${f.name}`}>Taper (min)</label>
+                  <Input
+                    field={f}
+                    id={`create-${f.name}`}
+                    className="mono"
+                    placeholder="0 = none"
+                    inputMode="decimal"
+                  />
                 </div>
               )}
             </form.Field>
@@ -657,8 +665,8 @@ function CreateMarket() {
           >
             {(f) => (
               <div className="field">
-                <label>Volatility / step (bps)</label>
-                <Input field={f} className="mono" inputMode="decimal" />
+                <label htmlFor={`create-${f.name}`}>Volatility / step (bps)</label>
+                <Input field={f} id={`create-${f.name}`} className="mono" inputMode="decimal" />
               </div>
             )}
           </form.Field>
@@ -666,8 +674,9 @@ function CreateMarket() {
         <form.Field name="adl">
           {(f) => (
             <div className="field">
-              <label>ADL rule</label>
+              <label htmlFor={`create-${f.name}`}>ADL rule</label>
               <select
+                id={`create-${f.name}`}
                 className="input"
                 value={f.state.value}
                 onChange={(e) => f.handleChange(e.target.value as "pnl" | "size")}

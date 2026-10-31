@@ -79,6 +79,7 @@ function StatusBar() {
             type="checkbox"
             role="switch"
             checked={fixtures}
+            aria-checked={fixtures}
             onChange={(e) => usePrefs.getState().setFixtures(e.target.checked)}
           />
           <span className="switch" aria-hidden="true" />
@@ -159,6 +160,7 @@ function SignUp({ onDone, onClose }: { onDone: (key: string) => void; onClose: (
         <input
           className="input mono"
           readOnly
+          aria-label="Your API key"
           value={created.apiKey}
           onFocus={(e) => e.target.select()}
         />
@@ -193,6 +195,7 @@ function SignUp({ onDone, onClose }: { onDone: (key: string) => void; onClose: (
           {(f) => (
             <Input
               field={f}
+              // oxlint-disable-next-line jsx-a11y/no-autofocus -- the sign-up modal was just opened to type in it
               autoFocus
               placeholder="name (3–16 letters, digits, _)"
               aria-label="Account name"
