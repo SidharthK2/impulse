@@ -181,7 +181,7 @@ function Intro({ markets }: { markets: MarketView[] }) {
       <div className="intro-copy">
         <h1 className="wordmark">impulse</h1>
         <p className="intro-line">
-          A paper-money exchange for creator coins and pre-IPO perps. There's no insurance fund: when a position goes bankrupt, the other side pays, and you can see who.
+          Trade creator coins and pre-IPO companies with leverage. Paper money, real order books.
         </p>
         <div className="row intro-ctas">
           <Link className="btn primary" to="/trade/$market" params={{ market: start }}>
