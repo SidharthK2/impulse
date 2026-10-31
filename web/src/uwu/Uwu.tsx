@@ -1,10 +1,11 @@
 // UwU mode at runtime. The rest of the app only emits toasts; ui.tsx forwards each one as an "impulse:toast"
 // event. UwuLayer (always mounted) turns them into voice clips; ChartMascot (inside the chart) turns them into
-// Anya's moods and speech bubbles. UwuControls is the header switch and the audio menu.
+// Anya's poses and speech bubbles, and runs her awake → bored → asleep cycle. UwuControls is the header switch
+// and the audio menu.
 
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 import { type Mood, PulseChan } from "./art";
-import { type Cue, cue, unlock } from "./audio";
+import { type Cue, cue, play, preload, unlock } from "./audio";
 import { useUwu } from "./store";
 
 export interface ToastEvent {
@@ -13,36 +14,85 @@ export interface ToastEvent {
 }
 
 export const TOAST_EVENT = "impulse:toast";
+/** Tells the mascot to greet (fired with the greeting sound). */
+const GREET_EVENT = "impulse:uwu-greet";
 
 const pick = <T,>(xs: T[]) => xs[Math.floor(Math.random() * xs.length)]!;
 
-const REACT: Record<ToastEvent["tone"], { mood: Mood; cue: Cue; lines: string[] }> = {
-  up: {
-    mood: "happy",
-    cue: "win",
-    lines: ["waku waku! ✧(≧▽≦)✧", "sugoi!! ٩(◕‿◕)۶", "nice fill ♡"],
-  },
-  down: { mood: "sad", cue: "lose", lines: ["uuu… (╥﹏╥)", "that one hurt… (っ˘̩╭╮˘̩)っ"] },
-  warn: { mood: "shock", cue: "warn", lines: ["e-eh?! (⊙_⊙;)", "careful~! (°ロ°)"] },
-  info: { mood: "smug", cue: "info", lines: ["heh. (￣▽￣)", "hai~ (｡•̀ᴗ-)✧"] },
+/** Poses: the sprite files under /uwu/anya/, plus "bored" and "asleep" for her idle cycle. */
+type Pose = "idle" | "happy" | "sad" | "shock" | "poke" | "smug" | "bored" | "asleep";
+const SPRITE_FILE: Record<Pose, string> = {
+  idle: "idle",
+  happy: "happy",
+  sad: "sad",
+  shock: "shock",
+  poke: "poke",
+  smug: "smug",
+  bored: "sleepy",
+  asleep: "idle",
+};
+const SVG_MOOD: Record<Pose, Mood> = {
+  idle: "idle",
+  happy: "happy",
+  sad: "sad",
+  shock: "shock",
+  poke: "poke",
+  smug: "smug",
+  bored: "sleepy",
+  asleep: "sleepy",
+};
+const sprite = (p: Pose) => `/uwu/anya/${SPRITE_FILE[p]}.png`;
+
+const REACT: Record<ToastEvent["tone"], { pose: Pose; cue: Cue; lines: string[] }> = {
+  up: { pose: "happy", cue: "win", lines: ["yatta~! ✧(≧▽≦)✧", "sugoi!! ٩(◕‿◕)۶", "nice fill ♡"] },
+  down: { pose: "sad", cue: "lose", lines: ["uuu… (╥﹏╥)", "that one hurt… (っ˘̩╭╮˘̩)っ"] },
+  warn: { pose: "shock", cue: "warn", lines: ["e-eh?! (⊙_⊙;)", "careful~! (°ロ°)"] },
+  info: { pose: "smug", cue: "info", lines: ["heh. (￣▽￣)", "hai~ (｡•̀ᴗ-)✧"] },
 };
 
-/** Things she mutters when nothing is happening. */
-const IDLE = [
+/** Anya's own lines, for when she's clicked: the clip, what she says, and how she looks saying it. */
+const ANYA: { src: string; line: string; pose: Pose }[] = [
+  { src: "voice/anya-1.mp3", line: "waku waku!", pose: "happy" },
+  { src: "voice/anya-2.mp3", line: "a spy mission?! waku waku!", pose: "happy" },
+  { src: "voice/anya-3.mp3", line: "Anya likes peanuts.", pose: "smug" },
+  { src: "voice/anya-4.mp3", line: "hi, honey~", pose: "poke" },
+  { src: "voice/anya-5.mp3", line: "okeydoke!", pose: "poke" },
+  { src: "voice/anya-6.mp3", line: "Anya!", pose: "happy" },
+  { src: "voice/anya-7.mp3", line: "nya~", pose: "poke" },
+];
+
+/** Things she mutters while awake and nothing is happening. */
+const CHATTER = [
   "psst… no insurance fund here. when someone goes bust, the winners pay",
   "⌘K finds any market~",
   "100x is a lot of x… just saying (・_・;)",
   "the faucet gives $10k paper USDC a minute ♡",
   "the dotted line is your liquidation price. stay away from it!",
 ];
+const BORED = ["hmm… so bored… (￣ヘ￣)", "is anyone trading? …anyone?", "*stares at the chart* …"];
+const SLEEP = ["zzz… peanuts…", "zzz… waku… waku…", "zzz… (－_－) zzZ"];
+const WOKEN = [
+  "h-huh?! Anya wasn't sleeping!",
+  "w-what?! the chart moved?!",
+  "five more minutes… (；￣Д￣)",
+];
 
-/** Mounted once in the layout: unlocks audio on the first gesture and voices every toast. */
+/** How long she stays awake, then bored, without anything happening. */
+const BORED_AFTER = 45_000;
+const ASLEEP_AFTER = 120_000;
+/** Poke her this many times this fast and she snaps. */
+const SPAM = { count: 5, within: 4_000 };
+
+/** Mounted once in the layout: unlocks audio on the first gesture, greets, and voices every toast. */
 export function UwuLayer() {
   const on = useUwu((s) => s.on);
   useEffect(() => {
     if (!on) return;
-    const down = () => unlock();
-    const toast = (e: Event) => cue(REACT[(e as CustomEvent<ToastEvent>).detail.tone].cue);
+    const down = () => {
+      unlock();
+      greet();
+    };
+    const toast = (e: Event) => void cue(REACT[(e as CustomEvent<ToastEvent>).detail.tone].cue);
     window.addEventListener("pointerdown", down, { capture: true, once: true });
     window.addEventListener(TOAST_EVENT, toast);
     return () => {
@@ -53,91 +103,185 @@ export function UwuLayer() {
   return null;
 }
 
-const SPRITE = (m: Mood) => `/uwu/anya/${m}.png`;
-const SPRITES: Mood[] = ["idle", "happy", "sad", "shock", "poke", "smug", "sleepy"];
+function greet() {
+  preload(ANYA.map((a) => a.src));
+  void cue("greet");
+  window.dispatchEvent(new Event(GREET_EVENT));
+}
 
-/** Anya, sitting in the bottom-left of the chart, reacting to what happens. Pulse-chan if the art is missing. */
+type Phase = "awake" | "bored" | "asleep";
+
+/**
+ * Anya, sitting in the bottom-left of the chart. Awake, she reacts to trades and chats now and then; left alone
+ * she gets bored, then falls asleep. Clicking her plays her own lines (and startles her awake); trades wake her
+ * too. Pulse-chan (SVG) stands in if the art is missing.
+ */
 export function ChartMascot() {
-  const [mood, setMood] = useState<Mood>("idle");
+  const [phase, setPhase] = useState<Phase>("awake");
+  /** A reaction's pose, shown over the phase's resting pose until it times out. */
+  const [reaction, setReaction] = useState<Pose | null>(null);
   const [bubble, setBubble] = useState<{ line: string; sub?: string; n: number } | null>(null);
   const [art, setArt] = useState<"anya" | "svg">("anya");
+  /** The nodding-off clip; without it she sleeps in her sitting pose, dimmed. */
+  const [sleepClip, setSleepClip] = useState(true);
   const reset = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const lastEvent = useRef(0);
+  const quietSince = useRef(0);
+  const phaseRef = useRef<Phase>("awake");
+  const pokes = useRef<number[]>([]);
+  const lastLine = useRef(-1);
+
+  const goTo = useCallback((p: Phase) => {
+    phaseRef.current = p;
+    setPhase(p);
+  }, []);
+
+  const say = useCallback((line: string, opts: { pose?: Pose; sub?: string; ms?: number } = {}) => {
+    clearTimeout(reset.current);
+    setReaction(opts.pose ?? null);
+    setBubble({ line, sub: opts.sub, n: Date.now() });
+    reset.current = setTimeout(() => {
+      setReaction(null);
+      setBubble(null);
+    }, opts.ms ?? 4000);
+  }, []);
+
+  /** Something happened: she's awake, and the quiet clock restarts. */
+  const wake = useCallback(() => {
+    quietSince.current = Date.now();
+    if (phaseRef.current !== "awake") goTo("awake");
+  }, [goTo]);
 
   // Load every pose up front so a reaction never flashes an empty frame.
   useEffect(() => {
-    for (const m of SPRITES) new Image().src = SPRITE(m);
+    for (const p of Object.values(SPRITE_FILE)) new Image().src = `/uwu/anya/${p}.png`;
   }, []);
 
-  const react = useCallback((m: Mood, line: string, sub?: string, ms = 4000) => {
-    clearTimeout(reset.current);
-    setMood(m);
-    setBubble({ line, sub, n: Date.now() });
-    reset.current = setTimeout(() => {
-      setMood("idle");
-      setBubble(null);
-    }, ms);
-  }, []);
-
+  // Trades and greetings.
   useEffect(() => {
-    const on = (e: Event) => {
+    const onToast = (e: Event) => {
       const t = (e as CustomEvent<ToastEvent>).detail;
       const r = REACT[t.tone];
-      lastEvent.current = Date.now();
-      react(r.mood, pick(r.lines), t.text || undefined, t.tone === "down" ? 6000 : 4000);
+      const wasAsleep = phaseRef.current === "asleep";
+      wake();
+      say(wasAsleep ? `${pick(WOKEN)} …${pick(r.lines)}` : pick(r.lines), {
+        pose: r.pose,
+        sub: t.text || undefined,
+        ms: t.tone === "down" ? 6000 : 4000,
+      });
     };
-    window.addEventListener(TOAST_EVENT, on);
-    return () => window.removeEventListener(TOAST_EVENT, on);
-  }, [react]);
+    const onGreet = () => {
+      wake();
+      say("konnichiwa~! ✧", { pose: "happy", ms: 3000 });
+    };
+    window.addEventListener(TOAST_EVENT, onToast);
+    window.addEventListener(GREET_EVENT, onGreet);
+    return () => {
+      window.removeEventListener(TOAST_EVENT, onToast);
+      window.removeEventListener(GREET_EVENT, onGreet);
+    };
+  }, [say, wake]);
 
-  // Idle chatter now and then, and a deadpan stare after a long quiet spell.
+  // The idle cycle: awake (chatting now and then) → bored → asleep.
   useEffect(() => {
-    lastEvent.current = Date.now();
+    quietSince.current = Date.now();
     const id = setInterval(() => {
-      const quiet = Date.now() - lastEvent.current;
-      if (quiet > 5 * 60_000) setMood((m) => (m === "idle" ? "sleepy" : m));
-      else if (quiet > 60_000 && Math.random() < 0.25) react("idle", pick(IDLE), undefined, 6000);
-    }, 30_000);
+      const quiet = Date.now() - quietSince.current;
+      const p = phaseRef.current;
+      if (p === "awake" && quiet > BORED_AFTER) {
+        goTo("bored");
+        void cue("idle");
+        say(pick(BORED), { ms: 5000 });
+      } else if (p === "bored" && quiet > ASLEEP_AFTER) {
+        goTo("asleep");
+        say(pick(SLEEP), { ms: 5000 });
+      } else if (p === "awake" && quiet > 15_000 && Math.random() < 0.3) {
+        void cue("idle");
+        say(pick(CHATTER), { ms: 6000 });
+      } else if (p === "asleep" && Math.random() < 0.15) {
+        say(pick(SLEEP), { ms: 4000 });
+      }
+    }, 10_000);
     return () => {
       clearInterval(id);
       clearTimeout(reset.current);
     };
-  }, [react]);
+  }, [goTo, say]);
 
+  const click = async () => {
+    unlock();
+    const now = Date.now();
+    pokes.current = [...pokes.current.filter((t) => now - t < SPAM.within), now];
+    const from = phaseRef.current;
+    wake();
+    if (pokes.current.length >= SPAM.count) {
+      pokes.current = [];
+      say("baka!! stop poking Anya! (╬ Ò﹏Ó)", { pose: "shock", ms: 3000 });
+      void play("voice/lose-3.mp3", "warn");
+      return;
+    }
+    if (from === "asleep") {
+      say(pick(WOKEN), { pose: "shock", ms: 3000 });
+      void cue("warn");
+      return;
+    }
+    // Her own lines, never the same one twice in a row.
+    let i = Math.floor(Math.random() * ANYA.length);
+    if (i === lastLine.current) i = (i + 1) % ANYA.length;
+    lastLine.current = i;
+    const a = ANYA[i]!;
+    const dur = await play(a.src, "info");
+    say(from === "bored" ? `oh! ${a.line}` : a.line, {
+      pose: a.pose,
+      ms: Math.max(2500, dur * 1000 + 900),
+    });
+  };
+
+  const pose: Pose = reaction ?? (phase === "awake" ? "idle" : phase);
   return (
     <div className="uwu-mascot-wrap">
       {bubble && (
-        <div className="uwu-bubble" key={bubble.n} role="status">
+        <div
+          className={`uwu-bubble ${phase === "asleep" && !reaction ? "dream" : ""}`}
+          key={bubble.n}
+          role="status"
+        >
           <b>{bubble.line}</b>
           {bubble.sub && <span>{bubble.sub}</span>}
         </div>
       )}
       <button
         type="button"
-        className={`uwu-mascot mood-${mood}`}
-        aria-label="Poke Anya"
-        onClick={() => {
-          lastEvent.current = Date.now();
-          unlock();
-          cue("poke");
-          react(
-            "poke",
-            pick(["hehe~ ♡", "anya is watching the chart!", "waku waku!"]),
-            undefined,
-            2500,
-          );
-        }}
+        className={`uwu-mascot pose-${pose}`}
+        aria-label={phase === "asleep" ? "Wake Anya up" : "Poke Anya"}
+        onClick={() => void click()}
       >
-        {art === "anya" ? (
+        {art === "anya" && pose === "asleep" && sleepClip ? (
+          <video
+            className="uwu-sleep"
+            src="/uwu/anya/asleep.mp4"
+            autoPlay
+            loop
+            muted
+            playsInline
+            onError={() => setSleepClip(false)}
+          />
+        ) : art === "anya" ? (
           <img
-            key={mood}
-            src={SPRITE(mood)}
+            key={pose}
+            src={sprite(pose)}
             alt=""
             draggable={false}
             onError={() => setArt("svg")}
           />
         ) : (
-          <PulseChan mood={mood} size={120} />
+          <PulseChan mood={SVG_MOOD[pose]} size={120} />
+        )}
+        {pose === "asleep" && (
+          <span className="uwu-zzz" aria-hidden="true">
+            <i>z</i>
+            <i>z</i>
+            <i>Z</i>
+          </span>
         )}
       </button>
     </div>
@@ -268,7 +412,10 @@ export function UwuControls() {
         onClick={() => {
           set({ on: !on });
           // The click is the gesture that lets the music start.
-          if (!on) unlock();
+          if (!on) {
+            unlock();
+            greet();
+          }
         }}
       >
         {on ? "UwU" : "owo"}

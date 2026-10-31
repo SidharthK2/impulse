@@ -455,6 +455,7 @@
   pointer-events: none;
 }
 .uwu-mascot {
+  position: relative;
   pointer-events: auto;
   display: block;
   height: 150px;
@@ -480,7 +481,7 @@
     transform: scale(0.85) translateY(8px);
   }
 }
-.uwu-mascot.mood-idle img {
+.uwu-mascot.pose-idle img {
   animation:
     uwu-pose 0.28s cubic-bezier(0.3, 1.5, 0.6, 1),
     uwu-breathe 3.6s ease-in-out 0.3s infinite;
@@ -490,12 +491,100 @@
     transform: translateY(-3px);
   }
 }
-.uwu-mascot.mood-happy,
-.uwu-mascot.mood-poke {
+.uwu-mascot.pose-happy,
+.uwu-mascot.pose-poke {
   animation: uwu-hop 0.45s ease-out 2;
 }
-.uwu-mascot.mood-shock {
+.uwu-mascot.pose-shock {
   animation: uwu-shake 0.35s ease-in-out 2;
+}
+/* Bored: a slow, heavy sway. */
+.uwu-mascot.pose-bored img {
+  transform-origin: 50% 100%;
+  animation:
+    uwu-pose 0.28s cubic-bezier(0.3, 1.5, 0.6, 1),
+    uwu-slump 5s ease-in-out 0.3s infinite;
+}
+@keyframes uwu-slump {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(-3deg) translateY(2px);
+  }
+}
+/* Asleep: dimmed, breathing slowly, with Zzz floating up. */
+.uwu-mascot.pose-asleep img {
+  filter: brightness(0.8) saturate(0.75);
+  transform-origin: 50% 100%;
+  animation: uwu-snooze 4.5s ease-in-out infinite;
+}
+@keyframes uwu-snooze {
+  0%,
+  100% {
+    transform: scale(1, 1) rotate(-2deg);
+  }
+  50% {
+    transform: scale(1.02, 0.98) rotate(-2deg);
+  }
+}
+.uwu-zzz {
+  position: absolute;
+  top: 0;
+  right: -6px;
+  width: 40px;
+  height: 60px;
+  pointer-events: none;
+}
+.uwu-zzz i {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  font-style: normal;
+  font-weight: 800;
+  color: #dcd2ff;
+  text-shadow: 0 0 6px rgba(201, 182, 255, 0.9);
+  opacity: 0;
+  animation: uwu-z 3.6s ease-out infinite;
+}
+.uwu-zzz i:nth-child(1) {
+  font-size: 12px;
+}
+.uwu-zzz i:nth-child(2) {
+  font-size: 15px;
+  animation-delay: 1.2s;
+}
+.uwu-zzz i:nth-child(3) {
+  font-size: 19px;
+  animation-delay: 2.4s;
+}
+@keyframes uwu-z {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) rotate(-10deg);
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(22px, -54px) rotate(12deg);
+  }
+}
+[data-theme="light"] .uwu-zzz i {
+  color: #8a6fd8;
+  text-shadow: none;
+}
+.uwu-bubble.dream {
+  border-style: dashed;
+  border-color: #cbbcff;
+  background: #f6f2ff;
+  font-style: italic;
+}
+.uwu-bubble.dream::after {
+  background: #f6f2ff;
+  border-color: #cbbcff;
 }
 .uwu-mascot:focus-visible {
   outline: 2px dashed var(--uwu-pink);
@@ -799,4 +888,19 @@
   [data-skin="uwu"] *::after {
     animation: none !important;
   }
+}
+
+/* Asleep with the clip: a soft-edged oval of Anya nodding off, like a peek into her nap. */
+.uwu-sleep {
+  display: block;
+  height: 130px;
+  width: auto;
+  aspect-ratio: 498 / 280;
+  object-fit: cover;
+  -webkit-mask-image: radial-gradient(ellipse 50% 50% at 50% 50%, #000 62%, transparent 100%);
+  mask-image: radial-gradient(ellipse 50% 50% at 50% 50%, #000 62%, transparent 100%);
+}
+.uwu-mascot.pose-asleep:has(.uwu-sleep) {
+  height: 130px;
+  filter: none;
 }

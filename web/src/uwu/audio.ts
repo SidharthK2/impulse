@@ -1,23 +1,25 @@
-// UwU mode's sound: chiptune background music and Anya's voice clips, from web/public/uwu/ (fetched by
-// `make uwu-assets`, never committed). When those files are missing, a synthesized chime or music-box loop
-// plays in their place, so the mode still works on a fresh checkout.
+// UwU mode's sound: chiptune background music and voice clips, from web/public/uwu/ (fetched by
+// `make uwu-assets`, never committed). Clips come from all over and their loudness differs by 40 dB, so each one
+// is decoded with Web Audio, levelled to the same speaking volume, trimmed to a few seconds, and the music ducks
+// under it. When the files are missing, a synthesized chime or music-box loop plays in their place.
 
 import { useUwu } from "./store";
 
 const BASE = "/uwu/";
 const TRACKS = ["music/frivolous.mp3", "music/chiploop.mp3"];
-export type Cue = "win" | "lose" | "warn" | "info" | "poke";
-const CLIPS: Record<Cue, string[]> = {
-  win: ["voice/win-1.mp3", "voice/win-2.mp3"],
-  lose: ["voice/lose-1.mp3"],
-  warn: ["voice/warn-1.mp3"],
-  info: ["voice/info-1.mp3"],
-  poke: ["voice/poke-1.mp3", "voice/poke-2.mp3", "voice/poke-3.mp3"],
-};
-/** Music sits under the voice. */
-const MUSIC_LEVEL = 0.35;
 
-const pick = <T>(xs: T[]) => xs[Math.floor(Math.random() * xs.length)]!;
+export type Cue = "greet" | "win" | "lose" | "warn" | "info" | "idle";
+/** How many clips each moment has (voice/<cue>-<n>.mp3). Clicking Anya plays her own lines instead (Uwu.tsx). */
+const COUNT: Record<Cue, number> = { greet: 2, win: 5, lose: 3, warn: 3, info: 2, idle: 3 };
+const clipFor = (kind: Cue) => `voice/${kind}-${1 + Math.floor(Math.random() * COUNT[kind])}.mp3`;
+
+/** Music sits well under the voice, and lower still while she talks. */
+const MUSIC_LEVEL = 0.35;
+const DUCK = 0.35;
+/** Long clips are cut here, with a short fade. */
+const MAX_CLIP_S = 3.2;
+/** Every clip is levelled to this RMS (over its voiced part), unless that would clip its peak. */
+const TARGET_RMS = 0.16;
 
 const audible = () => {
   const s = useUwu.getState();
@@ -34,23 +36,115 @@ let unlocked = false;
 /** Browsers only start audio after a gesture; the first pointerdown (or the UwU switch) calls this. */
 export function unlock() {
   unlocked = true;
-  if (ctx?.state === "suspended") void ctx.resume();
+  const c = audio();
+  if (c?.state === "suspended") void c.resume();
   syncMusic();
 }
 
-// ---------- voice clips ----------
+// ---------- Web Audio graph ----------
 
-let clip: HTMLAudioElement | null = null;
+let ctx: AudioContext | null = null;
+let out: GainNode | null = null;
 
-export function cue(kind: Cue) {
+function audio(): AudioContext | null {
+  if (typeof window === "undefined" || !("AudioContext" in window)) return null;
+  if (!ctx) {
+    ctx = new AudioContext();
+    out = ctx.createGain();
+    out.gain.value = level();
+    out.connect(ctx.destination);
+  }
+  return ctx;
+}
+
+// ---------- voice ----------
+
+interface Clip {
+  buf: AudioBuffer;
+  gain: number;
+}
+const clips = new Map<string, Promise<Clip | null>>();
+
+/** Decode a clip once and work out the gain that brings its voiced part to TARGET_RMS. */
+function load(src: string): Promise<Clip | null> {
+  let p = clips.get(src);
+  if (!p) {
+    const c = audio();
+    p = !c
+      ? Promise.resolve(null)
+      : fetch(BASE + src)
+          .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(String(r.status)))))
+          .then((b) => c.decodeAudioData(b))
+          .then((buf) => {
+            const d = buf.getChannelData(0);
+            const end = Math.min(d.length, Math.floor(MAX_CLIP_S * buf.sampleRate));
+            let peak = 0;
+            for (let i = 0; i < end; i++) peak = Math.max(peak, Math.abs(d[i]!));
+            // RMS over the samples louder than 5% of the peak, so silences don't drag the estimate down.
+            let sum = 0;
+            let n = 0;
+            for (let i = 0; i < end; i++) {
+              const v = Math.abs(d[i]!);
+              if (v > peak * 0.05) {
+                sum += v * v;
+                n++;
+              }
+            }
+            const rms = n ? Math.sqrt(sum / n) : 0;
+            const gain = rms > 0 ? Math.min(TARGET_RMS / rms, 0.95 / peak, 40) : 1;
+            return { buf, gain };
+          })
+          .catch(() => null);
+    clips.set(src, p);
+  }
+  return p;
+}
+
+let voice: AudioBufferSourceNode | null = null;
+let unduck: ReturnType<typeof setTimeout> | undefined;
+
+/** Play one clip (a path under /uwu/). Resolves with how long it plays, 0 if it didn't. */
+export async function play(src: string, fallback: Cue = "info"): Promise<number> {
   const s = useUwu.getState();
-  if (!audible() || !s.voice) return;
-  clip?.pause();
-  const a = new Audio(BASE + pick(CLIPS[kind]));
-  a.volume = Math.min(1, level());
-  a.addEventListener("error", () => synth(kind), { once: true });
-  a.play().catch(() => {});
-  clip = a;
+  if (!audible() || !s.voice) return 0;
+  const c = audio();
+  if (!c || !out) return 0;
+  if (c.state === "suspended") void c.resume();
+  const clip = await load(src);
+  if (!clip) {
+    synth(fallback);
+    return 0;
+  }
+  try {
+    voice?.stop();
+  } catch {
+    // already stopped
+  }
+  const dur = Math.min(clip.buf.duration, MAX_CLIP_S);
+  const g = c.createGain();
+  const t = c.currentTime;
+  g.gain.setValueAtTime(clip.gain, t);
+  if (clip.buf.duration > MAX_CLIP_S) {
+    g.gain.setValueAtTime(clip.gain, t + dur - 0.3);
+    g.gain.linearRampToValueAtTime(0, t + dur);
+  }
+  const node = c.createBufferSource();
+  node.buffer = clip.buf;
+  node.connect(g).connect(out);
+  node.start(t, 0, dur);
+  voice = node;
+  duck(dur);
+  return dur;
+}
+
+/** A random clip for this moment. */
+export const cue = (kind: Cue) => play(clipFor(kind), kind);
+
+/** Load every clip ahead of time, so the first reaction isn't late. */
+export function preload(extra: string[] = []) {
+  for (const [k, n] of Object.entries(COUNT))
+    for (let i = 1; i <= n; i++) void load(`voice/${k}-${i}.mp3`);
+  for (const src of extra) void load(src);
 }
 
 // ---------- music ----------
@@ -58,6 +152,22 @@ export function cue(kind: Cue) {
 let music: HTMLAudioElement | null = null;
 let track = 0;
 let fallback = false;
+let ducked = false;
+
+const musicVolume = () => Math.min(1, level() * MUSIC_LEVEL * (ducked ? DUCK : 1));
+
+function duck(seconds: number) {
+  ducked = true;
+  if (music) music.volume = musicVolume();
+  clearTimeout(unduck);
+  unduck = setTimeout(
+    () => {
+      ducked = false;
+      if (music) music.volume = musicVolume();
+    },
+    seconds * 1000 + 250,
+  );
+}
 
 function syncMusic() {
   const s = useUwu.getState();
@@ -84,7 +194,7 @@ function syncMusic() {
       syncMusic();
     });
   }
-  music.volume = Math.min(1, level() * MUSIC_LEVEL);
+  music.volume = musicVolume();
   if (music.paused) void music.play().catch(() => {});
 }
 
@@ -96,29 +206,17 @@ useUwu.subscribe((s, prev) => {
     s.music !== prev.music
   )
     syncMusic();
-  if (s.volume !== prev.volume) {
-    if (clip) clip.volume = Math.min(1, level());
-    if (out) out.gain.value = level();
+  if (out && s.volume !== prev.volume) out.gain.value = level();
+  if (!s.on || s.muted || !s.voice) {
+    try {
+      voice?.stop();
+    } catch {
+      // already stopped
+    }
   }
-  if (!s.on || s.muted || !s.voice) clip?.pause();
 });
 
 // ---------- fallbacks: Web Audio synth ----------
-
-let ctx: AudioContext | null = null;
-let out: GainNode | null = null;
-
-function audio(): AudioContext | null {
-  if (typeof window === "undefined" || !("AudioContext" in window)) return null;
-  if (!ctx) {
-    ctx = new AudioContext();
-    out = ctx.createGain();
-    out.connect(ctx.destination);
-  }
-  if (ctx.state === "suspended") void ctx.resume();
-  out!.gain.value = level();
-  return ctx;
-}
 
 const hz = (midi: number) => 440 * 2 ** ((midi - 69) / 12);
 
@@ -149,11 +247,12 @@ function synth(kind: Cue) {
   if (!c) return;
   const t = c.currentTime + 0.01;
   const notes: Record<Cue, number[]> = {
+    greet: [84, 91, 96],
     win: [84, 88, 91, 96],
     lose: [76, 72, 67],
     warn: [81, 76],
     info: [88, 95],
-    poke: [91, 96],
+    idle: [91, 88],
   };
   notes[kind].forEach((n, i) => tine(hz(n), t + i * (kind === "lose" ? 0.18 : 0.06), 0.8, 0.14));
 }
