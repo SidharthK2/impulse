@@ -63,7 +63,7 @@ The local admin token is `impulse-admin`. The 5-minute demo script, the API and 
 | Engine | Rust, exact integer money (no floats), `crates/engine` |
 | Server | Rust: axum, tokio, websockets, SQLite (rusqlite), `crates/server` |
 | Web | React, TanStack Router / Query / Form / Pacer, zustand, a custom canvas chart, `web/` |
-| Hosting | One Fly.io machine with a volume for the database ([docs/DEPLOY.md](docs/DEPLOY.md)) |
+| Hosting | Web app on Cloudflare; the exchange on one Fly.io machine with a volume for the database ([docs/DEPLOY.md](docs/DEPLOY.md)) |
 
 ## Layout
 

@@ -16,7 +16,6 @@ swap_size_mb = 256
 [env]
   PORT = "8787"
   DATA_DIR = "/data"
-  WEB_DIR = "/app/web/dist"
   # OFFLINE = "1"   # simulated prices instead of live Hyperliquid / Polymarket
   # BOTS = "0"      # no house market maker or noise traders
   # ADMIN_TOKEN is a secret: `fly secrets set ADMIN_TOKEN=...`

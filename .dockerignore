@@ -1,8 +1,5 @@
-# Only the web app and the Rust workspace go into the build.
+# Only the Rust workspace goes into the build.
 *
-!web/
 !Cargo.toml
 !Cargo.lock
 !crates/
-web/node_modules
-web/dist

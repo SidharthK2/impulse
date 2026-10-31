@@ -1,7 +1,7 @@
 # Deploying to Fly.io
 
-One Fly app runs everything: the Rust server serves the web app, the API and the websocket from the same address,
-and keeps its SQLite database on a Fly volume. Files: `Dockerfile`, `.dockerignore`, `fly.toml`,
+One Fly app runs the exchange: the Rust server serves the API and the websocket, and keeps its SQLite database on
+a Fly volume. The web app is on Cloudflare (below), which forwards `/api` and `/ws` to it. Files: `Dockerfile`, `.dockerignore`, `fly.toml`,
 `.github/workflows/fly-deploy.yml`.
 
 **Rules that keep it correct**
@@ -39,7 +39,7 @@ Pushes don't deploy.
 
 ## Web app on Cloudflare
 
-The web app is also served from Cloudflare's edge by a Worker with static assets (`web/wrangler.jsonc`,
+The web app is served from Cloudflare's edge by a Worker with static assets (`web/wrangler.jsonc`,
 `web/worker/index.ts`): Cloudflare serves `web/dist` (unknown paths get `index.html`), and the Worker forwards
 `/api/*` and `/ws` to `API_ORIGIN` (`https://impulse-sid.fly.dev`) unchanged, websockets included. The browser
 sees one origin, so the web app needs no API URL and no CORS. A frontend change ships without restarting the
@@ -54,9 +54,8 @@ exchange, and the site still loads while the Fly machine is stopped or deploying
 2. Cloudflare → My Profile → API Tokens → Create Token → template **Edit Cloudflare Workers** (account: yours,
    zone: `sidkap.xyz`). Note the account ID from the Workers & Pages overview.
 3. `gh secret set CLOUDFLARE_API_TOKEN` and `gh secret set CLOUDFLARE_ACCOUNT_ID` (each prompts for the value).
-4. Run the workflow. The site comes up at `https://impulse-web.<your-subdomain>.workers.dev`.
-5. Custom domain: in Cloudflare DNS, delete the imported `impulse` CNAME (it points at Fly), then add to
-   `web/wrangler.jsonc`: `"routes": [{ "pattern": "impulse.sidkap.xyz", "custom_domain": true }]` and deploy.
+4. Run the workflow. `routes` in `web/wrangler.jsonc` attaches `impulse.sidkap.xyz`; Cloudflare creates its DNS
+   record and certificate (delete any existing `impulse` record first, or the deploy fails).
 
 To try the Worker locally: `cd web && pnpm run build && npx wrangler@4.151.1 dev --port 8788`. It forwards to
 the live API on Fly (`API_ORIGIN`), not to a local server.

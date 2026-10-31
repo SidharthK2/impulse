@@ -10,6 +10,7 @@
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*", "/ws"]
   },
+  "routes": [{ "pattern": "impulse.sidkap.xyz", "custom_domain": true }],
   "vars": {
     "API_ORIGIN": "https://impulse-sid.fly.dev"
   }
