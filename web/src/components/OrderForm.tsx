@@ -14,6 +14,10 @@ interface Props {
   signedIn: boolean;
   picked: { price: string; n: number } | null;
   onSignUp: () => void;
+  /** Which side the form opens on (the phone layout opens it from Long or Short). */
+  initialSide?: Side;
+  /** Called after an order was accepted (filled, partly filled or resting): the phone sheet closes. */
+  onDone?: () => void;
 }
 
 type Side = "buy" | "sell";
@@ -44,7 +48,7 @@ function coins(m: MarketView, v: Values): number {
   return v.unit === "coin" ? floorTo(num(v.size), m.szDecimals) : Number.isFinite(ref) && ref > 0 ? floorTo(num(v.size) / ref, m.szDecimals) : NaN;
 }
 
-export function OrderForm({ market, account, signedIn, picked, onSignUp }: Props) {
+export function OrderForm({ market, account, signedIn, picked, onSignUp, initialSide = "buy", onDone }: Props) {
   const toast = useToast();
   const defaults = usePrefs((s) => s.order);
   const saveDefaults = usePrefs((s) => s.setOrder);
@@ -57,7 +61,7 @@ export function OrderForm({ market, account, signedIn, picked, onSignUp }: Props
 
   // Stable for the form's life: useForm re-applies changed defaultValues to an untouched form on every render.
   const [initial] = useState<Values>(() => ({
-    side: "buy",
+    side: initialSide,
     type: defaults.type,
     price: "",
     size: "",
@@ -92,7 +96,10 @@ export function OrderForm({ market, account, signedIn, picked, onSignUp }: Props
         else if (r.status === "resting") toast(`Order resting at ${fmtPrice(value.price, m.priceDecimals)}`, "info");
         else toast(`Not filled: ${r.reason ?? "no liquidity"}`, "warn");
         // Start the next order clean: same side, type and leverage, empty size, no leftover errors.
-        if (r.status !== "cancelled") formApi.reset({ ...value, size: "" }, { keepDefaultValues: true });
+        if (r.status !== "cancelled") {
+          formApi.reset({ ...value, size: "" }, { keepDefaultValues: true });
+          onDone?.();
+        }
       } catch (err) {
         server.fail(err);
       }

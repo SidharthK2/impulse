@@ -56,7 +56,7 @@ export function BookPanel({ market, onPick }: { market: MarketView; onPick: (p: 
   );
 }
 
-function OrderBook({ market, onPick }: { market: MarketView; onPick: (p: string) => void }) {
+export function OrderBook({ market, onPick }: { market: MarketView; onPick: (p: string) => void }) {
   const book = useBook(market.id);
   const bids = book?.bids ?? [];
   const asks = book?.asks ?? [];
@@ -112,7 +112,7 @@ function OrderBook({ market, onPick }: { market: MarketView; onPick: (p: string)
   );
 }
 
-function Trades({ market }: { market: MarketView }) {
+export function Trades({ market }: { market: MarketView }) {
   const trades = useTrades(market.id);
   return (
     <div className="tape">

@@ -4,6 +4,7 @@ import { Fragment, useEffect, useState } from "react";
 import { api } from "../api";
 import { isFixtureMarket } from "../fixtures";
 import { clock, num, price, size, tone, usd } from "../format";
+import { useMediaQuery } from "../hooks";
 import { act, useFeed } from "../queries";
 import type { AccountView, MarketView, PositionView } from "../types";
 import { useToast } from "./ui";
@@ -90,6 +91,7 @@ function CancelAll() {
 function Positions({ account, markets }: { account: AccountView; markets: Record<string, MarketView> }) {
   const toast = useToast();
   const [marginFor, setMarginFor] = useState<string | null>(null);
+  const phone = useMediaQuery("(max-width: 760px)");
   const open = account.positions.filter((p) => p.side !== "flat");
   if (open.length === 0 && account.spot.length === 0) return <div className="empty">No open positions.</div>;
 
@@ -97,6 +99,88 @@ function Positions({ account, markets }: { account: AccountView; markets: Record
     act<{ status: string; reason: string | null }>("POST", "/api/positions/close", { market: p.market })
       .then((r) => toast(r.status === "filled" ? `Closed ${p.market}` : `Close ${r.status}: ${r.reason ?? ""}`, r.status === "filled" ? "up" : "warn"))
       .catch((e) => toast((e as Error).message, "down"));
+
+  // Phones: one card per position instead of a twelve-column table.
+  if (phone)
+    return (
+      <div className="pos-cards">
+        {open.map((p) => {
+          const m = markets[p.market];
+          const d = m?.priceDecimals ?? 4;
+          return (
+            <div key={p.market} className="pos-card">
+              <div className="pos-card-head">
+                <Link to="/trade/$market" params={{ market: p.market }}>
+                  <b>{p.market}</b>
+                </Link>
+                <span className={`badge ${p.side === "long" ? "up" : "down"}`}>
+                  {p.side} {p.leverage ? `${p.leverage.toFixed(1)}×` : ""}
+                </span>
+                <span className="spacer" />
+                <Roll className={`mono ${tone(num(p.pnl))}`} text={usd(p.pnl, { sign: true })} value={num(p.pnl)} />
+              </div>
+              <dl className="pos-card-figs">
+                <div>
+                  <dt>Size</dt>
+                  <dd>{size(p.size, m?.szDecimals ?? 4)}</dd>
+                </div>
+                <div>
+                  <dt>Entry</dt>
+                  <dd>{price(p.entry, d)}</dd>
+                </div>
+                <div>
+                  <dt>Mark</dt>
+                  <dd>{price(p.mark, d)}</dd>
+                </div>
+                <div>
+                  <dt>Liq.</dt>
+                  <dd className="warn">{p.liquidationPrice ? price(p.liquidationPrice, d) : "—"}</dd>
+                </div>
+                <div>
+                  <dt>Margin</dt>
+                  <dd>{usd(p.collateral)}</dd>
+                </div>
+                <div>
+                  <dt>Funding</dt>
+                  <dd className={tone(num(p.funding))}>{usd(p.funding, { sign: true })}</dd>
+                </div>
+              </dl>
+              <div className="pos-card-actions">
+                <button className="btn small" onClick={() => setMarginFor(marginFor === p.market ? null : p.market)}>
+                  Margin
+                </button>
+                <button className="btn small danger" onClick={() => close(p)}>
+                  Close
+                </button>
+              </div>
+              {marginFor === p.market && <MarginForm position={p} wallet={account.wallet} onDone={() => setMarginFor(null)} />}
+            </div>
+          );
+        })}
+        {account.spot.map((s) => (
+          <div key={`spot-${s.market}`} className="pos-card">
+            <div className="pos-card-head">
+              <Link to="/trade/$market" params={{ market: s.market }}>
+                <b>{s.market}</b>
+              </Link>
+              <span className="badge info">spot</span>
+              <span className="spacer" />
+              <span className="mono">{usd(s.value)}</span>
+            </div>
+            <dl className="pos-card-figs">
+              <div>
+                <dt>Tokens</dt>
+                <dd>{size(s.tokens, 0)}</dd>
+              </div>
+              <div>
+                <dt>Price</dt>
+                <dd>{price(s.price, markets[s.market]?.priceDecimals ?? 9)}</dd>
+              </div>
+            </dl>
+          </div>
+        ))}
+      </div>
+    );
 
   return (
     <table className="grid">

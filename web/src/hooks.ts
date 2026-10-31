@@ -53,3 +53,16 @@ export function useHashRoute(): [string[], (path: string) => void] {
   };
   return [parts, go];
 }
+
+/** Whether a media query matches, kept current as the window changes. */
+export function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(() => typeof matchMedia === "function" && matchMedia(query).matches);
+  useEffect(() => {
+    const mq = matchMedia(query);
+    const on = () => setMatches(mq.matches);
+    on();
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, [query]);
+  return matches;
+}
