@@ -375,12 +375,14 @@ export function ChartScene() {
             </svg>
           </div>
         ))}
-        <div className="uwu-lane birds">
-          <svg className="uwu-birds" viewBox="0 0 46 20">
-            <path d="M2 9 q5 -6 10 0 q5 -6 10 0" />
-            <path d="M27 15 q3.5 -4.5 7 0 q3.5 -4.5 7 0" />
-          </svg>
-        </div>
+        {["", "b"].map((flock) => (
+          <div key={flock} className={`uwu-lane birds ${flock}`}>
+            <svg className="uwu-birds" viewBox="0 0 46 20">
+              <path d="M2 9 q5 -6 10 0 q5 -6 10 0" />
+              <path d="M27 15 q3.5 -4.5 7 0 q3.5 -4.5 7 0" />
+            </svg>
+          </div>
+        ))}
       </div>
       <div className="uwu-clouds back">
         <svg viewBox="0 0 760 70" preserveAspectRatio="none">

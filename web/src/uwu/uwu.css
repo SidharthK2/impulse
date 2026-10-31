@@ -533,17 +533,25 @@
 .uwu-lane.c .uwu-puff {
   width: 78px;
 }
-/* The birds cross in the first third of each minute, then the sky is theirs again. */
+/* Two flocks: each crosses in about 13s, then a short gap before the next pass. */
 .uwu-lane.birds {
   top: 21%;
   --x: 120%;
-  animation: uwu-fly 60s linear 8s infinite;
+  animation: uwu-fly 20s linear 2s infinite;
+}
+.uwu-lane.birds.b {
+  top: 38%;
+  animation-duration: 29s;
+  animation-delay: 11s;
+}
+.uwu-lane.birds.b .uwu-birds {
+  width: 34px;
 }
 @keyframes uwu-fly {
   0% {
     transform: translateX(-10%);
   }
-  35%,
+  65%,
   100% {
     transform: translateX(110%);
   }

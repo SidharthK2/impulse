@@ -37,9 +37,29 @@ let unlocked = false;
 
 /** Browsers only start audio after a gesture; the first tap, click or key press (or the UwU switch) calls this. */
 export function unlock() {
+  const first = !unlocked;
   unlocked = true;
   wake();
   syncMusic();
+  if (first)
+    for (const cb of waiting) {
+      waiting.delete(cb);
+      cb();
+    }
+}
+
+const waiting = new Set<() => void>();
+
+/** Run `cb` once audio may play: now if it already can, else on the first gesture. Returns a cancel. */
+export function whenUnlocked(cb: () => void): () => void {
+  if (unlocked) {
+    cb();
+    return () => {};
+  }
+  waiting.add(cb);
+  return () => {
+    waiting.delete(cb);
+  };
 }
 
 /**

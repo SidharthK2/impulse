@@ -1,11 +1,12 @@
 // UwU mode at runtime. The rest of the app only emits toasts; ui.tsx forwards each one as an "impulse:toast"
-// event. UwuLayer (always mounted) turns them into voice clips; ChartMascot (inside the chart) turns them into
-// Anya's poses and speech bubbles, and runs her awake → bored → asleep cycle. UwuControls is the header switch
-// and the audio menu.
+// event. UwuLayer (always mounted) starts the audio on the first gesture and blips on button presses; ChartMascot
+// (inside the chart, so only on the trade page) greets, turns toasts into Anya's poses, speech bubbles and voice,
+// and runs her awake → bored → asleep cycle. Her voice only plays while she's on screen. UwuControls is the header
+// switch and the audio menu.
 
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 import { type Mood, PulseChan } from "./art";
-import { type Cue, blip, cue, play, preload, unlock } from "./audio";
+import { type Cue, blip, cue, play, preload, unlock, whenUnlocked } from "./audio";
 import { useUwu } from "./store";
 
 export interface ToastEvent {
@@ -15,7 +16,6 @@ export interface ToastEvent {
 
 export const TOAST_EVENT = "impulse:toast";
 /** Tells the mascot to greet (fired with the greeting sound). */
-const GREET_EVENT = "impulse:uwu-greet";
 
 const pick = <T,>(xs: T[]) => xs[Math.floor(Math.random() * xs.length)]!;
 
@@ -91,10 +91,7 @@ const SPAM = { count: 5, within: 4_000 };
 const BLIPS =
   "button, a[href], [role=button], [role=tab], [role=switch], [role=menuitem], [role=option], input[type=checkbox], input[type=radio], .uwu-check";
 
-/**
- * Mounted once in the layout: unlocks audio on the first gesture, greets, voices every toast, and blips on
- * button presses.
- */
+/** Mounted once in the layout: unlocks audio on the first gesture, and blips on button presses. */
 export function UwuLayer() {
   const on = useUwu((s) => s.on);
   useEffect(() => {
@@ -104,9 +101,7 @@ export function UwuLayer() {
       window.removeEventListener("pointerup", down, { capture: true });
       window.removeEventListener("keydown", down, { capture: true });
       unlock();
-      greet();
     };
-    const toast = (e: Event) => void cue(REACT[(e as CustomEvent<ToastEvent>).detail.tone].cue);
     const press = (e: PointerEvent) => {
       const t = e.target as Element | null;
       if (e.button === 0 && t?.closest(BLIPS) && !t.closest(".uwu-mascot-wrap")) blip();
@@ -115,22 +110,18 @@ export function UwuLayer() {
     window.addEventListener("pointerup", down, { capture: true });
     window.addEventListener("keydown", down, { capture: true });
     window.addEventListener("pointerdown", press, { capture: true });
-    window.addEventListener(TOAST_EVENT, toast);
     return () => {
       window.removeEventListener("pointerup", down, { capture: true });
       window.removeEventListener("keydown", down, { capture: true });
       window.removeEventListener("pointerdown", press, { capture: true });
-      window.removeEventListener(TOAST_EVENT, toast);
     };
   }, [on]);
   return null;
 }
 
-function greet() {
-  preload(ANYA.map((a) => a.src));
-  void cue("greet");
-  window.dispatchEvent(new Event(GREET_EVENT));
-}
+/** Her first line is always konnichiwa: once a page load, and again each time UwU mode is switched on. */
+let greeted = false;
+const HELLO = "voice/greet-2.mp3";
 
 type Phase = "awake" | "bored" | "asleep";
 
@@ -155,6 +146,7 @@ export function ChartMascot() {
   const lastLine = useRef(-1);
   /** Counts clicks, so a clip that finishes loading late only extends its own click's bubble. */
   const clicks = useRef(0);
+  const greetedAt = useRef(0);
 
   const goTo = useCallback((p: Phase) => {
     phaseRef.current = p;
@@ -185,12 +177,28 @@ export function ChartMascot() {
     if (phaseRef.current !== "awake") goTo("awake");
   }, [goTo]);
 
-  // Trades and greetings.
+  // Konnichiwa, as soon as she's on screen and audio may play (the first tap or key press, if none came yet).
+  useEffect(
+    () =>
+      whenUnlocked(() => {
+        if (greeted) return;
+        greeted = true;
+        greetedAt.current = Date.now();
+        preload(ANYA.map((a) => a.src));
+        void play(HELLO, "greet");
+        wake();
+        say("konnichiwa~! ✧", { pose: "happy", ms: 3000 });
+      }),
+    [say, wake],
+  );
+
+  // Trades: she reacts, and says so.
   useEffect(() => {
     const onToast = (e: Event) => {
       const t = (e as CustomEvent<ToastEvent>).detail;
       const r = REACT[t.tone];
       const wasAsleep = phaseRef.current === "asleep";
+      void cue(r.cue);
       wake();
       say(wasAsleep ? `${pick(WOKEN)} …${pick(r.lines)}` : pick(r.lines), {
         pose: r.pose,
@@ -198,16 +206,8 @@ export function ChartMascot() {
         ms: t.tone === "down" ? 6000 : 4000,
       });
     };
-    const onGreet = () => {
-      wake();
-      say("konnichiwa~! ✧", { pose: "happy", ms: 3000 });
-    };
     window.addEventListener(TOAST_EVENT, onToast);
-    window.addEventListener(GREET_EVENT, onGreet);
-    return () => {
-      window.removeEventListener(TOAST_EVENT, onToast);
-      window.removeEventListener(GREET_EVENT, onGreet);
-    };
+    return () => window.removeEventListener(TOAST_EVENT, onToast);
   }, [say, wake]);
 
   // The idle cycle: awake (chatting now and then) → bored → asleep.
@@ -238,6 +238,8 @@ export function ChartMascot() {
 
   const click = async () => {
     unlock();
+    // The tap that let audio start is answered by her greeting.
+    if (Date.now() - greetedAt.current < 1000) return;
     const now = Date.now();
     pokes.current = [...pokes.current.filter((t) => now - t < SPAM.within), now];
     const from = phaseRef.current;
@@ -464,8 +466,8 @@ export function UwuControls() {
           set({ on: !on });
           // The click is the gesture that lets the music start.
           if (!on) {
+            greeted = false;
             unlock();
-            greet();
           }
         }}
       >
