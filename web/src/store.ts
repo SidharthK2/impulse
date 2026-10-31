@@ -56,13 +56,11 @@ const safeStorage = createJSONStorage(() => ({
   },
 }));
 
-const prefersLight =
-  typeof matchMedia === "function" && matchMedia("(prefers-color-scheme: light)").matches;
-
 export const usePrefs = create<Prefs>()(
   persist(
     (set) => ({
-      theme: prefersLight ? "light" : "dark",
+      // Light unless they pick dark, whatever the system's setting (index.html applies the same before first paint).
+      theme: "light",
       lastMarket: null,
       order: { type: "market", unit: "usd", leverage: null },
       range: "1h",
@@ -88,8 +86,13 @@ export const usePrefs = create<Prefs>()(
 );
 
 // Apply the theme to <html> as soon as it changes, before any component reads its colours (the chart does).
+// The browser's bar colour (theme-color) follows it, matching each theme's --bg.
 const applyTheme = (t: Theme) => {
-  if (typeof document !== "undefined") document.documentElement.dataset.theme = t;
+  if (typeof document === "undefined") return;
+  document.documentElement.dataset.theme = t;
+  document
+    .querySelector('meta[name="theme-color"]')
+    ?.setAttribute("content", t === "light" ? "#f7f7f8" : "#0c0c0d");
 };
 applyTheme(usePrefs.getState().theme);
 usePrefs.subscribe((s) => applyTheme(s.theme));

@@ -8,7 +8,7 @@
       name="description"
       content="Paper-trade creator coins, pre-IPO perps and crypto with leverage. No insurance fund: when a position goes bust, the winners on the other side pay."
     />
-    <meta name="theme-color" content="#0a0d12" />
+    <meta name="theme-color" content="#f7f7f8" />
     <link rel="canonical" href="https://impulse.sidkap.xyz/" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
@@ -37,11 +37,14 @@
     />
     <meta name="twitter:image" content="https://impulse.sidkap.xyz/og.png?v=2" />
     <script>
-      // Apply the saved theme before first paint (store.ts keeps it in sync after that).
+      // Apply the saved theme before first paint, light unless they chose dark (store.ts keeps it in sync after that).
+      document.documentElement.dataset.theme = "light";
       try {
         var p = JSON.parse(localStorage.getItem("impulse.prefs") || "{}").state || {};
-        document.documentElement.dataset.theme =
-          p.theme || (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+        if (p.theme === "dark") {
+          document.documentElement.dataset.theme = "dark";
+          document.querySelector('meta[name="theme-color"]').content = "#0c0c0d";
+        }
         var u = JSON.parse(localStorage.getItem("impulse.uwu") || "{}").state || {};
         if (u.on !== false) document.documentElement.dataset.skin = "uwu";
       } catch (e) {}
