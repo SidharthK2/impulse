@@ -4,18 +4,18 @@ use super::*;
 
 /// After a gap the book is still quoted around the old price; have the bot maker re-quote that market now
 /// (rather than on its next turn), so the book, and the funding premium read from it, follow the new mark.
-fn requote(core: &mut Core, market: &str) {
-    let cmd = if core.bots.is_some() && core.x.bots_enabled { Command::BotQuote { market: market.into() } } else { Command::Clock };
-    if let Err(e) = core.submit(cmd) {
+fn requote(node: &mut Node, market: &str) {
+    let cmd = if node.intake.bots.is_some() && node.core.x.bots_enabled { Command::BotQuote { market: market.into() } } else { Command::Clock };
+    if let Err(e) = node.submit(cmd) {
         log(&format!("requote {market}: {}", e.message()));
     }
 }
 
 pub(super) async fn price(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
     let market = b.str("market")?;
-    let mut core = app.lock();
-    let r = core.submit(Command::AdminPrice { market: market.clone(), price: b.str("price")?, hold_seconds: b.num("holdSeconds").unwrap_or(60.0) })?;
-    requote(&mut core, &market);
+    let mut node = app.lock();
+    let r = node.submit(Command::AdminPrice { market: market.clone(), price: b.str("price")?, hold_seconds: b.num("holdSeconds").unwrap_or(60.0) })?;
+    requote(&mut node, &market);
     ok(json!({ "effects": effects_of(r) }))
 }
 
@@ -32,7 +32,7 @@ pub(super) async fn resolve(State(app): State<App>, _: Admin, b: Body) -> ApiRes
 pub(super) async fn market(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
     let id = b.str("id")?;
     let kind = parse_kind(&b.opt_str("kind").unwrap_or_else(|| "binary".into()))?;
-    let now = app.lock().clock.now();
+    let now = app.lock().intake.clock.now();
     let sz = match b.num("szDecimals") {
         None => None,
         Some(v) if v.fract() == 0.0 && (0.0..=9.0).contains(&v) => Some(v as u32),
@@ -66,12 +66,12 @@ pub(super) async fn market(State(app): State<App>, _: Admin, b: Body) -> ApiResu
 
 pub(super) async fn polymarket(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
     let id = feeds::list_polymarket(&app, &b.str("ref")?).await?;
-    ok(views::market_view(&app.lock().x, &id))
+    ok(views::market_view(&app.lock().core.x, &id))
 }
 
 pub(super) async fn hyperliquid(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
     let id = feeds::list_hyperliquid(&app, &b.str("coin")?).await?;
-    ok(views::market_view(&app.lock().x, &id))
+    ok(views::market_view(&app.lock().core.x, &id))
 }
 
 /// A creator coin for the demo, listed by admin (a random handle if none is given).
@@ -110,9 +110,9 @@ pub(super) async fn preipo(State(app): State<App>, _: Admin, b: Body) -> ApiResu
 
 pub(super) async fn ipo(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
     let market = b.str("market")?;
-    let mut core = app.lock();
-    let r = core.submit(Command::Ipo { market: market.clone(), price: b.str("price")? })?;
-    requote(&mut core, &market);
+    let mut node = app.lock();
+    let r = node.submit(Command::Ipo { market: market.clone(), price: b.str("price")? })?;
+    requote(&mut node, &market);
     ok(json!({ "effects": effects_of(r) }))
 }
 
@@ -122,27 +122,27 @@ pub(super) async fn deposit(State(app): State<App>, _: Admin, b: Body) -> ApiRes
 }
 
 pub(super) async fn bots(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
-    let mut core = app.lock();
-    if core.bots.is_none() {
+    let mut node = app.lock();
+    if node.intake.bots.is_none() {
         return Err(ExError::bad("bots are not running (BOTS=0)").into());
     }
     let enabled = b.truthy("enabled");
-    core.submit(Command::SetBots { enabled })?;
+    node.submit(Command::SetBots { enabled })?;
     ok(json!({ "enabled": enabled }))
 }
 
 pub(super) async fn status(State(app): State<App>, _: Admin) -> ApiResult {
-    let core = app.lock();
-    let bots = core.bots.as_ref().map(|_| json!({ "enabled": core.x.bots_enabled, "accounts": Bots::summary(&core.x) }));
+    let node = app.lock();
+    let bots = node.intake.bots.as_ref().map(|_| json!({ "enabled": node.core.x.bots_enabled, "accounts": Bots::summary(&node.core.x) }));
     ok(json!({ "bots": bots }))
 }
 
 /// The journal's position and the time each journaled command took (apply + journal commit), since the start.
 pub(super) async fn stats(State(app): State<App>, _: Admin) -> ApiResult {
-    let core = app.lock();
-    let mut us: Vec<u64> = core.timings.iter().map(|d| d.as_micros() as u64).collect();
+    let node = app.lock();
+    let mut us: Vec<u64> = node.core.timings.iter().map(|d| d.as_micros() as u64).collect();
     us.sort_unstable();
     let at = |q: f64| us.get(((us.len() as f64 - 1.0) * q).round() as usize).copied().unwrap_or(0);
     let mean = if us.is_empty() { 0 } else { us.iter().sum::<u64>() / us.len() as u64 };
-    ok(json!({ "seq": core.seq, "n": us.len(), "p50_us": at(0.5), "p99_us": at(0.99), "max_us": us.last().copied().unwrap_or(0), "mean_us": mean }))
+    ok(json!({ "seq": node.core.seq, "n": us.len(), "p50_us": at(0.5), "p99_us": at(0.99), "max_us": us.last().copied().unwrap_or(0), "mean_us": mean }))
 }

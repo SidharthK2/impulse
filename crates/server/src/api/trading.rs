@@ -3,7 +3,7 @@
 use super::*;
 
 pub(super) async fn account(State(app): State<App>, User(id): User) -> ApiResult {
-    ok(views::account_view(&app.lock().x, &id))
+    ok(views::account_view(&app.lock().core.x, &id))
 }
 
 pub(super) async fn faucet(State(app): State<App>, User(id): User) -> ApiResult {
@@ -48,9 +48,9 @@ pub(super) async fn place_order(State(app): State<App>, User(id): User, b: Body)
         },
         slippage: b.num("slippage"),
     };
-    let mut core = app.lock();
-    let r = core.submit(Command::PlaceOrder { account: id.clone(), order: input })?;
-    order_reply(&core.x, &id, r, true)
+    let mut node = app.lock();
+    let r = node.submit(Command::PlaceOrder { account: id.clone(), order: input })?;
+    order_reply(&node.core.x, &id, r, true)
 }
 
 pub(super) async fn cancel(State(app): State<App>, User(id): User, Path(order): Path<String>) -> ApiResult {
@@ -69,9 +69,9 @@ pub(super) async fn cancel_all(State(app): State<App>, User(id): User, b: Body) 
 
 pub(super) async fn close_position(State(app): State<App>, User(id): User, b: Body) -> ApiResult {
     let cmd = Command::ClosePosition { account: id.clone(), market: b.str("market")?, slippage: b.num("slippage").unwrap_or(0.1) };
-    let mut core = app.lock();
-    let r = core.submit(cmd)?;
-    order_reply(&core.x, &id, r, false)
+    let mut node = app.lock();
+    let r = node.submit(cmd)?;
+    order_reply(&node.core.x, &id, r, false)
 }
 
 pub(super) async fn margin(State(app): State<App>, User(id): User, b: Body) -> ApiResult {

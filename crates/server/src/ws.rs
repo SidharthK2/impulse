@@ -2,7 +2,7 @@
 // {op:"auth"}). Every 500 ms, if the exchange changed, each client gets the channels whose payload changed since
 // the last send.
 
-use crate::api::{App, Core};
+use crate::api::{App, Node};
 use crate::exchange::Exchange;
 use crate::views;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
@@ -83,8 +83,9 @@ fn push(x: &Exchange, c: &mut Client, ch: &str, cache: &mut HashMap<String, Opti
 
 impl Hub {
     /// The 500 ms tick.
-    pub fn tick(core: &mut Core) {
-        let Core { x, hub, .. } = core;
+    pub fn tick(node: &mut Node) {
+        let Node { core, hub, .. } = node;
+        let x = &core.x;
         if hub.last_version == Some(x.version) {
             return;
         }
@@ -97,9 +98,10 @@ impl Hub {
         }
     }
 
-    fn on_message(core: &mut Core, id: u64, raw: &str) {
+    fn on_message(node: &mut Node, id: u64, raw: &str) {
         let Ok(msg) = serde_json::from_str::<Value>(raw) else { return };
-        let Core { x, hub, .. } = core;
+        let Node { core, hub, .. } = node;
+        let x = &core.x;
         let Some(c) = hub.clients.get_mut(&id) else { return };
         let ch = msg["ch"].as_str();
         match (msg["op"].as_str(), ch) {
@@ -134,8 +136,8 @@ async fn serve(socket: WebSocket, app: App) {
     let (mut sink, mut stream) = socket.split();
     let (tx, mut rx) = mpsc::channel::<String>(QUEUE);
     let id = {
-        let mut core = app.lock();
-        let hub = &mut core.hub;
+        let mut node = app.lock();
+        let hub = &mut node.hub;
         hub.next += 1;
         hub.clients.insert(hub.next, Client { subs: vec![], account: None, sent: HashMap::new(), tx });
         hub.next

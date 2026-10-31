@@ -2,7 +2,7 @@
 // outcomes (and their resolution); a seeded random walk when offline. Feeds only ever call Exchange::tick, so
 // every price change runs liquidation and ADL atomically, and an admin hold makes the feed stand aside.
 
-use crate::api::{App, Core};
+use crate::api::{App, Node};
 use crate::logging::log;
 use crate::command::{Bar, Command, Reply, Tick};
 use crate::exchange::{Exchange, ExError, Kind, MarketSpec, Source};
@@ -290,10 +290,10 @@ pub async fn list_defaults(app: &App, offline: bool) {
     }
 
     {
-        let mut core = app.lock();
+        let mut node = app.lock();
         for spec in specs {
             let id = spec.id.clone();
-            if let Err(e) = core.submit(Command::ListMarket { spec }) {
+            if let Err(e) = node.submit(Command::ListMarket { spec }) {
                 log(&format!("could not list {id}: {}", e.message()));
             }
         }
@@ -371,8 +371,8 @@ pub async fn list_hyperliquid(app: &App, coin: &str) -> Result<String, ExError> 
 /// Seed charts with recent real history so they aren't empty on day one.
 async fn backfill(app: App, only: Option<Vec<String>>) {
     let targets: Vec<(String, Source)> = {
-        let core = app.lock();
-        core.x.markets.values().filter(|m| only.as_ref().is_none_or(|o| o.contains(&m.id))).map(|m| (m.id.clone(), m.source.clone())).collect()
+        let node = app.lock();
+        node.core.x.markets.values().filter(|m| only.as_ref().is_none_or(|o| o.contains(&m.id))).map(|m| (m.id.clone(), m.source.clone())).collect()
     };
     for (id, source) in targets {
         let points: Result<Vec<(i64, i128, i128, i128, i128)>, String> = match &source {
@@ -420,7 +420,7 @@ fn open_markets(x: &Exchange, pred: impl Fn(&Source) -> bool) -> Vec<(String, So
 }
 
 /// Submit a feed poll's prices as one Ticks command; warn about any the feed sent badly or the exchange refused.
-fn submit_ticks(core: &mut Core, warn: &Warn, prices: Vec<(String, &Value)>) {
+fn submit_ticks(node: &mut Node, warn: &Warn, prices: Vec<(String, &Value)>) {
     let mut ticks = vec![];
     for (id, price) in prices {
         match feed_nano(price) {
@@ -431,7 +431,7 @@ fn submit_ticks(core: &mut Core, warn: &Warn, prices: Vec<(String, &Value)>) {
     if ticks.is_empty() {
         return;
     }
-    match core.submit(Command::Ticks { ticks }) {
+    match node.submit(Command::Ticks { ticks }) {
         Ok(Reply::Ticks(refused)) => {
             for (id, e) in refused {
                 warn.warn(&format!("tick {id}"), e.message());
@@ -443,7 +443,7 @@ fn submit_ticks(core: &mut Core, warn: &Warn, prices: Vec<(String, &Value)>) {
 }
 
 async fn poll_hyperliquid(app: &App, warn: &Warn) -> Result<(), String> {
-    let markets = open_markets(&app.lock().x, |s| matches!(s, Source::Hyperliquid { .. }));
+    let markets = open_markets(&app.lock().core.x, |s| matches!(s, Source::Hyperliquid { .. }));
     let dexes: BTreeSet<Option<String>> = markets.iter().map(|(_, s)| if let Source::Hyperliquid { dex, .. } = s { dex.clone() } else { None }).collect();
     for dex in dexes {
         let mids = hl_mids(&app.http, dex.as_deref()).await?;
@@ -460,7 +460,7 @@ async fn poll_hyperliquid(app: &App, warn: &Warn) -> Result<(), String> {
 }
 
 async fn poll_polymarket(app: &App, warn: &Warn) -> Result<(), String> {
-    let markets = open_markets(&app.lock().x, |s| matches!(s, Source::Polymarket { .. }));
+    let markets = open_markets(&app.lock().core.x, |s| matches!(s, Source::Polymarket { .. }));
     if markets.is_empty() {
         return Ok(());
     }
@@ -473,7 +473,7 @@ async fn poll_polymarket(app: &App, warn: &Warn) -> Result<(), String> {
 
 /// Settle a mirrored binary when Polymarket resolves it (outcome price exactly 0, 0.5 or 1).
 async fn check_resolutions(app: &App) -> Result<(), String> {
-    let markets = open_markets(&app.lock().x, |s| matches!(s, Source::Polymarket { .. }));
+    let markets = open_markets(&app.lock().core.x, |s| matches!(s, Source::Polymarket { .. }));
     for (id, source) in markets {
         let Source::Polymarket { market_id, .. } = source else { continue };
         let pm = pm_market(&app.http, &market_id).await?;
@@ -490,8 +490,8 @@ async fn check_resolutions(app: &App) -> Result<(), String> {
 /// Offline markets: a log-normal walk for perps, a walk in log-odds for binaries. When the server runs offline,
 /// markets that mirror Hyperliquid or Polymarket (say, restored from a snapshot taken online) walk too, so their
 /// prices don't freeze. The walk's randomness is drawn here, at intake; the prices go in as one Ticks command.
-pub fn step_sim(core: &mut Core, warn: &Warn, offline: bool) {
-    let Core { x, sim: rng, .. } = core;
+pub fn step_sim(node: &mut Node, warn: &Warn, offline: bool) {
+    let (x, rng) = (&node.core.x, &mut node.intake.sim);
     let mut prices = vec![];
     let walking = open_markets(x, |s| match s {
         Source::Sim { .. } => true,
@@ -519,7 +519,7 @@ pub fn step_sim(core: &mut Core, warn: &Warn, offline: bool) {
         };
         prices.push((id, json!(format!("{next:.9}"))));
     }
-    submit_ticks(core, warn, prices.iter().map(|(id, p)| (id.clone(), p)).collect());
+    submit_ticks(node, warn, prices.iter().map(|(id, p)| (id.clone(), p)).collect());
 }
 
 /// Network feeds; the random walk runs separately (it also runs offline).

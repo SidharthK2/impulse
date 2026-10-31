@@ -1,12 +1,12 @@
-// Test hooks (TEST_CLOCK=1): a clock only tests move, and views into the core.
+// Test hooks (TEST_CLOCK=1): a clock only tests move, and views into the node.
 
 use super::*;
 
 pub(super) async fn advance(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
-    let mut core = app.lock();
-    core.clock.advance(b.num("ms").unwrap_or(0.0) as i64);
-    let r = core.submit(Command::Clock)?;
-    ok(json!({ "effects": effects_of(r), "now": core.clock.now(), "seq": core.seq }))
+    let mut node = app.lock();
+    node.intake.clock.advance(b.num("ms").unwrap_or(0.0) as i64);
+    let r = node.submit(Command::Clock)?;
+    ok(json!({ "effects": effects_of(r), "now": node.intake.clock.now(), "seq": node.core.seq }))
 }
 
 pub(super) async fn market(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
@@ -33,19 +33,19 @@ pub(super) async fn tick(State(app): State<App>, _: Admin, b: Body) -> ApiResult
 }
 
 pub(super) async fn invariants(State(app): State<App>, _: Admin) -> ApiResult {
-    ok(check_invariants(&app.lock().x.state))
+    ok(check_invariants(&app.lock().core.x.state))
 }
 
 pub(super) async fn hash(State(app): State<App>, _: Admin) -> ApiResult {
-    let core = app.lock();
-    ok(json!({ "hash": core.x.state_hash(), "seq": core.seq }))
+    let node = app.lock();
+    ok(json!({ "hash": node.core.x.state_hash(), "seq": node.core.seq }))
 }
 
 /// Round-trip the whole exchange through a snapshot in place, then treat `downMs` as downtime.
 pub(super) async fn reload(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
     let down = b.num("downMs").unwrap_or(0.0) as i64;
-    let mut core = app.lock();
-    core.clock.advance(down);
-    let Reply::Reload { identical, effects } = core.submit(Command::TestReload { down_ms: down })? else { unreachable!() };
+    let mut node = app.lock();
+    node.intake.clock.advance(down);
+    let Reply::Reload { identical, effects } = node.submit(Command::TestReload { down_ms: down })? else { unreachable!() };
     ok(json!({ "identical": identical, "effects": kinds(&effects) }))
 }

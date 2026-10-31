@@ -30,7 +30,7 @@ impl FromRequestParts<App> for User {
     type Rejection = ApiError;
     async fn from_request_parts(parts: &mut Parts, app: &App) -> Result<Self, ApiError> {
         let key = parts.headers.get(header::AUTHORIZATION).and_then(|v| v.to_str().ok()).and_then(|v| v.strip_prefix("Bearer ")).filter(|k| !k.is_empty());
-        let account = key.and_then(|k| app.lock().x.account_by_key(k).map(|a| a.id.clone()));
+        let account = key.and_then(|k| app.lock().core.x.account_by_key(k).map(|a| a.id.clone()));
         account.map(User).ok_or_else(|| ExError::status(401, "sign in first (missing or unknown API key)").into())
     }
 }

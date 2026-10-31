@@ -1,5 +1,5 @@
-// HTTP + WebSocket API. Every handler locks the one exchange core and runs synchronously against it, so each
-// request is one atomic step of the single-threaded core (Mirror's "one monolithic core", in miniature).
+// HTTP + WebSocket API. Every handler locks the one exchange node and runs synchronously against it, so each
+// request is one atomic step of the single-threaded node (Mirror's "one monolithic node", in miniature).
 //
 // Auth: `Authorization: Bearer <apiKey>` (issued at signup) for trading; `x-admin-token` for admin.
 
@@ -15,7 +15,7 @@ use extract::*;
 use crate::book::{Side, Tif};
 use crate::bots::Bots;
 use crate::command::{Command, Reply, Tick};
-pub use crate::sequencer::Core;
+pub use crate::sequencer::Node;
 use crate::exchange::{ExError, Exchange, Kind, MarketSpec, OrderInput, OrderType, Source};
 use crate::intake::api_key;
 use crate::logging::log;
@@ -37,7 +37,7 @@ use std::path::{Component, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 pub struct Inner {
-    core: Mutex<Core>,
+    node: Mutex<Node>,
     pub admin_token: String,
     pub web_dir: Option<PathBuf>,
     pub http: reqwest::Client,
@@ -55,13 +55,13 @@ impl std::ops::Deref for App {
 }
 
 impl App {
-    pub fn new(core: Core, admin_token: String, web_dir: Option<PathBuf>, test_hooks: bool) -> Self {
-        App(Arc::new(Inner { core: Mutex::new(core), admin_token, web_dir, http: feeds::client(), test_hooks }))
+    pub fn new(node: Node, admin_token: String, web_dir: Option<PathBuf>, test_hooks: bool) -> Self {
+        App(Arc::new(Inner { node: Mutex::new(node), admin_token, web_dir, http: feeds::client(), test_hooks }))
     }
 
-    pub fn lock(&self) -> MutexGuard<'_, Core> {
-        // A panicking handler poisons the lock; the core is still consistent at engine-commit granularity.
-        self.core.lock().unwrap_or_else(|e| e.into_inner())
+    pub fn lock(&self) -> MutexGuard<'_, Node> {
+        // A panicking handler poisons the lock; the node is still consistent at engine-commit granularity.
+        self.node.lock().unwrap_or_else(|e| e.into_inner())
     }
 }
 
@@ -109,9 +109,9 @@ fn order_reply(x: &Exchange, id: &str, r: Reply, with_order: bool) -> ApiResult 
 
 /// List a market and reply with its view.
 fn list(app: &App, spec: MarketSpec) -> ApiResult {
-    let mut core = app.lock();
-    let Reply::Market(id) = core.submit(Command::ListMarket { spec })? else { unreachable!() };
-    ok(views::market_view(&core.x, &id))
+    let mut node = app.lock();
+    let Reply::Market(id) = node.submit(Command::ListMarket { spec })? else { unreachable!() };
+    ok(views::market_view(&node.core.x, &id))
 }
 
 pub fn router(app: App) -> Router {

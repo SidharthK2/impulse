@@ -1,7 +1,7 @@
 // Every state-changing input to the exchange, as data. API writes, admin actions, listings (with any metadata
 // fetched from a venue inside the payload), feed ticks, chart backfill, bot actions, the 2 s clock and the
-// resume-after-downtime shift all become a Command. The sequencer (Core::submit) stamps each with a sequence
-// number and a time; `apply` runs it. `apply` is deterministic: it reads nothing but the exchange, the command and
+// resume-after-downtime shift all become a Command. The sequencer (Node::submit, then Core::submit) gives
+// each a time and, if it changes the exchange, a sequence number; `apply` runs it. `apply` is deterministic: it reads nothing but the exchange, the command and
 // the exchange's `now` (the command's time), so the same commands in the same order give the same exchange.
 
 use crate::book::Side;

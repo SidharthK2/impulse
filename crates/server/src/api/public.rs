@@ -3,34 +3,34 @@
 use super::*;
 
 pub(super) async fn health(State(app): State<App>) -> ApiResult {
-    let core = app.lock();
-    ok(json!({ "ok": true, "version": core.x.version, "time": core.x.now(), "engineTime": core.x.state.time as i64 }))
+    let node = app.lock();
+    ok(json!({ "ok": true, "version": node.core.x.version, "time": node.core.x.now(), "engineTime": node.core.x.state.time as i64 }))
 }
 
 pub(super) async fn config(State(app): State<App>) -> ApiResult {
-    ok(views::config_view(&app.lock().x))
+    ok(views::config_view(&app.lock().core.x))
 }
 
 pub(super) async fn markets(State(app): State<App>) -> ApiResult {
-    ok(views::markets_view(&app.lock().x))
+    ok(views::markets_view(&app.lock().core.x))
 }
 
 pub(super) async fn market(State(app): State<App>, Path(id): Path<String>) -> ApiResult {
-    let core = app.lock();
-    core.x.market(&id)?;
-    ok(json!({ "market": views::market_view(&core.x, &id), "book": views::book_view(&core.x, &id, 20), "trades": views::trades_view(&core.x, &id, 60) }))
+    let node = app.lock();
+    node.core.x.market(&id)?;
+    ok(json!({ "market": views::market_view(&node.core.x, &id), "book": views::book_view(&node.core.x, &id, 20), "trades": views::trades_view(&node.core.x, &id, 60) }))
 }
 
 pub(super) async fn candles(State(app): State<App>, Path(id): Path<String>) -> ApiResult {
-    let core = app.lock();
-    core.x.market(&id)?;
-    ok(views::candles_view(&core.x, &id))
+    let node = app.lock();
+    node.core.x.market(&id)?;
+    ok(views::candles_view(&node.core.x, &id))
 }
 
 pub(super) async fn positions(State(app): State<App>, Path(id): Path<String>) -> ApiResult {
-    let core = app.lock();
-    core.x.market(&id)?;
-    ok(views::public_positions(&core.x, &id))
+    let node = app.lock();
+    node.core.x.market(&id)?;
+    ok(views::public_positions(&node.core.x, &id))
 }
 
 /// `?before=<id>` and `limit` page through the full history (the database); `limit` alone too.
@@ -44,12 +44,12 @@ fn page(q: &HashMap<String, String>) -> Option<(Option<u64>, usize)> {
 }
 
 pub(super) async fn feed(State(app): State<App>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
-    let core = app.lock();
+    let node = app.lock();
     let market = q.get("market").filter(|m| !m.is_empty());
-    if let (Some((before, limit)), Some(store)) = (page(&q), core.store()) {
+    if let (Some((before, limit)), Some(store)) = (page(&q), node.core.store()) {
         return ok(store.risk_page(market.map(String::as_str), before, limit).map_err(ExError::Internal)?);
     }
-    let mut rows: Vec<_> = core.x.risk.iter().filter(|r| market.is_none_or(|m| *m == r.market)).collect();
+    let mut rows: Vec<_> = node.core.x.risk.iter().filter(|r| market.is_none_or(|m| *m == r.market)).collect();
     rows = rows.split_off(rows.len().saturating_sub(200));
     rows.reverse();
     ok(rows)
@@ -57,16 +57,16 @@ pub(super) async fn feed(State(app): State<App>, Query(q): Query<HashMap<String,
 
 /// A market's trades, newest first: the latest 60 from memory, or pages of the full history (`before`, `limit`).
 pub(super) async fn trades(State(app): State<App>, Path(id): Path<String>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
-    let core = app.lock();
-    core.x.market(&id)?;
-    if let (Some((before, limit)), Some(store)) = (page(&q), core.store()) {
+    let node = app.lock();
+    node.core.x.market(&id)?;
+    if let (Some((before, limit)), Some(store)) = (page(&q), node.core.store()) {
         return ok(store.fills_page(&id, before, limit).map_err(ExError::Internal)?);
     }
-    ok(views::trades_view(&core.x, &id, 60))
+    ok(views::trades_view(&node.core.x, &id, 60))
 }
 
 pub(super) async fn leaderboard(State(app): State<App>) -> ApiResult {
-    ok(views::leaderboard_view(&app.lock().x))
+    ok(views::leaderboard_view(&app.lock().core.x))
 }
 
 pub(super) async fn signup(State(app): State<App>, b: Body) -> ApiResult {

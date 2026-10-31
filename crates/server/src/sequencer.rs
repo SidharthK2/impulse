@@ -2,9 +2,9 @@
 //
 //   clients (API, bots, feeds, clock) → sequencer → journal (SQLite, before the reply) → deterministic core
 //
-// Every state change arrives here as a Command. Core::submit stamps it with the intake clock's time, applies it to
-// the in-memory exchange and, if the exchange changed, writes it to the journal and commits before anyone hears
-// back. A command that changed nothing (refused before any mutation) is rolled back and never journaled. If the
+// Every state change arrives here as a Command. Node::submit takes the intake clock's time and hands both to
+// Core::submit, which applies the command to the in-memory exchange at that time and, if the exchange changed,
+// writes it to the journal and commits before anyone hears back. The core itself never reads a clock. A command that changed nothing (refused before any mutation) is rolled back and never journaled. If the
 // journal can't be written the process stops (fail-stop): memory must never run ahead of disk; recovery restores
 // the last committed state. Recovery loads the latest snapshot and replays the journal after it through the same
 // `command::apply`, with no feeds, bots or timers running.
@@ -24,14 +24,39 @@ use std::time::{Duration, Instant};
 const SNAPSHOT_EVERY: u64 = 1000;
 const SNAPSHOT_INTERVAL: Duration = Duration::from_secs(60);
 
-/// Everything the single-threaded core owns. One lock, held for one synchronous step at a time.
+/// Everything behind the one lock: the deterministic core, the intake around it, and the websocket hub that
+/// reads the core's views. One lock, held for one synchronous step at a time.
+pub struct Node {
+    pub core: Core,
+    pub intake: Intake,
+    pub hub: Hub,
+}
+
+/// What the clients around the core own: the intake clock, and the randomness behind the bots' and the offline
+/// random walk's decisions. None of it is exchange state; it reaches the core only inside commands.
+pub struct Intake {
+    pub clock: IntakeClock,
+    pub bots: Option<Bots>,
+    /// The offline random walk's generator (it decides prices, which go in as Ticks commands).
+    pub sim: Rng,
+}
+
+impl Node {
+    pub fn new(core: Core, clock: IntakeClock, bots: bool) -> Node {
+        Node { core, intake: Intake { clock, bots: bots.then(Bots::new), sim: Rng::new(42) }, hub: Hub::default() }
+    }
+
+    /// Submit a command at the intake clock's time.
+    pub fn submit(&mut self, cmd: Command) -> XResult<Reply> {
+        let ts = self.intake.clock.now();
+        self.core.submit(cmd, ts)
+    }
+}
+
+/// The deterministic core and its journal: the exchange, the store, snapshots. It never reads a clock: every
+/// command arrives with its time.
 pub struct Core {
     pub x: Exchange,
-    pub bots: Option<Bots>,
-    pub hub: Hub,
-    /// The offline random walk's generator (intake: it decides prices, which go in as Ticks commands).
-    pub sim: Rng,
-    pub clock: IntakeClock,
     /// The last journaled sequence number.
     pub seq: u64,
     store: Option<Store>,
@@ -71,13 +96,9 @@ fn run(x: &mut Exchange, cmd: &Command) -> XResult<Reply> {
 }
 
 impl Core {
-    pub fn new(bots: bool, clock: IntakeClock, store: Option<Store>) -> Core {
+    pub fn new(store: Option<Store>) -> Core {
         Core {
             x: Exchange::new(0),
-            bots: bots.then(Bots::new),
-            hub: Hub::default(),
-            sim: Rng::new(42),
-            clock,
             seq: 0,
             store,
             history: HistoryMarks::default(),
@@ -87,8 +108,8 @@ impl Core {
         }
     }
 
-    /// The sequencer: every state change enters here. See the module comment.
-    pub fn submit(&mut self, cmd: Command) -> XResult<Reply> {
+    /// The sequencer: every state change enters here, with the time intake gave it. See the module comment.
+    pub fn submit(&mut self, cmd: Command, ts: i64) -> XResult<Reply> {
         let started = Instant::now();
         let prev = self.x.now;
         let version = self.x.version;
@@ -97,7 +118,7 @@ impl Core {
                 fail_stop(&format!("journal BEGIN failed: {e}"));
             }
         }
-        self.x.now = self.clock.now().max(prev);
+        self.x.now = ts.max(prev); // time never runs backwards in the journal
         let r = run(&mut self.x, &cmd);
         if self.x.version == version {
             self.x.now = prev; // a refused command leaves no trace, not even in the clock

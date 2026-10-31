@@ -31,8 +31,8 @@ fn env(name: &str) -> Option<String> {
     std::env::var(name).ok().filter(|v| !v.is_empty())
 }
 
-/// Run `f` against the core every `ms` (divided by TIMER_SPEEDUP, a test knob), starting after one period.
-fn every(app: &App, ms: u64, f: impl Fn(&mut api::Core) + Send + 'static) {
+/// Run `f` against the node every `ms` (divided by TIMER_SPEEDUP, a test knob), starting after one period.
+fn every(app: &App, ms: u64, f: impl Fn(&mut api::Node) + Send + 'static) {
     let speedup: u64 = env("TIMER_SPEEDUP").and_then(|s| s.parse().ok()).filter(|&n| n >= 1).unwrap_or(1);
     let ms = (ms / speedup).max(1);
     let app = app.clone();
@@ -130,46 +130,46 @@ async fn main() {
         }
     };
     log(&format!("database {}", store.path.display()));
-    let mut core = sequencer::Core::new(bots, clock, Some(store));
-    let recovery = match core.recover(&data_dir) {
+    let mut node = sequencer::Node::new(sequencer::Core::new(Some(store)), clock, bots);
+    let recovery = match node.core.recover(&data_dir) {
         Ok(r) => r,
         Err(e) => {
             eprintln!("recovery failed: {e}");
             std::process::exit(1);
         }
     };
-    if let (IntakeClock::Manual(t), sequencer::Recovery::Restored { .. }) = (&mut core.clock, &recovery) {
-        *t = (*t).max(core.x.now); // the test clock never runs behind the journal
+    if let (IntakeClock::Manual(t), sequencer::Recovery::Restored { .. }) = (&mut node.intake.clock, &recovery) {
+        *t = (*t).max(node.core.x.now); // the test clock never runs behind the journal
     }
-    let last_ts = core.x.now;
-    let app = App::new(core, admin_token.clone(), Some(web_dir), test_clock);
+    let last_ts = node.core.x.now;
+    let app = App::new(node, admin_token.clone(), Some(web_dir), test_clock);
     match recovery {
         sequencer::Recovery::Fresh => {
             submit(&app, Command::Genesis);
             log(&format!("fresh exchange; listing default markets{}…", if offline { " (offline)" } else { "" }));
             feeds::list_defaults(&app, offline).await;
-            log(&format!("listed {}", app.lock().x.markets.keys().cloned().collect::<Vec<_>>().join(", ")));
+            log(&format!("listed {}", app.lock().core.x.markets.keys().cloned().collect::<Vec<_>>().join(", ")));
         }
         sequencer::Recovery::Restored { replayed, imported } => {
-            let down = app.lock().clock.now() - last_ts;
+            let down = app.lock().intake.clock.now() - last_ts;
             if down > 0 {
                 submit(&app, Command::Resume { down_ms: down });
             }
-            let core = app.lock();
+            let node = app.lock();
             log(&format!(
                 "recovered {}: seq {}, {replayed} commands replayed; {} markets, {} accounts, engine t={}s; paused for {}s of downtime",
                 if imported { "from the legacy JSON snapshot" } else { "from the database" },
-                core.seq,
-                core.x.markets.len(),
-                core.x.accounts.len(),
-                core.x.state.time,
+                node.core.seq,
+                node.core.x.markets.len(),
+                node.core.x.accounts.len(),
+                node.core.x.state.time,
                 (down.max(0) + 500) / 1000
             ));
         }
     }
     submit(&app, Command::Clock);
     if bots {
-        let setup = bots::Bots::setup(&app.lock().x);
+        let setup = bots::Bots::setup(&app.lock().core.x);
         for cmd in setup {
             submit(&app, cmd);
         }
@@ -179,20 +179,20 @@ async fn main() {
     every(&app, 2000, |c| log_err("clock", c.submit(Command::Clock)));
     if bots {
         every(&app, 1000, |c| {
-            if !c.x.bots_enabled {
+            if !c.core.x.bots_enabled {
                 return;
             }
-            let Some(b) = c.bots.as_mut() else { return };
-            for cmd in b.next_quotes(&c.x, 3) {
+            let Some(b) = c.intake.bots.as_mut() else { return };
+            for cmd in b.next_quotes(&c.core.x, 3) {
                 log_err("bots", c.submit(cmd));
             }
         });
         every(&app, 2500, |c| {
-            if !c.x.bots_enabled {
+            if !c.core.x.bots_enabled {
                 return;
             }
-            let Some(b) = c.bots.as_mut() else { return };
-            let (cmds, note) = b.noise(&c.x);
+            let Some(b) = c.intake.bots.as_mut() else { return };
+            let (cmds, note) = b.noise(&c.core.x);
             if let Some(note) = note {
                 log(&note);
             }
@@ -240,7 +240,7 @@ async fn main() {
                 _ = term => {}
             }
             log("shutting down, saving a snapshot");
-            app.lock().snapshot();
+            app.lock().core.snapshot();
             std::process::exit(0);
         }
     };
