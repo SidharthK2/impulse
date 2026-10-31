@@ -5,8 +5,8 @@ use super::*;
 pub(super) async fn advance(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
     let mut node = app.lock();
     node.intake.clock.advance(b.num("ms").unwrap_or(0.0) as i64);
-    let r = node.submit(Command::Clock)?;
-    ok(json!({ "effects": effects_of(r), "now": node.intake.clock.now(), "seq": node.core.seq }))
+    let r = node.submit(Clock {})?;
+    ok(json!({ "effects": kinds(&r), "now": node.intake.clock.now(), "seq": node.core.seq }))
 }
 
 pub(super) async fn market(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
@@ -28,7 +28,7 @@ pub(super) async fn market(State(app): State<App>, _: Admin, b: Body) -> ApiResu
 
 pub(super) async fn tick(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
     let tick = Tick { market: b.str("market")?, price: crate::units::parse_fixed(&b.str("price")?).map_err(ExError::bad)? };
-    let Reply::Tick(effects) = app.lock().submit(Command::Tick { tick })? else { unreachable!() };
+    let effects = app.lock().submit(FeedTick { tick })?;
     ok(json!({ "effects": effects.map(|e| kinds(&e)) }))
 }
 
@@ -46,6 +46,6 @@ pub(super) async fn reload(State(app): State<App>, _: Admin, b: Body) -> ApiResu
     let down = b.num("downMs").unwrap_or(0.0) as i64;
     let mut node = app.lock();
     node.intake.clock.advance(down);
-    let Reply::Reload { identical, effects } = node.submit(Command::TestReload { down_ms: down })? else { unreachable!() };
+    let Reloaded { identical, effects } = node.submit(TestReload { down_ms: down })?;
     ok(json!({ "identical": identical, "effects": kinds(&effects) }))
 }

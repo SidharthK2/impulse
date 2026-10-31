@@ -7,12 +7,12 @@ pub(super) async fn account(State(app): State<App>, User(id): User) -> ApiResult
 }
 
 pub(super) async fn faucet(State(app): State<App>, User(id): User) -> ApiResult {
-    let Reply::Faucet(amount) = app.lock().submit(Command::Faucet { account: id })? else { unreachable!() };
+    let amount = app.lock().submit(Faucet { account: id })?;
     ok(json!({ "amount": usd(amount) }))
 }
 
 pub(super) async fn withdraw(State(app): State<App>, User(id): User, b: Body) -> ApiResult {
-    app.lock().submit(Command::Withdraw { account: id, amount: b.amount("amount")? })?;
+    app.lock().submit(Withdraw { account: id, amount: b.amount("amount")? })?;
     ok(json!({ "ok": true }))
 }
 
@@ -49,12 +49,12 @@ pub(super) async fn place_order(State(app): State<App>, User(id): User, b: Body)
         slippage: b.num("slippage"),
     };
     let mut node = app.lock();
-    let r = node.submit(Command::PlaceOrder { account: id.clone(), order: input })?;
+    let r = node.submit(PlaceOrder { account: id.clone(), order: input })?;
     order_reply(&node.core.x, &id, r, true)
 }
 
 pub(super) async fn cancel(State(app): State<App>, User(id): User, Path(order): Path<String>) -> ApiResult {
-    app.lock().submit(Command::Cancel { account: id, order })?;
+    app.lock().submit(Cancel { account: id, order })?;
     ok(json!({ "ok": true }))
 }
 
@@ -63,29 +63,29 @@ pub(super) async fn cancel_all(State(app): State<App>, User(id): User, b: Body) 
         Some(Value::String(m)) => Some(m.clone()),
         _ => None,
     };
-    let Reply::Cancelled(n) = app.lock().submit(Command::CancelAll { account: id, market })? else { unreachable!() };
+    let n = app.lock().submit(CancelAll { account: id, market })?;
     ok(json!({ "cancelled": n }))
 }
 
 pub(super) async fn close_position(State(app): State<App>, User(id): User, b: Body) -> ApiResult {
-    let cmd = Command::ClosePosition { account: id.clone(), market: b.str("market")?, slippage: b.num("slippage").unwrap_or(0.1) };
+    let cmd = ClosePosition { account: id.clone(), market: b.str("market")?, slippage: b.num("slippage").unwrap_or(0.1) };
     let mut node = app.lock();
     let r = node.submit(cmd)?;
     order_reply(&node.core.x, &id, r, false)
 }
 
 pub(super) async fn margin(State(app): State<App>, User(id): User, b: Body) -> ApiResult {
-    app.lock().submit(Command::Margin { account: id, market: b.str("market")?, amount: b.dec("amount")? })?;
+    app.lock().submit(Margin { account: id, market: b.str("market")?, amount: b.dec("amount")? })?;
     ok(json!({ "ok": true }))
 }
 
 pub(super) async fn spot_buy(State(app): State<App>, User(id): User, b: Body) -> ApiResult {
-    app.lock().submit(Command::SpotBuy { account: id, market: b.str("market")?, usdc: b.amount("usdc")? })?;
+    app.lock().submit(SpotBuy { account: id, market: b.str("market")?, usdc: b.amount("usdc")? })?;
     ok(json!({ "ok": true }))
 }
 
 pub(super) async fn spot_sell(State(app): State<App>, User(id): User, b: Body) -> ApiResult {
-    app.lock().submit(Command::SpotSell { account: id, market: b.str("market")?, tokens: b.tokens("tokens")? })?;
+    app.lock().submit(SpotSell { account: id, market: b.str("market")?, tokens: b.tokens("tokens")? })?;
     ok(json!({ "ok": true }))
 }
 
@@ -124,6 +124,6 @@ pub(super) async fn attention(State(app): State<App>, User(id): User, b: Body) -
 }
 
 pub(super) async fn snipe(State(app): State<App>, User(id): User, b: Body) -> ApiResult {
-    app.lock().submit(Command::Snipe { account: id, market: b.str("market")?, usdc: b.amount("usdc")? })?;
+    app.lock().submit(Snipe { account: id, market: b.str("market")?, usdc: b.amount("usdc")? })?;
     ok(json!({ "ok": true }))
 }

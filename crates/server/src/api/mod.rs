@@ -14,9 +14,9 @@ use extract::*;
 
 use crate::book::{Side, Tif};
 use crate::bots::Bots;
-use crate::command::{Command, Reply, Tick};
+use crate::command::*;
 pub use crate::sequencer::Node;
-use crate::exchange::{ExError, Exchange, Kind, MarketSpec, OrderInput, OrderType, Source};
+use crate::exchange::{ExError, Exchange, Kind, MarketSpec, OrderInput, OrderResult, OrderType, Source};
 use crate::intake::api_key;
 use crate::logging::log;
 use crate::feeds;
@@ -93,12 +93,7 @@ fn parse_kind(s: &str) -> Result<Kind, ExError> {
     }
 }
 
-fn effects_of(r: Reply) -> Vec<&'static str> {
-    kinds(&r.effects())
-}
-
-fn order_reply(x: &Exchange, id: &str, r: Reply, with_order: bool) -> ApiResult {
-    let Reply::Order(r) = r else { unreachable!() };
+fn order_reply(x: &Exchange, id: &str, r: OrderResult, with_order: bool) -> ApiResult {
     let fills: Vec<_> = r.fills.iter().map(|f| views::fill_view(x, f, Some(id))).collect();
     if with_order {
         ok(json!({ "status": r.status, "reason": r.reason, "order": views::order_view(x, &r.order), "fills": fills }))
@@ -110,7 +105,7 @@ fn order_reply(x: &Exchange, id: &str, r: Reply, with_order: bool) -> ApiResult 
 /// List a market and reply with its view.
 fn list(app: &App, spec: MarketSpec) -> ApiResult {
     let mut node = app.lock();
-    let Reply::Market(id) = node.submit(Command::ListMarket { spec })? else { unreachable!() };
+    let id = node.submit(ListMarket { spec: Box::new(spec) })?;
     ok(views::market_view(&node.core.x, &id))
 }
 

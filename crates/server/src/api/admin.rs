@@ -5,7 +5,7 @@ use super::*;
 /// After a gap the book is still quoted around the old price; have the bot maker re-quote that market now
 /// (rather than on its next turn), so the book, and the funding premium read from it, follow the new mark.
 fn requote(node: &mut Node, market: &str) {
-    let cmd = if node.intake.bots.is_some() && node.core.x.bots_enabled { Command::BotQuote { market: market.into() } } else { Command::Clock };
+    let cmd: Command = if node.intake.bots.is_some() && node.core.x.bots_enabled { BotQuote { market: market.into() }.into() } else { Clock {}.into() };
     if let Err(e) = node.submit(cmd) {
         log(&format!("requote {market}: {}", e.message()));
     }
@@ -14,18 +14,18 @@ fn requote(node: &mut Node, market: &str) {
 pub(super) async fn price(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
     let market = b.str("market")?;
     let mut node = app.lock();
-    let r = node.submit(Command::AdminPrice { market: market.clone(), price: b.dec("price")?, hold_seconds: b.num("holdSeconds").unwrap_or(60.0) })?;
+    let r = node.submit(AdminPrice { market: market.clone(), price: b.dec("price")?, hold_seconds: b.num("holdSeconds").unwrap_or(60.0) })?;
     requote(&mut node, &market);
-    ok(json!({ "effects": effects_of(r) }))
+    ok(json!({ "effects": kinds(&r) }))
 }
 
 pub(super) async fn release(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
-    app.lock().submit(Command::ReleaseHold { market: b.str("market")? })?;
+    app.lock().submit(ReleaseHold { market: b.str("market")? })?;
     ok(json!({ "ok": true }))
 }
 
 pub(super) async fn resolve(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
-    app.lock().submit(Command::Resolve { market: b.str("market")?, price: b.dec("price")? })?;
+    app.lock().submit(Resolve { market: b.str("market")?, price: b.dec("price")? })?;
     ok(json!({ "ok": true }))
 }
 
@@ -88,8 +88,8 @@ pub(super) async fn demo_coin(State(app): State<App>, _: Admin, b: Body) -> ApiR
 }
 
 pub(super) async fn pump(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
-    let r = app.lock().submit(Command::Pump { market: b.str("market")?, usdc: b.dec("usdc")?, house_key: api_key() })?;
-    ok(json!({ "effects": effects_of(r) }))
+    let r = app.lock().submit(Pump { market: b.str("market")?, usdc: b.dec("usdc")?, house_key: api_key() })?;
+    ok(json!({ "effects": kinds(&r) }))
 }
 
 /// A pre-IPO perp: no outside price, the mark is the market's own book until the admin IPO.
@@ -111,13 +111,13 @@ pub(super) async fn preipo(State(app): State<App>, _: Admin, b: Body) -> ApiResu
 pub(super) async fn ipo(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
     let market = b.str("market")?;
     let mut node = app.lock();
-    let r = node.submit(Command::Ipo { market: market.clone(), price: b.dec("price")? })?;
+    let r = node.submit(Ipo { market: market.clone(), price: b.dec("price")? })?;
     requote(&mut node, &market);
-    ok(json!({ "effects": effects_of(r) }))
+    ok(json!({ "effects": kinds(&r) }))
 }
 
 pub(super) async fn deposit(State(app): State<App>, _: Admin, b: Body) -> ApiResult {
-    app.lock().submit(Command::Deposit { account: b.str("account")?, amount: b.dec("amount")? })?;
+    app.lock().submit(Deposit { account: b.str("account")?, amount: b.dec("amount")? })?;
     ok(json!({ "ok": true }))
 }
 
@@ -127,7 +127,7 @@ pub(super) async fn bots(State(app): State<App>, _: Admin, b: Body) -> ApiResult
         return Err(ExError::bad("bots are not running (BOTS=0)").into());
     }
     let enabled = b.truthy("enabled");
-    node.submit(Command::SetBots { enabled })?;
+    node.submit(SetBots { enabled })?;
     ok(json!({ "enabled": enabled }))
 }
 

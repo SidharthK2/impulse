@@ -70,7 +70,7 @@ pub(super) async fn leaderboard(State(app): State<App>) -> ApiResult {
 }
 
 pub(super) async fn signup(State(app): State<App>, b: Body) -> ApiResult {
-    let Reply::Account(meta) = app.lock().submit(Command::Signup { name: b.str("name")?, api_key: api_key() })? else { unreachable!() };
+    let meta = app.lock().submit(Signup { name: b.str("name")?, api_key: api_key() })?;
     log(&format!("new account {}", meta.id));
     ok(json!({ "id": meta.id, "apiKey": meta.api_key }))
 }

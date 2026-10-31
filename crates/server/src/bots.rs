@@ -6,7 +6,7 @@
 //    trade the curves of open ones.
 
 use crate::book::{Side, Tif};
-use crate::command::Command;
+use crate::command::{BotQuote, Command, CreateAccount, Deposit, PlaceOrder, Snipe, SpotBuy, SpotSell};
 use crate::exchange::{Exchange, Kind, OrderInput};
 use crate::rng::Rng;
 use crate::money::{Amount, Dec, Tokens};
@@ -80,8 +80,8 @@ impl Bots {
             .filter(|(id, _)| !x.accounts.contains_key(*id))
             .flat_map(|(id, deposit)| {
                 [
-                    Command::CreateAccount { name: id.into(), api_key: crate::intake::api_key(), bot: true },
-                    Command::Deposit { account: id.into(), amount: Dec::parse(deposit).expect("a bot deposit") },
+                    CreateAccount { name: id.into(), api_key: crate::intake::api_key(), bot: true }.into(),
+                    Deposit { account: id.into(), amount: Dec::parse(deposit).expect("a bot deposit") }.into(),
                 ]
             })
             .collect()
@@ -95,7 +95,7 @@ impl Bots {
             .map(|_| {
                 let id = ids[self.cursor % ids.len()].clone();
                 self.cursor += 1;
-                Command::BotQuote { market: id }
+                BotQuote { market: id }.into()
             })
             .collect()
     }
@@ -120,12 +120,12 @@ impl Bots {
             let sz = x.markets[id.as_str()].sz_decimals;
             let side = if size > 0 { Side::Sell } else { Side::Buy };
             let order = OrderInput { reduce_only: true, slippage: Some(0.03), ..OrderInput::market(id, side, coins_dec(sz, size.abs())) };
-            return (vec![Command::PlaceOrder { account: t.id.into(), order }], None);
+            return (vec![PlaceOrder { account: t.id.into(), order }.into()], None);
         }
 
         if wallet < 50 * ONE {
             if open.is_empty() {
-                let refill = Command::Deposit { account: t.id.into(), amount: Dec::parse(t.deposit).expect("a bot deposit") };
+                let refill = Deposit { account: t.id.into(), amount: Dec::parse(t.deposit).expect("a bot deposit") }.into();
                 return (vec![refill], Some(format!("{} is broke; refilled ${}", t.id, t.deposit)));
             }
             return (vec![], None);
@@ -169,7 +169,7 @@ impl Bots {
         };
         let side = if self.rng.next() < p_buy { Side::Buy } else { Side::Sell };
         let order = OrderInput { leverage: Some(lev.min(max_lev)), slippage: Some(0.03), ..OrderInput::market(id, side, coins_dec(sz, lots as i128)) };
-        (vec![Command::PlaceOrder { account: t.id.into(), order }], None)
+        (vec![PlaceOrder { account: t.id.into(), order }.into()], None)
     }
 
     /// Maybe snipe a coin in its window (once each, $20–300) or trade an open curve ($20–200).
@@ -184,7 +184,7 @@ impl Bots {
         if !sniping.is_empty() && self.rng.next() < 0.5 {
             let coin = &sniping[self.rng.below(sniping.len())];
             let usdc = 20 + (self.rng.next() * 280.0) as i64;
-            return Some(Command::Snipe { account: id.into(), market: coin.clone(), usdc: whole_usd(usdc) });
+            return Some(Snipe { account: id.into(), market: coin.clone(), usdc: whole_usd(usdc) }.into());
         }
         if self.rng.next() >= 0.15 {
             return None;
@@ -202,10 +202,10 @@ impl Bots {
         let coin = curves[self.rng.below(curves.len())].clone();
         let held = x.state.accounts.get(id).and_then(|a| a.spot.get(&coin)).copied().unwrap_or(0);
         Some(if held > 1 && self.rng.next() < 0.4 {
-            Command::SpotSell { account: id.into(), market: coin, tokens: Tokens::Exact(held / 2) }
+            SpotSell { account: id.into(), market: coin, tokens: Tokens::Exact(held / 2) }.into()
         } else {
             let usdc = 20 + (self.rng.next() * 180.0) as i64;
-            Command::SpotBuy { account: id.into(), market: coin, usdc: whole_usd(usdc) }
+            SpotBuy { account: id.into(), market: coin, usdc: whole_usd(usdc) }.into()
         })
     }
 

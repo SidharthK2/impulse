@@ -4,7 +4,7 @@
 
 use crate::api::{App, Node};
 use crate::logging::log;
-use crate::command::{Bar, Command, Reply, Tick};
+use crate::command::{Bar, History, ListMarket, Resolve, Ticks, Tick};
 use crate::money::Dec;
 use crate::exchange::{Exchange, ExError, Kind, MarketSpec, Source};
 use crate::intake::wall_ms;
@@ -294,7 +294,7 @@ pub async fn list_defaults(app: &App, offline: bool) {
         let mut node = app.lock();
         for spec in specs {
             let id = spec.id.clone();
-            if let Err(e) = node.submit(Command::ListMarket { spec }) {
+            if let Err(e) = node.submit(ListMarket { spec: Box::new(spec) }) {
                 log(&format!("could not list {id}: {}", e.message()));
             }
         }
@@ -341,7 +341,7 @@ pub async fn list_polymarket(app: &App, reference: &str) -> Result<String, ExErr
     let mids = pm_midpoints(&app.http, &pm.tokens[..1]).await.map_err(to_ex)?;
     let mid = mids.get(&pm.tokens[0]).map(|v| text(v).parse::<f64>().unwrap_or(f64::NAN)).unwrap_or_else(|| pm.prices.first().copied().unwrap_or(f64::NAN));
     let spec = MarketSpec { creator: Some("admin".into()), ..pm_spec(&pm, mid) };
-    let Reply::Market(id) = app.lock().submit(Command::ListMarket { spec })? else { unreachable!() };
+    let id = app.lock().submit(ListMarket { spec: Box::new(spec) })?;
     tokio::spawn(backfill(app.clone(), Some(vec![id.clone()])));
     Ok(id)
 }
@@ -364,7 +364,7 @@ pub async fn list_hyperliquid(app: &App, coin: &str) -> Result<String, ExError> 
         creator: Some("admin".into()),
         ..MarketSpec::new(format!("{base}-PERP"), Kind::Perp, Source::Hyperliquid { coin: coin.into(), dex })
     };
-    let Reply::Market(id) = app.lock().submit(Command::ListMarket { spec })? else { unreachable!() };
+    let id = app.lock().submit(ListMarket { spec: Box::new(spec) })?;
     tokio::spawn(backfill(app.clone(), Some(vec![id.clone()])));
     Ok(id)
 }
@@ -390,7 +390,7 @@ async fn backfill(app: App, only: Option<Vec<String>>) {
         match points {
             Ok(pts) => {
                 let bars = pts.into_iter().map(|(t, o, h, l, c)| Bar { t, o, h, l, c }).collect();
-                if let Err(e) = app.lock().submit(Command::History { market: id.clone(), bars }) {
+                if let Err(e) = app.lock().submit(History { market: id.clone(), bars }) {
                     log(&format!("history for {id}: {}", e.message()));
                 }
             }
@@ -432,13 +432,12 @@ fn submit_ticks(node: &mut Node, warn: &Warn, prices: Vec<(String, &Value)>) {
     if ticks.is_empty() {
         return;
     }
-    match node.submit(Command::Ticks { ticks }) {
-        Ok(Reply::Ticks(refused)) => {
+    match node.submit(Ticks { ticks }) {
+        Ok(refused) => {
             for (id, e) in refused {
                 warn.warn(&format!("tick {id}"), e.message());
             }
         }
-        Ok(_) => {}
         Err(e) => warn.warn("ticks", e.message()),
     }
 }
@@ -483,7 +482,7 @@ async fn check_resolutions(app: &App) -> Result<(), String> {
             continue;
         }
         let price = Dec::parse(&p.to_string())?;
-        app.lock().submit(Command::Resolve { market: id.clone(), price }).map_err(|e| e.message().to_string())?;
+        app.lock().submit(Resolve { market: id.clone(), price }).map_err(|e| e.message().to_string())?;
         log(&format!("{id} resolved at {p} (Polymarket closed)"));
     }
     Ok(())

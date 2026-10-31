@@ -10,7 +10,7 @@
 // `command::apply`, with no feeds, bots or timers running.
 
 use crate::bots::Bots;
-use crate::command::{self, Command, Reply};
+use crate::command::{Apply, Command};
 use crate::exchange::{Exchange, XResult};
 use crate::intake::IntakeClock;
 use crate::rng::Rng;
@@ -46,8 +46,8 @@ impl Node {
         Node { core, intake: Intake { clock, bots: bots.then(Bots::new), sim: Rng::new(42) }, hub: Hub::default() }
     }
 
-    /// Submit a command at the intake clock's time.
-    pub fn submit(&mut self, cmd: Command) -> XResult<Reply> {
+    /// Submit a command at the intake clock's time; its own reply comes back.
+    pub fn submit<C: Apply + Clone + Into<Command>>(&mut self, cmd: C) -> XResult<C::Reply> {
         let ts = self.intake.clock.now();
         self.core.submit(cmd, ts)
     }
@@ -88,10 +88,10 @@ fn encode(x: &Exchange) -> Vec<u8> {
 }
 
 /// Run a command, stopping the process if it panics (the exchange may be half-changed).
-fn run(x: &mut Exchange, cmd: &Command) -> XResult<Reply> {
-    match catch_unwind(AssertUnwindSafe(|| command::apply(x, cmd))) {
+fn run<C: Apply>(x: &mut Exchange, cmd: &C, kind: &str) -> XResult<C::Reply> {
+    match catch_unwind(AssertUnwindSafe(|| cmd.apply(x))) {
         Ok(r) => r,
-        Err(_) => fail_stop(&format!("command {} panicked", cmd.kind())),
+        Err(_) => fail_stop(&format!("command {kind} panicked")),
     }
 }
 
@@ -109,7 +109,8 @@ impl Core {
     }
 
     /// The sequencer: every state change enters here, with the time intake gave it. See the module comment.
-    pub fn submit(&mut self, cmd: Command, ts: i64) -> XResult<Reply> {
+    pub fn submit<C: Apply + Clone + Into<Command>>(&mut self, cmd: C, ts: i64) -> XResult<C::Reply> {
+        let journaled: Command = cmd.clone().into();
         let started = Instant::now();
         let prev = self.x.now;
         let version = self.x.version;
@@ -119,7 +120,7 @@ impl Core {
             }
         }
         self.x.now = ts.max(prev); // time never runs backwards in the journal
-        let r = run(&mut self.x, &cmd);
+        let r = run(&mut self.x, &cmd, journaled.kind());
         if self.x.version == version {
             self.x.now = prev; // a refused command leaves no trace, not even in the clock
             if let Some(s) = &self.store {
@@ -130,9 +131,9 @@ impl Core {
         self.seq += 1;
         if let Some(s) = &self.store {
             // The command and the history it produced, in one transaction.
-            let payload = serde_json::to_string(&cmd).expect("commands serialize");
+            let payload = serde_json::to_string(&journaled).expect("commands serialize");
             let written = s
-                .insert_command(self.seq, self.x.now, cmd.kind(), &payload)
+                .insert_command(self.seq, self.x.now, journaled.kind(), &payload)
                 .and_then(|_| s.write_history(self.seq, &mut self.x, self.history))
                 .and_then(|marks| s.commit().map(|_| marks));
             match written {
@@ -234,7 +235,7 @@ pub fn rebuild_counting(store: &Store, full: bool, until: Option<u64>, legacy: O
         let version = x.version;
         let (fill, risk) = (x.fills.back().map_or(0, |f| f.id), x.risk.back().map_or(0, |r| r.id));
         // A journaled command changed the exchange when it ran; its reply (success or refusal) doesn't matter here.
-        let _ = command::apply(&mut x, &cmd);
+        let _ = cmd.apply(&mut x);
         replayed.fills += x.fills.iter().rev().take_while(|f| f.id > fill).count() as u64;
         replayed.risk += x.risk.iter().rev().take_while(|r| r.id > risk).count() as u64;
         if x.version == version {

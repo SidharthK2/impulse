@@ -23,7 +23,7 @@ mod ws;
 
 use api::App;
 use logging::log;
-use command::Command;
+use command::{Clock, Command, Genesis, Resume};
 use intake::IntakeClock;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -54,7 +54,8 @@ fn log_err<T>(what: &str, r: Result<T, exchange::ExError>) {
     }
 }
 
-fn submit(app: &App, cmd: Command) {
+fn submit(app: &App, cmd: impl Into<Command>) {
+    let cmd: Command = cmd.into();
     let kind = cmd.kind();
     log_err(kind, app.lock().submit(cmd));
 }
@@ -146,7 +147,7 @@ async fn main() {
     let app = App::new(node, admin_token.clone(), Some(web_dir), test_clock);
     match recovery {
         sequencer::Recovery::Fresh => {
-            submit(&app, Command::Genesis);
+            submit(&app, Genesis {});
             log(&format!("fresh exchange; listing default markets{}…", if offline { " (offline)" } else { "" }));
             feeds::list_defaults(&app, offline).await;
             log(&format!("listed {}", app.lock().core.x.markets.keys().cloned().collect::<Vec<_>>().join(", ")));
@@ -154,7 +155,7 @@ async fn main() {
         sequencer::Recovery::Restored { replayed, imported } => {
             let down = app.lock().intake.clock.now() - last_ts;
             if down > 0 {
-                submit(&app, Command::Resume { down_ms: down });
+                submit(&app, Resume { down_ms: down });
             }
             let node = app.lock();
             log(&format!(
@@ -168,7 +169,7 @@ async fn main() {
             ));
         }
     }
-    submit(&app, Command::Clock);
+    submit(&app, Clock {});
     if bots {
         let setup = bots::Bots::setup(&app.lock().core.x);
         for cmd in setup {
@@ -177,7 +178,7 @@ async fn main() {
     }
 
     // The clients that run on timers: the clock, the bots, the offline walk. Each submits commands.
-    every(&app, 2000, |c| log_err("clock", c.submit(Command::Clock)));
+    every(&app, 2000, |c| log_err("clock", c.submit(Clock {})));
     if bots {
         every(&app, 1000, |c| {
             if !c.core.x.bots_enabled {
