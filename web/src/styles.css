@@ -8,18 +8,19 @@
   --text: #ececee;
   --muted: #8d8d94;
   --faint: #5e5e66;
-  /* One brand colour, used sparingly: primary buttons, the current-page marker, links, focus, the home glow. An
-     electric blue, well clear of the green of "up". --accent is the bright line colour; --accent-fill is the
-     deeper button fill that keeps white text crisp. */
-  --accent: #1a8cff;
-  --accent-fill: #1473ff;
-  --accent-ink: #ffffff;
+  /* Neon on near-black, after Night City: acid yellow is the brand colour (primary buttons, the current-page
+     marker, links, focus, the home glow and wave tips), and electric cyan is a second neon that only tints the
+     home intro's glow. Buttons carry near-black text, and in dark theme a soft neon halo. */
+  --accent: #fcee0a;
+  --accent-fill: #fcee0a;
+  --accent-ink: #121100;
+  --accent-2: #00f0ff;
   --up: #34c38f;
   --up-bg: rgba(52, 195, 143, 0.1);
   --down: #f0566a;
   --down-bg: rgba(240, 86, 106, 0.1);
-  --warn: #e0a43c;
-  --warn-bg: rgba(224, 164, 60, 0.1);
+  --warn: #ff8a3d;
+  --warn-bg: rgba(255, 138, 61, 0.12);
   --info: #7aa7ff;
   --info-bg: rgba(122, 167, 255, 0.1);
   --brand-tile: transparent;
@@ -40,15 +41,16 @@
   --text: #111113;
   --muted: #64646b;
   --faint: #9b9ba2;
-  --accent: #0a64e8;
-  --accent-fill: #0a64e8;
-  --accent-ink: #ffffff;
+  --accent: #857400;
+  --accent-fill: #fcee0a;
+  --accent-ink: #121100;
+  --accent-2: #0096a8;
   --up: #0f9b6c;
   --up-bg: rgba(15, 155, 108, 0.09);
   --down: #d93a4f;
   --down-bg: rgba(217, 58, 79, 0.08);
-  --warn: #b7791f;
-  --warn-bg: rgba(183, 121, 31, 0.1);
+  --warn: #d4600f;
+  --warn-bg: rgba(212, 96, 15, 0.1);
   --info: #2f6bd6;
   --info-bg: rgba(47, 107, 214, 0.08);
   --brand-tile: transparent;
@@ -3105,7 +3107,7 @@ a.btn.primary {
   border-bottom: 1px solid var(--line);
   background:
     radial-gradient(55% 140% at 82% -10%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 70%),
-    radial-gradient(40% 90% at 100% 100%, color-mix(in srgb, var(--accent) 6%, transparent), transparent 70%),
+    radial-gradient(40% 90% at 100% 100%, color-mix(in srgb, var(--accent-2) 14%, transparent), transparent 70%),
     var(--bg);
 }
 .intro-band .pulse-field {
@@ -3180,4 +3182,14 @@ input[type="checkbox"] {
 .cat-tabs button.on .count,
 .tabs button.on .count {
   color: var(--accent);
+}
+
+/* Neon halo on primary buttons (dark theme). */
+:root:not([data-theme="light"]) .btn.primary {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent),
+    0 0 22px color-mix(in srgb, var(--accent) 32%, transparent);
+}
+:root[data-theme="light"] .btn.primary {
+  border-color: #d9cc00;
 }
