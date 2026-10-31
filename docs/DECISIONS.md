@@ -81,7 +81,8 @@ Newest last. Each entry: the decision, why, and what it rules out.
 
 ## Deliberately not done (yet)
 
-- **Order book and matching, liquidation through the book, perp fees:** the biggest realism gap.
+- **Liquidation through the book, perp fees:** the biggest realism gap. (The order book and matching came with the
+  MVP exchange, 2026-10-25; liquidation and ADL still close at mark against the other side.)
 - **Minimax-leverage ADL** (Campbell et al., arXiv 2603.15963): planned, see INTERMEDIATES #4.
 - **Real-data replay:** planned, see INTERMEDIATES #1 and #2.
 - **Cross margin, partial liquidation, liquidation penalties, oracle sanity bands:** out of v1 scope.
