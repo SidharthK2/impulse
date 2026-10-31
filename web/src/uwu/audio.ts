@@ -20,6 +20,8 @@ const DUCK = 0.35;
 const MAX_CLIP_S = 3.2;
 /** Every clip is levelled to this RMS (over its voiced part), unless that would clip its peak. */
 const TARGET_RMS = 0.16;
+/** Anya's clips play at half that level. */
+const VOICE_LEVEL = 0.5;
 
 const audible = () => {
   const s = useUwu.getState();
@@ -123,9 +125,10 @@ export async function play(src: string, fallback: Cue = "info"): Promise<number>
   const dur = Math.min(clip.buf.duration, MAX_CLIP_S);
   const g = c.createGain();
   const t = c.currentTime;
-  g.gain.setValueAtTime(clip.gain, t);
+  const gain = clip.gain * VOICE_LEVEL;
+  g.gain.setValueAtTime(gain, t);
   if (clip.buf.duration > MAX_CLIP_S) {
-    g.gain.setValueAtTime(clip.gain, t + dur - 0.3);
+    g.gain.setValueAtTime(gain, t + dur - 0.3);
     g.gain.linearRampToValueAtTime(0, t + dur);
   }
   const node = c.createBufferSource();
